@@ -1,0 +1,539 @@
+openapi: 3.0.3
+info:
+  title: Genesis CMS API v1 (Headless)
+  version: "1.0.0"
+  description: >
+    API pública headless de Genesis CMS. Multi-tenant por segmento de path
+    (`{tenant_slug}`), autenticada por Bearer token (Laravel Sanctum, ver
+    docs/v1.md). Solo expone contenido publicado/activo.
+    `lang_iso` fijo en `es` por el momento.
+  contact:
+    name: Genesis CMS
+externalDocs:
+  description: Documentación completa (envelope, auth, ejemplos)
+  url: ./v1.md
+
+servers:
+  - url: https://api.stamless.host/v1/{tenant_slug}
+    description: Producción
+    variables:
+      tenant_slug:
+        default: cica360
+  - url: http://localhost/v1/{tenant_slug}
+    description: Desarrollo local
+    variables:
+      tenant_slug:
+        default: cica360
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Pages
+  - name: Posts
+  - name: Menus
+  - name: Sliders
+  - name: Media
+  - name: Forms
+
+paths:
+  /pages:
+    get:
+      tags: [Pages]
+      summary: Listar páginas publicadas
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [page, landing, header, footer, legal]
+        - name: is_home
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PageSummary"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /pages/{slug}:
+    get:
+      tags: [Pages]
+      summary: Detalle de una página publicada (con blocks)
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Page"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /posts:
+    get:
+      tags: [Posts]
+      summary: Listar posts publicados
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PostSummary"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /posts/{slug}:
+    get:
+      tags: [Posts]
+      summary: Detalle de un post publicado
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Post"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /menus/{slug}:
+    get:
+      tags: [Menus]
+      summary: Menú con items activos (árbol)
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Menu"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /sliders/{slug}:
+    get:
+      tags: [Sliders]
+      summary: Slider activo con slides activos
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Slider"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /media/{uuid}:
+    get:
+      tags: [Media]
+      summary: Un archivo de media por uuid
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Media"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /forms/{slug}/submit:
+    post:
+      tags: [Forms]
+      summary: Enviar un formulario público (ej. contacto)
+      security: [{ bearerAuth: [forms:submit] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              example:
+                name: Juan Pérez
+                email: juan@example.com
+                phone: "099123456"
+                message: Quiero más información sobre seguros de vida.
+      responses:
+        "201":
+          description: Creado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          uuid: { type: string, format: uuid }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Sanctum personal access token"
+      description: >
+        `Authorization: Bearer {token}`. Abilities: `content:read` (todos
+        los GET), `forms:submit` (POST forms/{slug}/submit). Ver "Cómo
+        crear un token" en docs/v1.md.
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string }
+    PerPage:
+      name: per_page
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 50, default: 15 }
+
+  responses:
+    Unauthorized:
+      description: Sin token (`errors.code = unauthenticated`) o token inválido/expirado/revocado (`errors.code = token_invalid`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          examples:
+            sin_token:
+              summary: Sin header Authorization
+              value:
+                success: false
+                message: "No autenticado. Enviá un token Bearer en Authorization."
+                status_code: 401
+                errors: { code: unauthenticated }
+            token_invalido:
+              summary: Token presente pero inválido/expirado/revocado
+              value:
+                success: false
+                message: "Token inválido o expirado."
+                status_code: 401
+                errors: { code: token_invalid }
+    Forbidden:
+      description: Token sin la ability requerida, o de un tenant distinto al del path
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            success: false
+            message: "No tenés permiso para este recurso."
+            status_code: 403
+            errors: { code: forbidden }
+    NotFound:
+      description: Recurso o tenant no encontrado (o tenant inactivo — mismo mensaje genérico para ambos casos)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            success: false
+            message: "Recurso no encontrado."
+            status_code: 404
+            errors: { code: not_found }
+    UnprocessableEntity:
+      description: Validación fallida (`errors.fields` desglosa por campo)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            success: false
+            message: "Revisá los datos enviados."
+            status_code: 422
+            errors: { code: validation, fields: { message: ["El campo message es obligatorio."] } }
+    TooManyRequests:
+      description: Rate limit superado (60/min lectura, +10/min en forms/submit)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            success: false
+            message: "Demasiadas solicitudes. Intentá más tarde."
+            status_code: 429
+            errors: { code: too_many_requests }
+
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string, nullable: true }
+        status_code: { type: integer }
+        data: {}
+      required: [success, status_code]
+
+    PaginatedEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          properties:
+            meta:
+              type: object
+              properties:
+                current_page: { type: integer }
+                per_page: { type: integer }
+                total: { type: integer }
+                last_page: { type: integer }
+            links:
+              type: object
+              properties:
+                first: { type: string, nullable: true }
+                prev: { type: string, nullable: true }
+                next: { type: string, nullable: true }
+                last: { type: string, nullable: true }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        status_code: { type: integer }
+        errors: { type: object, nullable: true }
+
+    Link:
+      type: object
+      description: >
+        Nunca expone `source_id` interno — `source_slug`/`href` ya vienen
+        resueltos por el backend.
+      properties:
+        type: { type: string, example: primary }
+        label: { type: string, nullable: true }
+        source_type: { type: string, enum: [page, post, custom, url] }
+        source_slug: { type: string, nullable: true }
+        href: { type: string, nullable: true }
+        target: { type: string, enum: ["_self", "_blank"] }
+
+    Media:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        url: { type: string, nullable: true }
+        alt_text: { type: string, nullable: true }
+        mime_type: { type: string, nullable: true }
+
+    Block:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        type:
+          type: string
+          enum: [hero, rich_text, image, cta, features, faq, contact_form, legal_notice, heading, split, testimonials, logos, services_grid]
+        pretitle: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        subtitle: { type: string, nullable: true }
+        content:
+          type: object
+          description: >
+            Forma libre, depende de `type`. Nunca contiene ids internos: todo
+            `*_id` (incluyendo los anidados en `items[]`) se resuelve a datos
+            públicos (`slider_slug`, objetos Media `{uuid,url,alt_text,mime_type}`,
+            o `page_slug`+`href`) — ver la tabla de mapeo en docs/v1.md.
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/Link" }
+        properties:
+          type: object
+          description: Siempre objeto — `{}` si no hay propiedades.
+        sort_order: { type: integer }
+
+    PageSummary:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        slug: { type: string }
+        type: { type: string }
+        is_home: { type: boolean }
+        pretitle: { type: string, nullable: true }
+        title: { type: string }
+        subtitle: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+
+    Page:
+      allOf:
+        - $ref: "#/components/schemas/PageSummary"
+        - type: object
+          properties:
+            meta: { type: object }
+            links:
+              type: array
+              items: { $ref: "#/components/schemas/Link" }
+            properties: { type: object }
+            blocks:
+              type: array
+              items: { $ref: "#/components/schemas/Block" }
+
+    PostSummary:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        slug: { type: string }
+        pretitle: { type: string, nullable: true }
+        title: { type: string }
+        subtitle: { type: string, nullable: true }
+        excerpt: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        featured_image:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+
+    Post:
+      allOf:
+        - $ref: "#/components/schemas/PostSummary"
+        - type: object
+          properties:
+            content: { type: string, nullable: true }
+            meta: { type: object }
+            links:
+              type: array
+              items: { $ref: "#/components/schemas/Link" }
+            properties: { type: object }
+
+    MenuItem:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string, enum: [page, post, external, custom] }
+        href: { type: string, nullable: true }
+        target: { type: string, enum: ["_self", "_blank"] }
+        sort_order: { type: integer }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/MenuItem" }
+
+    Menu:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MenuItem" }
+
+    Slide:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        pretitle: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        subtitle: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        background_type: { type: string, enum: [image, video] }
+        media:
+          type: object
+          properties:
+            image_desktop: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+            image_tablet: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+            image_mobile: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+            video_desktop: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+            video_mobile: { allOf: [{ $ref: "#/components/schemas/Media" }], nullable: true }
+        has_presentation_video: { type: boolean }
+        presentation_youtube_id: { type: string, nullable: true }
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/Link" }
+        properties: { type: object }
+        sort_order: { type: integer }
+
+    Slider:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        slides:
+          type: array
+          items: { $ref: "#/components/schemas/Slide" }

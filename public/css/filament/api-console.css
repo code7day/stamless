@@ -1,0 +1,1264 @@
+/*
+ * Genesis CMS — estilos del grupo "Desarrolladores" (API Tokens, API
+ * Playground, API Documentation) en Console.
+ *
+ * Por qué existe este archivo en vez de usar clases utilitarias de
+ * Tailwind directamente en los blade: el CSS de Filament que sirve este
+ * panel es un bundle pre-compilado (no hay tema custom con pipeline de
+ * Vite/Tailwind escaneando `resources/views/filament/**`), así que
+ * cualquier clase utilitaria que no exista ya en ese bundle no tiene
+ * regla CSS asociada y no se aplica. Este archivo es CSS plano, sin
+ * build step, registrado como asset de Filament (ver
+ * `PanelCmsProvider::boot()`).
+ *
+ * A propósito NO define una paleta propia: consume directamente las
+ * variables CSS en tiempo de ejecución que el propio Filament expone en
+ * `:root` (`--primary-*`, `--gray-*`, `--success-*`, `--warning-*`,
+ * `--danger-*`, `--info-*` — ver `Filament\Support\Assets\AssetManager
+ * ::renderStyles()`), así el resultado usa exactamente los mismos
+ * colores que el resto del panel (incluido el primary configurado en
+ * `PanelCmsProvider`, hoy Amber) en vez de inventar una paleta paralela.
+ * Los patrones (sombra tipo "ring" en vez de borde, radios, tipografía,
+ * badges, tabs) están calcados de los componentes reales de Filament en
+ * `vendor/filament/support/resources/css/components/*.css`.
+ *
+ * Prefijo `gnss-` en todas las clases para no chocar con nada del core.
+ */
+
+/* Superficies y texto: mismos tokens que .fi-section / .fi-badge */
+
+.gnss-card {
+    min-width: 0;
+    border-radius: 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 0 0 1px rgb(3 7 18 / 0.05);
+    padding: 1.5rem;
+}
+
+html.dark .gnss-card {
+    background: var(--gray-900);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+.gnss-card--tight {
+    padding: 1rem;
+}
+
+.gnss-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+    color: var(--gray-950);
+    margin: 0 0 1rem;
+}
+
+html.dark .gnss-section-title {
+    color: #fff;
+}
+
+/* Layout */
+
+/*
+ * `minmax(0, 1fr)` en vez de `1fr` a secas: por spec CSS, un track de
+ * grid con `1fr` se resuelve como `minmax(auto, 1fr)`, y `auto` no puede
+ * achicarse más allá del contenido "no quebrable" más ancho de sus hijos
+ * (ej. un chip `white-space: nowrap` con una URL larga). Eso empuja la
+ * columna — y con ella toda la página, porque el layout completo termina
+ * siendo un item más dentro del grid `.fi-page-content` de Filament —
+ * más ancha que el viewport, sin scrollbar, simplemente cortada. Forzar
+ * el mínimo a `0` hace que el contenido interno (código, tablas, chips)
+ * se banque su propio scroll/wrap en vez de estirar el layout entero.
+ */
+.gnss-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+    min-width: 0;
+    width: 100%;
+}
+
+@media (min-width: 1024px) {
+    .gnss-layout {
+        grid-template-columns: 260px minmax(0, 1fr);
+    }
+}
+
+.gnss-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+.gnss-sticky {
+    position: sticky;
+    top: 5rem;
+    min-width: 0;
+}
+
+/* Banner superior */
+
+.gnss-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    min-width: 0;
+}
+
+.gnss-banner-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+/* Chips genéricos (no ligados a un color semántico) */
+
+.gnss-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+    min-width: 1.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    background: var(--gray-50);
+    color: var(--gray-600);
+    box-shadow: inset 0 0 0 1px rgb(75 85 99 / 0.1);
+}
+
+html.dark .gnss-chip {
+    background: rgb(148 163 184 / 0.1);
+    color: var(--gray-200);
+    box-shadow: inset 0 0 0 1px rgb(148 163 184 / 0.2);
+}
+
+.gnss-chip--accent {
+    background: var(--primary-50);
+    color: var(--primary-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--primary-600) r g b / 0.1);
+}
+
+html.dark .gnss-chip--accent {
+    background: rgb(from var(--primary-400) r g b / 0.1);
+    color: var(--primary-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--primary-400) r g b / 0.2);
+}
+
+/* URLs largas: quiebran en vez de forzar el layout entero más ancho que
+   el viewport (ver comentario de `.gnss-layout` sobre `minmax(0, 1fr)`). */
+.gnss-chip--mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: normal;
+    word-break: break-all;
+}
+
+/* Alias explícito: el chip base ya es "muted" por defecto, pero se deja
+   el modificador declarado para que el nombre de clase sea autoexplicativo
+   en el blade sin depender de que nadie recuerde el comportamiento por defecto. */
+.gnss-chip--muted {
+    background: var(--gray-50);
+    color: var(--gray-600);
+    box-shadow: inset 0 0 0 1px rgb(75 85 99 / 0.1);
+}
+
+html.dark .gnss-chip--muted {
+    background: rgb(148 163 184 / 0.1);
+    color: var(--gray-200);
+    box-shadow: inset 0 0 0 1px rgb(148 163 184 / 0.2);
+}
+
+/* Badges semánticos reutilizables: método HTTP + status pill */
+
+.gnss-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.375rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    flex-shrink: 0;
+}
+
+.gnss-badge--info,
+.gnss-method--get {
+    background: var(--info-50);
+    color: var(--info-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--info-600) r g b / 0.12);
+}
+
+.gnss-badge--success,
+.gnss-method--post {
+    background: var(--success-50);
+    color: var(--success-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--success-600) r g b / 0.12);
+}
+
+.gnss-badge--warning,
+.gnss-method--put,
+.gnss-method--patch {
+    background: var(--warning-50);
+    color: var(--warning-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-600) r g b / 0.12);
+}
+
+.gnss-badge--danger,
+.gnss-method--delete {
+    background: var(--danger-50);
+    color: var(--danger-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--danger-600) r g b / 0.12);
+}
+
+html.dark .gnss-badge--info,
+html.dark .gnss-method--get {
+    background: rgb(from var(--info-400) r g b / 0.1);
+    color: var(--info-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--info-400) r g b / 0.25);
+}
+
+html.dark .gnss-badge--success,
+html.dark .gnss-method--post {
+    background: rgb(from var(--success-400) r g b / 0.1);
+    color: var(--success-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--success-400) r g b / 0.25);
+}
+
+html.dark .gnss-badge--warning,
+html.dark .gnss-method--put,
+html.dark .gnss-method--patch {
+    background: rgb(from var(--warning-400) r g b / 0.1);
+    color: var(--warning-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-400) r g b / 0.25);
+}
+
+html.dark .gnss-badge--danger,
+html.dark .gnss-method--delete {
+    background: rgb(from var(--danger-400) r g b / 0.1);
+    color: var(--danger-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--danger-400) r g b / 0.25);
+}
+
+.gnss-method {
+    min-width: 3.1rem;
+}
+
+/* Botones */
+
+.gnss-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    line-height: 1;
+    white-space: nowrap;
+    transition: background-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.gnss-btn--accent {
+    background: var(--primary-600);
+    color: #fff;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.gnss-btn--accent:hover {
+    background: var(--primary-500);
+}
+
+.gnss-btn--sm {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.75rem;
+    border-radius: 0.4rem;
+}
+
+.gnss-btn--ghost {
+    background: #fff;
+    color: var(--gray-950);
+    box-shadow: inset 0 0 0 1px var(--gray-300);
+}
+
+html.dark .gnss-btn--ghost {
+    background: rgb(255 255 255 / 0.05);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px var(--gray-700);
+}
+
+.gnss-btn--ghost:hover {
+    background: var(--gray-50);
+}
+
+html.dark .gnss-btn--ghost:hover {
+    background: rgb(255 255 255 / 0.1);
+}
+
+/* Sidebar de endpoints (Playground) */
+
+.gnss-sidebar-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-400);
+    padding: 0 0.25rem;
+    margin: 0 0 0.4rem;
+}
+
+.gnss-sidebar-group+.gnss-sidebar-group {
+    margin-top: 1.1rem;
+}
+
+.gnss-endpoint-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--gray-700);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+html.dark .gnss-endpoint-btn {
+    color: var(--gray-300);
+}
+
+.gnss-endpoint-btn:hover {
+    background: var(--gray-50);
+}
+
+html.dark .gnss-endpoint-btn:hover {
+    background: rgb(255 255 255 / 0.05);
+}
+
+.gnss-endpoint-btn.is-active {
+    background: var(--gray-50);
+    color: var(--primary-700);
+}
+
+html.dark .gnss-endpoint-btn.is-active {
+    background: rgb(255 255 255 / 0.05);
+    color: var(--primary-400);
+}
+
+.gnss-endpoint-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gnss-info-card {
+    border-radius: 0.75rem;
+    background: var(--gray-50);
+    padding: 0.85rem;
+    font-size: 0.72rem;
+    color: var(--gray-500);
+    margin-top: 1.25rem;
+}
+
+html.dark .gnss-info-card {
+    background: rgb(255 255 255 / 0.04);
+    color: var(--gray-400);
+}
+
+.gnss-info-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    color: var(--gray-950);
+    margin: 0 0 0.25rem;
+}
+
+html.dark .gnss-info-card-title {
+    color: #fff;
+}
+
+.gnss-info-card code {
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Response: status pill, duración, empty state, alert */
+
+.gnss-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.gnss-status--ok {
+    background: var(--success-50);
+    color: var(--success-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--success-600) r g b / 0.12);
+}
+
+.gnss-status--redirect {
+    background: var(--warning-50);
+    color: var(--warning-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-600) r g b / 0.12);
+}
+
+.gnss-status--error {
+    background: var(--danger-50);
+    color: var(--danger-700);
+    box-shadow: inset 0 0 0 1px rgb(from var(--danger-600) r g b / 0.12);
+}
+
+html.dark .gnss-status--ok {
+    background: rgb(from var(--success-400) r g b / 0.1);
+    color: var(--success-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--success-400) r g b / 0.25);
+}
+
+html.dark .gnss-status--redirect {
+    background: rgb(from var(--warning-400) r g b / 0.1);
+    color: var(--warning-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-400) r g b / 0.25);
+}
+
+html.dark .gnss-status--error {
+    background: rgb(from var(--danger-400) r g b / 0.1);
+    color: var(--danger-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--danger-400) r g b / 0.25);
+}
+
+.gnss-duration {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+html.dark .gnss-duration {
+    color: var(--gray-400);
+}
+
+.gnss-response-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    border: 1px dashed var(--gray-200);
+    border-radius: 0.75rem;
+    color: var(--gray-500);
+    font-size: 0.85rem;
+}
+
+html.dark .gnss-response-empty {
+    border-color: rgb(255 255 255 / 0.1);
+    color: var(--gray-400);
+}
+
+.gnss-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.75rem;
+    background: var(--danger-50);
+    color: var(--danger-700);
+    font-size: 0.85rem;
+}
+
+html.dark .gnss-alert {
+    background: rgb(from var(--danger-400) r g b / 0.1);
+    color: var(--danger-400);
+}
+
+/* Tabs — calcado de .fi-tabs-item (pill activo, no underline) */
+
+.gnss-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.gnss-tab {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--gray-500);
+    border: none;
+    border-radius: 0.5rem;
+    background: none;
+    cursor: pointer;
+}
+
+html.dark .gnss-tab {
+    color: var(--gray-400);
+}
+
+.gnss-tab:hover {
+    background: var(--gray-50);
+}
+
+html.dark .gnss-tab:hover {
+    background: rgb(255 255 255 / 0.05);
+}
+
+.gnss-tab.is-active {
+    background: var(--gray-50);
+    color: var(--primary-700);
+}
+
+html.dark .gnss-tab.is-active {
+    background: rgb(255 255 255 / 0.05);
+    color: var(--primary-400);
+}
+
+/* Bloques de código: usan el propio gray-950 del panel, no un color inventado */
+
+.gnss-code-block {
+    position: relative;
+    margin-top: 0.5rem;
+}
+
+.gnss-code-block pre {
+    max-height: 24rem;
+    overflow: auto;
+    border-radius: 0.75rem;
+    background: var(--gray-950);
+    color: var(--gray-200);
+    padding: 0.85rem;
+    font-size: 0.78rem;
+    line-height: 1.65;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin: 0;
+}
+
+.gnss-copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.4rem;
+    background: rgb(255 255 255 / 0.08);
+    color: var(--gray-200);
+    font-size: 0.7rem;
+    font-weight: 500;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+    border: none;
+    cursor: pointer;
+}
+
+.gnss-copy-btn:hover {
+    background: rgb(255 255 255 / 0.16);
+}
+
+.gnss-copy-btn.is-copied {
+    color: var(--success-400);
+    box-shadow: inset 0 0 0 1px rgb(from var(--success-400) r g b / 0.4);
+}
+
+.gnss-json-key {
+    color: var(--info-400);
+}
+
+.gnss-json-string {
+    color: var(--success-400);
+}
+
+.gnss-json-number {
+    color: var(--warning-400);
+}
+
+.gnss-json-bool {
+    color: #c4b5fd;
+}
+
+.gnss-json-null {
+    color: var(--gray-500);
+}
+
+.gnss-headers-table {
+    max-height: 24rem;
+    overflow: auto;
+    background: var(--gray-950);
+    border-radius: 0.75rem;
+    padding: 0.4rem 0.75rem;
+}
+
+.gnss-headers-row {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid rgb(255 255 255 / 0.06);
+    font-size: 0.75rem;
+}
+
+.gnss-headers-row:last-child {
+    border-bottom: none;
+}
+
+.gnss-headers-key {
+    flex: 0 0 11rem;
+    color: var(--info-400);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.gnss-headers-value {
+    color: var(--gray-300);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-all;
+}
+
+.gnss-headers-empty {
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--gray-400);
+}
+
+/* Iconos */
+
+.gnss-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    color: var(--gray-400);
+}
+
+.gnss-icon-sm {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+}
+
+.gnss-icon-lg {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    color: var(--gray-300);
+}
+
+html.dark .gnss-icon {
+    color: var(--gray-500);
+}
+
+.gnss-icon-muted {
+    color: var(--gray-400);
+}
+
+html.dark .gnss-icon-muted {
+    color: var(--gray-500);
+}
+
+/* API Documentation: sidebar TOC + búsqueda */
+
+.gnss-search-wrap {
+    position: relative;
+    margin-bottom: 0.75rem;
+}
+
+.gnss-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.45rem 0.6rem 0.45rem 2rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--gray-300);
+    font-size: 0.8rem;
+    color: var(--gray-950);
+}
+
+html.dark .gnss-search-input {
+    background: rgb(255 255 255 / 0.05);
+    box-shadow: inset 0 0 0 1px var(--gray-700);
+    color: #fff;
+}
+
+.gnss-search-input:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 1.5px var(--primary-500);
+}
+
+.gnss-search-icon {
+    position: absolute;
+    left: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0.9rem;
+    height: 0.9rem;
+    color: var(--gray-400);
+    pointer-events: none;
+}
+
+.gnss-toc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+}
+
+.gnss-toc-link {
+    display: block;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--gray-500);
+    text-decoration: none;
+}
+
+html.dark .gnss-toc-link {
+    color: var(--gray-400);
+}
+
+.gnss-toc-link:hover {
+    background: var(--gray-50);
+}
+
+html.dark .gnss-toc-link:hover {
+    background: rgb(255 255 255 / 0.05);
+}
+
+.gnss-toc-link.is-active {
+    background: var(--gray-50);
+    color: var(--primary-700);
+}
+
+html.dark .gnss-toc-link.is-active {
+    background: rgb(255 255 255 / 0.05);
+    color: var(--primary-400);
+}
+
+.gnss-toc-link--h3 {
+    padding-left: 1.15rem;
+    font-size: 0.74rem;
+}
+
+/* Prose del markdown renderizado */
+
+.gnss-prose {
+    min-width: 0;
+    color: var(--gray-700);
+    line-height: 1.7;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+html.dark .gnss-prose {
+    color: var(--gray-300);
+}
+
+.gnss-prose>*:first-child {
+    margin-top: 0;
+}
+
+.gnss-prose h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--gray-950);
+    margin: 0 0 0.5rem;
+}
+
+html.dark .gnss-prose h1 {
+    color: #fff;
+}
+
+.gnss-prose h2,
+.gnss-prose h3 {
+    font-weight: 600;
+    color: var(--gray-950);
+    scroll-margin-top: 5.5rem;
+}
+
+html.dark .gnss-prose h2,
+html.dark .gnss-prose h3 {
+    color: #fff;
+}
+
+.gnss-prose h2 {
+    font-size: 1.15rem;
+    margin: 2.25rem 0 0.85rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+html.dark .gnss-prose h2 {
+    border-color: rgb(255 255 255 / 0.1);
+}
+
+.gnss-prose h3 {
+    font-size: 1rem;
+    margin: 1.6rem 0 0.5rem;
+}
+
+.gnss-prose p {
+    margin: 0.65rem 0;
+}
+
+.gnss-prose ul,
+.gnss-prose ol {
+    margin: 0.65rem 0;
+    padding-left: 1.4rem;
+}
+
+.gnss-prose li {
+    margin: 0.3rem 0;
+}
+
+.gnss-prose strong {
+    color: var(--gray-950);
+    font-weight: 600;
+}
+
+html.dark .gnss-prose strong {
+    color: #fff;
+}
+
+.gnss-prose a {
+    color: var(--primary-600);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+html.dark .gnss-prose a {
+    color: var(--primary-400);
+}
+
+.gnss-prose code {
+    background: var(--gray-100);
+    color: var(--gray-800);
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.35rem;
+    font-size: 0.82em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html.dark .gnss-prose code {
+    background: rgb(255 255 255 / 0.08);
+    color: var(--gray-200);
+}
+
+.gnss-prose pre {
+    position: relative;
+    background: var(--gray-950);
+    color: var(--gray-200);
+    padding: 0.9rem;
+    border-radius: 0.75rem;
+    overflow: auto;
+    font-size: 0.78rem;
+    line-height: 1.6;
+}
+
+.gnss-prose pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+}
+
+/*
+ * Bug real (no solo cosmético): en modo oscuro, `html.dark .gnss-prose
+ * code` (fondo+padding+radius del código inline) tiene MÁS especificidad
+ * que el reset de arriba (`.gnss-prose pre code`), así que le gana pase
+ * lo que pase el orden en el archivo — el <code> que envuelve TODO el
+ * bloque de un fence ```json se queda con ese fondo. Como <code> es un
+ * elemento inline y el contenido tiene múltiples líneas, el navegador
+ * renderiza ese fondo como una caja redondeada separada por cada línea
+ * — visualmente idéntico a una selección de texto, lo cual confunde.
+ * Fix: mismo selector/especificidad que la regla de modo oscuro que
+ * gana, para neutralizarla específicamente dentro de `pre`.
+ */
+html.dark .gnss-prose pre code {
+    background: none;
+}
+
+/*
+ * Syntax highlighting (Prism.js, cargado en api-documentation.blade.php).
+ * Mismos colores semánticos que `ApiPlayground::highlightJson()` usa para
+ * la respuesta del Playground (gnss-json-*), para que un JSON se vea
+ * igual acá y ahí — reutiliza directamente las variables de color de
+ * Filament (`--info-*`/`--success-*`/`--warning-*`), no una paleta nueva.
+ */
+.gnss-prose pre .token.comment,
+.gnss-prose pre .token.prolog,
+.gnss-prose pre .token.doctype,
+.gnss-prose pre .token.cdata {
+    color: var(--gray-500);
+    font-style: italic;
+}
+
+.gnss-prose pre .token.punctuation,
+.gnss-prose pre .token.operator {
+    color: var(--gray-400);
+}
+
+.gnss-prose pre .token.property,
+.gnss-prose pre .token.tag,
+.gnss-prose pre .token.selector,
+.gnss-prose pre .token.attr-name {
+    color: var(--info-400);
+}
+
+.gnss-prose pre .token.string,
+.gnss-prose pre .token.char,
+.gnss-prose pre .token.attr-value {
+    color: var(--success-400);
+}
+
+.gnss-prose pre .token.number {
+    color: var(--warning-400);
+}
+
+.gnss-prose pre .token.boolean,
+.gnss-prose pre .token.null,
+.gnss-prose pre .token.keyword,
+.gnss-prose pre .token.builtin,
+.gnss-prose pre .token.important {
+    color: #c4b5fd;
+}
+
+.gnss-prose pre .token.function,
+.gnss-prose pre .token.class-name {
+    color: var(--primary-400);
+}
+
+.gnss-prose pre .token.parameter,
+.gnss-prose pre .token.variable {
+    color: var(--warning-400);
+}
+
+.gnss-prose pre .token.bold {
+    font-weight: 700;
+}
+
+.gnss-prose pre .token.italic {
+    font-style: italic;
+}
+
+.gnss-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.8rem;
+    display: block;
+    overflow-x: auto;
+}
+
+.gnss-prose th,
+.gnss-prose td {
+    border: 1px solid var(--gray-200);
+    padding: 0.5rem 0.65rem;
+    text-align: left;
+}
+
+html.dark .gnss-prose th,
+html.dark .gnss-prose td {
+    border-color: rgb(255 255 255 / 0.1);
+}
+
+.gnss-prose th {
+    background: var(--gray-50);
+    font-weight: 600;
+    color: var(--gray-950);
+}
+
+html.dark .gnss-prose th {
+    background: rgb(255 255 255 / 0.04);
+    color: #fff;
+}
+
+.gnss-prose blockquote {
+    padding: 0.6rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0.75rem;
+    background: color-mix(in oklab, #fff 90%, var(--primary-400));
+    box-shadow: inset 0 0 0 1px rgb(from var(--primary-600) r g b / 0.15);
+    color: var(--gray-700);
+}
+
+html.dark .gnss-prose blockquote {
+    background: color-mix(in oklab, var(--gray-900) 90%, var(--primary-400));
+    box-shadow: inset 0 0 0 1px rgb(from var(--primary-400) r g b / 0.25);
+    color: var(--gray-300);
+}
+
+.gnss-prose blockquote p {
+    margin: 0.2rem 0;
+}
+
+.gnss-prose hr {
+    border: none;
+    border-top: 1px solid var(--gray-200);
+    margin: 1.75rem 0;
+}
+
+html.dark .gnss-prose hr {
+    border-color: rgb(255 255 255 / 0.1);
+}
+
+/* API Tokens: banner de plaintext token (una sola vez) */
+
+.gnss-token-reveal {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-radius: 0.75rem;
+    background: color-mix(in oklab, #fff 90%, var(--warning-400));
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-600) r g b / 0.2);
+    margin-bottom: 1.25rem;
+}
+
+html.dark .gnss-token-reveal {
+    background: color-mix(in oklab, var(--gray-900) 90%, var(--warning-400));
+    box-shadow: inset 0 0 0 1px rgb(from var(--warning-400) r g b / 0.3);
+}
+
+.gnss-token-reveal-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--warning-800);
+    margin: 0 0 0.2rem;
+}
+
+html.dark .gnss-token-reveal-title {
+    color: var(--warning-300);
+}
+
+.gnss-token-reveal-body {
+    font-size: 0.78rem;
+    color: var(--warning-700);
+    margin: 0 0 0.6rem;
+}
+
+html.dark .gnss-token-reveal-body {
+    color: var(--warning-400);
+}
+
+.gnss-token-value {
+    display: block;
+    word-break: break-all;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: var(--gray-950);
+    padding: 0.55rem 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+html.dark .gnss-token-value {
+    background: var(--gray-900);
+    color: #fff;
+}
+
+.gnss-token-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.gnss-btn--warning {
+    background: var(--warning-600);
+    color: #fff;
+}
+
+.gnss-btn--warning:hover {
+    background: var(--warning-500);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Grouped Header Fieldset (.title-header-groupped)
+ * Filament 5 real DOM:
+ *   fieldset.fi-sc-fieldset.fi-fieldset.title-header-groupped
+ *     legend
+ *     div.fi-sc.fi-sc-has-gap  ← gap-6 viene de fi-sc-has-gap
+ *       div.fi-fo-field        ← gap-y-2 interno
+ *       div.fi-fo-field
+ *       div.fi-fo-field
+ * ───────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────
+ * Grouped Header Fieldset (.title-header-groupped)
+ * Estructura real (confirmada):
+ *   fieldset.title-header-groupped
+ *     div.fi-sc.fi-sc-has-gap
+ *       div.fi-grid-col  :first-child  → Pre título
+ *         div.fi-fo-field → div.fi-input-wrp
+ *       div.fi-grid-col               → Título
+ *       div.fi-grid-col  :last-child  → Subtítulo
+ * ───────────────────────────────────────────────────────────────── */
+
+/* Elimina el gap-6 del contenedor fi-sc */
+.title-header-groupped .fi-sc {
+    gap: 0 !important;
+    row-gap: 0 !important;
+}
+
+/* Elimina gap-y-2 y márgenes internos de cada fi-fo-field */
+.title-header-groupped .fi-fo-field {
+    gap: 0 !important;
+    row-gap: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Todos los input-wrp sin radius */
+.title-header-groupped .fi-fo-field .fi-input-wrp {
+    border-radius: 0 !important;
+}
+
+/* Primer campo: esquinas redondeadas arriba */
+.title-header-groupped .fi-sc>.fi-grid-col:first-child .fi-input-wrp {
+    border-radius: 0.5rem 0.5rem 0 0 !important;
+    border-bottom: none !important;
+}
+
+/* Último campo: esquinas redondeadas abajo */
+.title-header-groupped .fi-sc>.fi-grid-col:last-child .fi-input-wrp {
+    border-radius: 0 0 0.5rem 0.5rem !important;
+    border-top: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Fix Modal SlideOver Footer & Overflow Elements (Z-Index / Sticky)
+ * ───────────────────────────────────────────────────────────────── */
+
+.fi-modal-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 50 !important;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+html.dark .fi-modal-footer {
+    background-color: #18181b !important; /* zinc-900 / dark mode */
+    border-top: 1px solid #27272a !important;
+}
+
+html:not(.dark) .fi-modal-footer {
+    background-color: #ffffff !important;
+    border-top: 1px solid #e5e7eb !important;
+}
+
+/* Modal content bottom padding so fields and builder controls scroll cleanly */
+.fi-modal-content {
+    padding-bottom: 4rem !important;
+}
+
+/* Keep tooltips and inner builder controls under sticky footer */
+.fi-slider-tooltip,
+.fi-fo-slider,
+.fi-fo-builder-add-action {
+    z-index: 10 !important;
+}
+
+/*
+ * 2026-08-30: el handle de los Slider (noUiSlider, `->fillTrack()`, sin
+ * `->tooltips()` — ver PropertiesSchema.php/PageResource.php) queda
+ * posicionado absoluto sobre el 100% del ancho de `.fi-fo-slider` y toca
+ * el borde (`ring-1`) del contenedor en los extremos 0%/100%.
+ *
+ * El padding NO va en `.fi-fo-slider` mismo: ese `<div>` es el target real
+ * donde noUiSlider.js se inicializa (mide su propio ancho para calcular
+ * el track/fillTrack) — achicarlo con padding desalinea el radio del
+ * fillTrack contra el track (se ve descuadrado en los extremos, sobre
+ * todo el izquierdo). El padding va en `.fi-fo-field-content-col`, el
+ * `<div>` genérico de Filament que ENVUELVE al campo (label aparte) —
+ * pero solo cuando envuelve un slider (`:has()`), para no afectar el
+ * resto de los campos del formulario.
+ */
+.fi-fo-field-content-col:has(> .fi-fo-slider) {
+    padding-inline: 0.75rem !important;
+}
+
+/*
+ * 2026-08-30: tooltips reactivados (`->tooltips()` junto a `->fillTrack()`
+ * en todos los Slider) pero "floating" — el CSS vendor de Filament
+ * (`.fi-fo-slider-has-tooltips { margin-top: 2.5rem }`, ver
+ * vendor/filament/forms/resources/css/components/slider.css) reserva
+ * 2.5rem de alto FIJO arriba del track para que el tooltip nunca se
+ * superponga a nada — eso es justo lo que no queremos (ocupa altura de
+ * más siempre, tenga o no foco/drag activo). El tooltip de noUiSlider ya
+ * es `position: absolute` de por sí (flota sobre el layout, no empuja
+ * nada) — solo hace falta cancelar ese margen reservado y dejar que
+ * flote libremente por encima del handle, con z-index de sobra para que
+ * no quede tapado por campos vecinos.
+ */
+.fi-fo-slider.fi-fo-slider-has-tooltips:not(.fi-fo-slider-vertical) {
+    margin-top: 0 !important;
+}
+
+.noUi-tooltip {
+    z-index: 20 !important;
+    padding: 1px 6px !important;
+    font-size: 0.6875rem !important;
+    line-height: 1.25rem !important;
+    display: none !important;
+}
+
+/*
+ * 2026-08-30: el tooltip solo debe aparecer con hover, mientras se
+ * arrastra/toca el handle, o con foco por teclado — no siempre visible
+ * (es solo referencial). `noUiSlider` no trae esta opción nativa (su flag
+ * `tooltips` es todo-o-nada, ver vendor/filament/forms/resources/js
+ * /components/slider.js), así que se resuelve por CSS puro:
+ * - `.noUi-origin:hover` cubre el hover (handle y tooltip son HERMANOS
+ *   dentro de `.noUi-origin`, no hay relación ancestro→descendiente entre
+ *   ellos — por eso el `:hover` va en el padre común, no en el handle).
+ * - `.noUi-handle:focus` cubre navegación por teclado (accesible).
+ * - `.noUi-handle.noUi-active` es la clase que noUiSlider.js agrega al
+ *   handle mientras se arrastra con mouse O se toca en touch (mismo
+ *   manejo de puntero para ambos) — cubre "onpress"/"while touch".
+ */
+.noUi-origin:hover .noUi-tooltip,
+.noUi-handle:focus ~ .noUi-tooltip,
+.noUi-handle.noUi-active ~ .noUi-tooltip {
+    display: block !important;
+}
+
+/*
+ * 2026-08-30: el panel flotante del ColorPicker (`.fi-fo-color-picker-panel`,
+ * vendor/filament/forms/resources/css/components/color-picker.css) trae
+ * `z-index: 10` — por debajo del `z-index: 20` que le dimos arriba a
+ * `.noUi-tooltip` para que el tooltip del Slider flote libre. Resultado:
+ * al abrir el ColorPicker sobre un campo con sliders debajo (p. ej. "Color
+ * de fondo del slide" seguido de "Opacidad de la imagen"/"Sepia (%)" en
+ * el tab Estilos), los tooltips de esos sliders se veían POR ENCIMA del
+ * panel del ColorPicker. El picker debe quedar sobrepuesto a los
+ * sliders, no al revés — subimos su z-index por encima del de los
+ * tooltips.
+ */
+.fi-fo-color-picker-panel {
+    z-index: 30 !important;
+}
