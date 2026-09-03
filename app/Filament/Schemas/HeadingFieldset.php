@@ -30,14 +30,16 @@ final class HeadingFieldset
         bool $hasPretitle = true,
         bool $hasSubtitle = true,
         bool $hasSlug = false,
-        bool $hasIsHome = false
+        bool $hasIsHome = false,
+        ?string $pretitleLabel = null,
+        ?string $subtitleLabel = null,
     ): Group {
         $fieldsetInputs = [];
 
         if ($hasPretitle) {
             $fieldsetInputs[] = TextInput::make('pretitle')
-                ->label('Pre título')
-                ->placeholder('Pre título')
+                ->label($pretitleLabel ?? 'Pre título')
+                ->placeholder($pretitleLabel ?? 'Pre título')
                 ->hiddenLabel()
                 ->columnSpanFull()
                 ->maxLength(255);
@@ -96,8 +98,8 @@ final class HeadingFieldset
 
         if ($hasSubtitle) {
             $fieldsetInputs[] = TextInput::make('subtitle')
-                ->label('Subtítulo')
-                ->placeholder('Subtítulo')
+                ->label($subtitleLabel ?? 'Subtítulo')
+                ->placeholder($subtitleLabel ?? 'Subtítulo')
                 ->hiddenLabel()
                 ->columnSpanFull()
                 ->maxLength(255);
@@ -143,38 +145,38 @@ final class HeadingFieldset
                 ->schema([
 
                     Group::make()
-                    ->schema([
-                        Toggle::make('is_home')
-                        ->label('Es página de inicio (Home)')
-                        ->inline(false)
-                        ->default(false)
-                        ->live()
-                        ->visible(function (Get $get) {
-                            $typeVal = $get('type');
-                            if ($typeVal instanceof \BackedEnum) {
-                                $typeVal = $typeVal->value;
-                            }
+                        ->schema([
+                            Toggle::make('is_home')
+                                ->label('Es página de inicio (Home)')
+                                ->inline(false)
+                                ->default(false)
+                                ->live()
+                                ->visible(function (Get $get) {
+                                    $typeVal = $get('type');
+                                    if ($typeVal instanceof \BackedEnum) {
+                                        $typeVal = $typeVal->value;
+                                    }
 
-                            return in_array($typeVal, [PageTypeEnum::Page->value, PageTypeEnum::Landing->value], true);
-                        }),
-                        Toggle::make('custom_slug_active')
-                            ->label('Editar URL manualmente')
-                            ->dehydrated(false)
-                            ->live()
-                            ->inline(false)
-                            ->visible(function (Get $get) {
-                                $typeVal = $get('type');
-                                if ($typeVal instanceof \BackedEnum) {
-                                    $typeVal = $typeVal->value;
-                                }
+                                    return in_array($typeVal, [PageTypeEnum::Page->value, PageTypeEnum::Landing->value], true);
+                                }),
+                            Toggle::make('custom_slug_active')
+                                ->label('Editar URL manualmente')
+                                ->dehydrated(false)
+                                ->live()
+                                ->inline(false)
+                                ->visible(function (Get $get) {
+                                    $typeVal = $get('type');
+                                    if ($typeVal instanceof \BackedEnum) {
+                                        $typeVal = $typeVal->value;
+                                    }
 
-                                return ! in_array($typeVal, [
-                                    PageTypeEnum::Footer->value,
-                                    PageTypeEnum::Header->value,
-                                ], true);
-                            }),
-                    ])
-                    ->columns(2),
+                                    return ! in_array($typeVal, [
+                                        PageTypeEnum::Footer->value,
+                                        PageTypeEnum::Header->value,
+                                    ], true);
+                                }),
+                        ])
+                        ->columns(2),
 
                     TextInput::make('slug')
                         ->label('URL (Slug)')

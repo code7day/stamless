@@ -31,6 +31,8 @@ security:
 tags:
   - name: Pages
   - name: Posts
+  - name: Services
+  - name: Testimonials
   - name: Menus
   - name: Sliders
   - name: Media
@@ -143,6 +145,83 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /services:
+    get:
+      tags: [Services]
+      summary: Listar servicios publicados
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ServiceSummary"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /services/{slug}:
+    get:
+      tags: [Services]
+      summary: Detalle de un servicio publicado
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Service"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /testimonials:
+    get:
+      tags: [Testimonials]
+      summary: Listar testimonios visibles
+      description: >
+        Sin endpoint por slug/uuid — el modelo no tiene `slug`, se consume
+        siempre como colección completa.
+      security: [{ bearerAuth: [content:read] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Testimonial"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /menus/{slug}:
@@ -480,12 +559,63 @@ components:
               items: { $ref: "#/components/schemas/Link" }
             properties: { type: object }
 
+    ServiceCountry:
+      type: object
+      properties:
+        iso: { type: string, example: UY }
+        name: { type: string, example: Uruguay }
+
+    ServiceSummary:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        slug: { type: string }
+        pretitle: { type: string, nullable: true }
+        title: { type: string }
+        subtitle: { type: string, nullable: true }
+        countries:
+          type: array
+          items: { $ref: "#/components/schemas/ServiceCountry" }
+        image:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+
+    Service:
+      allOf:
+        - $ref: "#/components/schemas/ServiceSummary"
+        - type: object
+          properties:
+            content:
+              type: object
+              description: >
+                Objeto estructurado (no HTML) — `intro`/`offers`/`coverages`/
+                `why_choose_us`/`tip`, todos opcionales. Puede llegar `{}`.
+            meta: { type: object }
+            links:
+              type: array
+              items: { $ref: "#/components/schemas/Link" }
+            properties: { type: object }
+            published_at: { type: string, format: date-time, nullable: true }
+
+    Testimonial:
+      type: object
+      properties:
+        uuid: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, nullable: true }
+        quote: { type: string }
+        avatar:
+          allOf:
+            - $ref: "#/components/schemas/Media"
+          nullable: true
+
     MenuItem:
       type: object
       properties:
         uuid: { type: string, format: uuid }
         title: { type: string }
-        type: { type: string, enum: [page, post, external, custom] }
+        type: { type: string, enum: [page, post, service, external, custom] }
         href: { type: string, nullable: true }
         target: { type: string, enum: ["_self", "_blank"] }
         sort_order: { type: integer }

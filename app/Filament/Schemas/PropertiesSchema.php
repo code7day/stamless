@@ -35,7 +35,106 @@ class PropertiesSchema
                 ])
                 ->default('left-middle'),
             'background_color' => Forms\Components\ColorPicker::make('properties.background_color')
-                ->label('Color de fondo'),
+                ->label('Color de fondo')
+                ->helperText(fn (Get $get) => $get('properties.background_type') === 'gradient' ? 'Primer color del degradado.' : null)
+                // 2026-09-02, pedido del Tech Lead: donde el bloque también
+                // tiene una imagen de fondo propia (`background_type_image`,
+                // ver más abajo), color e imagen pasan a ser EXCLUYENTES —
+                // se oculta el color en cuanto se elige "Imagen" como tipo
+                // de fondo. En bloques que usan la variante `background_type`
+                // de 2 opciones (sin "Imagen" en la lista) esta condición
+                // nunca se cumple, así que no cambia nada ahí.
+                ->visible(fn (Get $get) => $get('properties.background_type') !== 'image'),
+            // Fondo sólido vs. degradado (2026-09-02, pedido del Tech Lead:
+            // "que cualquier sección donde se requiera tenga opción a
+            // gradiente" — genérico, no específico de un bloque, igual que
+            // el resto de esta clase). `background_color` (de arriba) sigue
+            // siendo el color base/primer color en los dos modos; estos 3
+            // campos son adicionales y solo aplican cuando el bloque los
+            // pide explícitamente en su propio `PropertiesSchema::make([...])`.
+            // Valores de `gradient_direction` 1:1 con las clases reales de
+            // Tailwind (`bg-gradient-to-r`, etc.) — mismo criterio que
+            // `link_radius`/`link_size`, sin tabla de conversión del lado
+            // del frontend.
+            //
+            // Actualización (2026-09-02, pedido del Tech Lead): pasa a ser
+            // `->required()` en todo bloque que lo use — antes quedaba en
+            // `null` si el editor nunca tocaba el campo (con `null` el
+            // frontend caía al fallback CSS en vez de mostrar explícitamente
+            // "Sólido", que es la intención real). Se agrega una SEGUNDA
+            // variante `background_type_image` con una 3ª opción "Imagen"
+            // — solo para los bloques que además tienen su propio campo de
+            // imagen de fondo (`cta`, `heading`; ver `PageResource.php`).
+            // Las dos variantes escriben al MISMO campo (`properties.
+            // background_type`) — nunca conviven en el mismo bloque, así
+            // que no hay conflicto; `background_color`/`_secondary`/
+            // `gradient_direction` leen ese único valor sin importar cuál
+            // de las 2 variantes lo puso ahí.
+            // `afterStateHydrated` (2026-09-02, fix real reportado en vivo:
+            // "en el tab de SEO/Enlaces sigue siendo requerido y nada por
+            // default", captura de la Sección "Propiedades de la página" —
+            // un campo bindeado DIRECTO al modelo, sin Builder de por medio,
+            // así que el backfill que ya existe en `PageResource.php`
+            // (`backfillSliderDefaults()`, para los bloques dentro del
+            // Builder de `blocks`) no lo alcanza a cubrir): el `->default()`
+            // de Filament solo aplica al crear un registro nuevo, nunca al
+            // hidratar un valor ausente en datos ya guardados — cualquier
+            // Página/bloque guardado antes de que este campo existiera (o
+            // sin tocar nunca esa sección) llega con `background_type` en
+            // `null`, el Select se ve vacío y `->required()` bloquea el
+            // guardado. Poniéndolo acá, en la definición COMPARTIDA del
+            // campo, se corrige de una sola vez en TODOS los lugares que lo
+            // usan (Página, cualquier bloque, con o sin Builder de por
+            // medio) — complementa (no reemplaza) el backfill de
+            // `PageResource.php`, que sigue siendo la red de seguridad del
+            // lado del GUARDADO de bloques.
+            'background_type' => Forms\Components\Select::make('properties.background_type')
+                ->label('Tipo de fondo')
+                ->options([
+                    'solid' => 'Sólido',
+                    'gradient' => 'Degradado (gradiente)',
+                ])
+                ->default('solid')
+                ->required()
+                ->live()
+                ->afterStateHydrated(function (Forms\Components\Select $component, ?string $state): void {
+                    if (blank($state)) {
+                        $component->state('solid');
+                    }
+                }),
+            'background_type_image' => Forms\Components\Select::make('properties.background_type')
+                ->label('Tipo de fondo')
+                ->options([
+                    'solid' => 'Sólido',
+                    'gradient' => 'Degradado (gradiente)',
+                    'image' => 'Imagen',
+                ])
+                ->default('solid')
+                ->required()
+                ->live()
+                ->afterStateHydrated(function (Forms\Components\Select $component, ?string $state): void {
+                    if (blank($state)) {
+                        $component->state('solid');
+                    }
+                }),
+            'background_color_secondary' => Forms\Components\ColorPicker::make('properties.background_color_secondary')
+                ->label('Color de fondo secundario')
+                ->helperText('Segundo color del degradado.')
+                ->visible(fn (Get $get) => $get('properties.background_type') === 'gradient'),
+            'gradient_direction' => Forms\Components\Select::make('properties.gradient_direction')
+                ->label('Dirección del degradado')
+                ->options([
+                    'to-r' => 'Izquierda → Derecha',
+                    'to-l' => 'Derecha → Izquierda',
+                    'to-b' => 'Arriba → Abajo',
+                    'to-t' => 'Abajo → Arriba',
+                    'to-br' => 'Diagonal ↘',
+                    'to-bl' => 'Diagonal ↙',
+                    'to-tr' => 'Diagonal ↗',
+                    'to-tl' => 'Diagonal ↖',
+                ])
+                ->default('to-r')
+                ->visible(fn (Get $get) => $get('properties.background_type') === 'gradient'),
             // 2026-08-31, pedido del Tech Lead para `testimonials`: color de
             // fondo de CADA tarjeta/item, independiente del fondo de la
             // sección (`background_color`) — mismo mecanismo (ColorPicker,
@@ -45,6 +144,18 @@ class PropertiesSchema
             'item_background_color' => Forms\Components\ColorPicker::make('properties.item_background_color')
                 ->label('Color de fondo de cada tarjeta')
                 ->helperText('Transparente si se deja vacío.'),
+            // 2026-09-01, pedido del Tech Lead para `split`: la columna de
+            // TEXTO puede llevar su propio color de fondo, independiente
+            // del fondo de la sección (`background_color`, que en `split`
+            // tapa TODO el ancho incluida la imagen) — mismo mecanismo que
+            // `item_background_color`. Cuando está seteado, `Split.astro`
+            // además estira la columna de texto a la altura completa de la
+            // imagen (en vez de centrarla por su propio alto) y le agrega
+            // padding en las 4 direcciones, para que el color respire igual
+            // que en la captura de referencia.
+            'text_background_color' => Forms\Components\ColorPicker::make('properties.text_background_color')
+                ->label('Color de fondo del texto')
+                ->helperText('Transparente si se deja vacío. Independiente del color de fondo de la sección/imagen.'),
             // 2026-08-31, pedido del Tech Lead: el color de arriba nunca se
             // pinta a máxima opacidad — se mezcla con transparente. Este
             // slider controla el % en reposo; el frontend sube +20 puntos

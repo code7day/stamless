@@ -19,6 +19,7 @@ use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 /**
@@ -88,6 +89,13 @@ class ServiceResource extends Resource
                                         Forms\Components\DateTimePicker::make('published_at')
                                             ->label('Fecha de publicación')
                                             ->nullable(),
+
+                                        Forms\Components\TextInput::make('sort_order')
+                                            ->label('Orden')
+                                            ->helperText('Orden de la card dentro del catálogo de Servicios. Menor = primero.')
+                                            ->numeric()
+                                            ->default(0)
+                                            ->required(),
                                     ]),
 
                                 Grid::make(2)
@@ -117,13 +125,6 @@ class ServiceResource extends Resource
                                             ->afterStateHydrated(fn (Forms\Components\Select $component, $state) => $component->state(Service::sanitizeCountries($state)))
                                             ->dehydrateStateUsing(fn ($state) => Service::sanitizeCountries($state)),
                                     ]),
-
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->label('Orden')
-                                    ->helperText('Orden de la card dentro del catálogo de Servicios. Menor = primero.')
-                                    ->numeric()
-                                    ->default(0)
-                                    ->required(),
                             ]),
 
                         Tabs\Tab::make('Contenido')
@@ -226,6 +227,8 @@ class ServiceResource extends Resource
                         Tabs\Tab::make('SEO / Enlaces')
                             ->schema([
                                 Section::make('Metadata SEO')
+                                    ->description('Título, palabras clave y descripción que Google muestra en los resultados de búsqueda.')
+                                    ->collapsed()
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
@@ -245,6 +248,8 @@ class ServiceResource extends Resource
                                     ]),
 
                                 Section::make('Open Graph (Redes Sociales)')
+                                    ->description('Título, descripción e imágenes con las que se ve el servicio al compartirlo en redes sociales o chats.')
+                                    ->collapsed()
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
@@ -269,9 +274,10 @@ class ServiceResource extends Resource
                                     ]),
 
                                 Section::make('Personalización de estilos')
+                                    ->description('Color de fondo (sólido o degradado), color de texto y animación de entrada del servicio.')
                                     ->collapsed()
                                     ->schema([
-                                        PropertiesSchema::make(['background_color', 'text_color', 'animation']),
+                                        PropertiesSchema::make(['background_type', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'animation']),
                                     ]),
                             ]),
                     ])
@@ -333,7 +339,7 @@ class ServiceResource extends Resource
                     ->label('País')
                     ->options(CountryEnum::class)
                     ->searchable()
-                    ->query(function (\Illuminate\Database\Eloquent\Builder $query, array $data) {
+                    ->query(function (Builder $query, array $data) {
                         $value = $data['value'] ?? null;
 
                         if (! $value) {

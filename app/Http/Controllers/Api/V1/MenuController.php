@@ -9,6 +9,7 @@ use App\Models\Menu;
 use App\Models\MenuItem;
 use App\Models\Page;
 use App\Models\Post;
+use App\Models\Service;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 
@@ -77,17 +78,23 @@ class MenuController extends Controller
     {
         $pageIds = $items->where('type', MenuItemTypeEnum::Page)->pluck('reference_id')->filter()->all();
         $postIds = $items->where('type', MenuItemTypeEnum::Post)->pluck('reference_id')->filter()->all();
+        // 2026-09-02, ver ADR-044: "Servicio" nuevo, mismo patrón batch que Page/Post.
+        $serviceIds = $items->where('type', MenuItemTypeEnum::Service)->pluck('reference_id')->filter()->all();
 
         $pages = $pageIds ? Page::whereIn('id', $pageIds)->get(['id', 'slug', 'is_home'])->keyBy('id') : collect();
         $posts = $postIds ? Post::whereIn('id', $postIds)->get(['id', 'slug'])->keyBy('id') : collect();
+        $services = $serviceIds ? Service::whereIn('id', $serviceIds)->get(['id', 'slug'])->keyBy('id') : collect();
 
-        $items->each(function (MenuItem $item) use ($pages, $posts) {
+        $items->each(function (MenuItem $item) use ($pages, $posts, $services) {
             $page = $item->type === MenuItemTypeEnum::Page ? $pages->get($item->reference_id) : null;
 
             $item->resolved_href = match ($item->type) {
                 MenuItemTypeEnum::Page => $page ? ($page->is_home ? '/' : '/'.$page->slug) : null,
                 MenuItemTypeEnum::Post => ($post = $posts->get($item->reference_id))
                     ? '/blog/'.$post->slug
+                    : null,
+                MenuItemTypeEnum::Service => ($service = $services->get($item->reference_id))
+                    ? '/servicios/'.$service->slug
                     : null,
                 default => $item->url,
             };

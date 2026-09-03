@@ -91,6 +91,8 @@ class PostResource extends Resource
                         Tabs\Tab::make('SEO / Enlaces')
                             ->schema([
                                 Section::make('Metadata SEO')
+                                    ->description('Título, palabras clave y descripción que Google muestra en los resultados de búsqueda.')
+                                    ->collapsed()
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
@@ -110,6 +112,8 @@ class PostResource extends Resource
                                     ]),
 
                                 Section::make('Open Graph (Redes Sociales)')
+                                    ->description('Título, descripción e imágenes con las que se ve la publicación al compartirla en redes sociales o chats.')
+                                    ->collapsed()
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
@@ -128,15 +132,17 @@ class PostResource extends Resource
                                     ]),
 
                                 Section::make('Enlaces relacionados')
+                                    ->description('Botones o enlaces adicionales asociados a esta publicación.')
                                     ->collapsed()
                                     ->schema([
                                         LinkSchema::make('links', 'Enlaces'),
                                     ]),
 
                                 Section::make('Propiedades del post')
+                                    ->description('Color de fondo (sólido o degradado) y color de texto de la publicación.')
                                     ->collapsed()
                                     ->schema([
-                                        PropertiesSchema::make(['background_color', 'text_color']),
+                                        PropertiesSchema::make(['background_type', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color']),
                                     ]),
                             ]),
                     ])

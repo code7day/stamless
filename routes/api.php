@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\PageController;
 use App\Http\Controllers\Api\V1\PostController;
+use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SliderController;
+use App\Http\Controllers\Api\V1\TestimonialController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -46,6 +48,21 @@ Route::domain(parse_url(config('stamless.urls.api'), PHP_URL_HOST))->group(funct
 
                 Route::get('posts', [PostController::class, 'index'])->name('posts.index');
                 Route::get('posts/{slug}', [PostController::class, 'show'])->name('posts.show');
+
+                // 2026-09-02, ver ADR-044: primer endpoint público de
+                // Servicios (antes solo se consumía embebido en un bloque
+                // services_grid de una Página) — habilita que un item de
+                // menú pueda apuntar a un servicio con URL propia.
+                Route::get('services', [ServiceController::class, 'index'])->name('services.index');
+                Route::get('services/{slug}', [ServiceController::class, 'show'])->name('services.show');
+
+                // 2026-09-02, pedido en vivo del Tech Lead ("no hay
+                // testimonios" — faltaba junto a Services en el Playground):
+                // primer endpoint público de Testimonios, catálogo completo
+                // sin paginación por slug (el modelo no tiene `slug`, ver
+                // `TestimonialController`). Antes solo se consumía embebido
+                // en el bloque `testimonials` de una Página.
+                Route::get('testimonials', [TestimonialController::class, 'index'])->name('testimonials.index');
 
                 Route::get('menus/{slug}', [MenuController::class, 'show'])->name('menus.show');
 

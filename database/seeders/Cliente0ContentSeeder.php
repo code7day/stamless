@@ -49,7 +49,21 @@ class Cliente0ContentSeeder extends Seeder
             'servicios' => $this->upsertServiciosPage($tenant),
             'casos-de-exito' => $this->upsertCasosDeExitoPage($tenant),
         ];
+        $pages['footer'] = $this->upsertFooterPage($tenant, $pages);
         $pages['home'] = $this->upsertHomePage($tenant, $pages);
+
+        // Bloque `footer` (2026-09-01, pedido del Tech Lead): se agrega al
+        // final de CADA página pública, referenciando el Content compartido
+        // `footer-principal` recién creado arriba — de esa forma el CTA del
+        // pie de página vuelve a aparecer en todo el sitio, ahora vía el
+        // mecanismo explícito por bloque (reemplaza el fetch global fijo
+        // que tenía `BaseLayout.astro` en el frontend, ver ADR
+        // correspondiente en DECISIONS.md). Se hace en un segundo paso,
+        // fuera de `syncBlocks()` de cada página, porque el Content de
+        // footer recién existe en este punto del seeder.
+        foreach (['contacto', 'sobre-cica', 'servicios', 'casos-de-exito', 'home'] as $slug) {
+            $this->appendFooterBlock($pages[$slug], $tenant, $pages['footer']->id);
+        }
 
         $this->upsertMainMenu($tenant, $pages);
     }
@@ -241,7 +255,7 @@ class Cliente0ContentSeeder extends Seeder
                 // del Tech Lead): `cicagreen-500`/`cicagreen-400` — ver
                 // `cica360/src/styles/global.css` (`--color-cicagreen-*`),
                 // no un teal ad-hoc como antes (`#2b7c89`).
-                'properties' => ['background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff'],
+                'properties' => ['background_type' => 'solid', 'background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff'],
             ],
         ]);
 
@@ -347,7 +361,15 @@ class Cliente0ContentSeeder extends Seeder
                 // bleed fullwidth para estas 2 secciones (imagen hasta el borde del
                 // viewport, ver ADR-032 actualización 2) — se siembra explícito para
                 // no depender del fallback `?? 'boxed'` del frontend.
-                'properties' => ['content_width' => 'full'],
+                // `text_background_color` (2026-09-01, la captura de referencia del
+                // Tech Lead lo mostraba y se nos había pasado): gris claro detrás de
+                // la columna de texto, independiente del fondo de la sección.
+                // `#F6F6F6` = `cicagray-50` del Design System (ver
+                // `--color-cicagray-50` en `cica360/src/styles/global.css`) —
+                // el campo es un `ColorPicker` de hex crudo, no puede
+                // referenciar la clase Tailwind directo, se siembra el hex
+                // exacto de ese paso de la escala.
+                'properties' => ['content_width' => 'full', 'text_background_color' => '#F6F6F6'],
                 'links' => [
                     $this->link('Conoce', 'page', $pages['servicios']->id, null, 'outline'),
                 ],
@@ -366,7 +388,9 @@ class Cliente0ContentSeeder extends Seeder
                         .'</ul>'
                         .'<p>Cada rubro que abordamos tiene propuestas pensadas <strong>tanto para personas como para organizaciones</strong>, con un enfoque a medida, profesional y cercano.</p>',
                 ],
-                'properties' => ['content_width' => 'full'],
+                // Mismo `text_background_color` que "¿Qué hacemos?" de arriba, para
+                // que las 2 secciones alternadas de la home compartan el mismo look.
+                'properties' => ['content_width' => 'full', 'text_background_color' => '#F6F6F6'],
                 'links' => [
                     $this->link('Quiero saber', 'page', $pages['contacto']->id, null, 'outline'),
                 ],
@@ -380,7 +404,7 @@ class Cliente0ContentSeeder extends Seeder
                 'content' => ['limit' => 5, 'order' => 'desc'],
                 // Colores del sistema de diseño CICA360 (2026-08-31, ver
                 // nota en `upsertCasosDeExitoPage()`): `cicagreen-500`/`400`.
-                'properties' => ['background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff', 'show_link' => true],
+                'properties' => ['background_type' => 'solid', 'background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff', 'show_link' => true],
                 'links' => [
                     $this->link('Más casos de éxito', 'page', $pages['casos-de-exito']->id, null, 'outline'),
                 ],
@@ -424,13 +448,184 @@ class Cliente0ContentSeeder extends Seeder
                 // que pidió el Tech Lead con su captura de referencia.
                 'properties' => ['media_filter_grayscale' => 100, 'media_opacity' => 60],
             ],
+        ]);
+        // El bloque CTA ("¿Listo para transformar tu negocio?") que vivía
+        // acá se trasladó al Content tipo `Footer` (2026-09-01, pedido
+        // explícito del Tech Lead: "trasladar el bloque predeterminado
+        // Llamado a la Acción, de esa forma dependerá del footer") — ver
+        // `upsertFooterPage()` más abajo. La Home ya no lo siembra directo.
+
+        return $page;
+    }
+
+    /**
+     * Content principal tipo `Footer` (2026-09-01, pedido del Tech Lead:
+     * el picker de bloques de un `Footer` queda restringido — ver
+     * `PageResource.php`, filtro por `type` en `Builder::blocks()` — a
+     * `image`/`cta`/`features`/`faq`/`contact_form`/`testimonials`/`logos`,
+     * sin heading/hero/rich_text/legal_notice/split/services_grid). El CTA
+     * "¿Listo para transformar tu negocio?" que antes vivía hardcodeado en
+     * la Home se traslada acá tal cual (mismo contenido/properties/link) —
+     * de ahora en más el footer es dueño de ese bloque, no la Home.
+     *
+     * Cómo llega al frontend (2026-09-01, actualizado): cada página pública
+     * agrega un bloque `footer` (ver `appendFooterBlock()` más abajo, y
+     * `Builder\Block::make('footer')` en `PageResource.php`) que referencia
+     * este Content por id (`content.footer_page_id`). El backend
+     * (`ResolvesPublicLinks::transformBlockContent()`) resuelve ESTE
+     * Content completo — con sus propios bloques ya resueltos — anidado
+     * como `footer_page.blocks[]`, y `FooterBlock.astro` en cica360 los
+     * re-despacha al `BlockRenderer` genérico. Reemplaza el mecanismo
+     * anterior (fetch fijo a `footer-principal` en `BaseLayout.astro`).
+     */
+    private function upsertFooterPage(Tenant $tenant, array $pages): Page
+    {
+        $page = Page::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'lang_iso' => LanguageEnum::Spanish->value, 'slug' => 'footer-principal'],
             [
+                'title' => 'Footer principal',
+                'is_home' => false,
+                'type' => PageTypeEnum::Footer->value,
+                'status' => PublishStatusEnum::Published->value,
+                'meta' => [],
+                'published_at' => now(),
+            ]
+        );
+
+        $this->syncBlocks($page, $tenant, [
+            [
+                // Mismo preseteo exacto que tenía en `upsertHomePage()`
+                // (rediseño completo del bloque, ver `PageResource.php`/
+                // `Cta.astro`): `background_color` = `cicaindigo-500`
+                // (`#2D2C4D`, DEFAULT del Design System) + `text_color`
+                // blanco, `content_width: boxed`, botón `link_radius: lg`
+                // (rounded-lg, moderado, no pill) + `link_size: lg`.
                 'type' => BlockTypeEnum::Cta,
                 'title' => '¿Listo para transformar tu negocio?',
-                'subtitle' => 'Conversemos y descubre cómo podemos ayudarte',
-                'content' => ['body' => 'Agendá una primera conversación sin costo con nuestro equipo de asesores.'],
+                'subtitle' => 'Conversemos y descubre cómo podemos ayudarte a alcanzar tus objetivos',
+                'properties' => [
+                    'background_type' => 'solid',
+                    'background_color' => '#2D2C4D',
+                    'text_color' => '#FFFFFF',
+                    'content_width' => 'boxed',
+                    'padding_y' => 'lg',
+                    'show_link' => true,
+                    'link_radius' => 'lg',
+                    'link_size' => 'lg',
+                ],
                 'links' => [
                     $this->link('Empezar a planificar', 'page', $pages['contacto']->id),
+                ],
+            ],
+
+            // COLOPHON (2026-09-02, pedido del Tech Lead, con captura de
+            // referencia: 3 columnas — marca/tagline, contacto, redes
+            // sociales). Seed con colores SÓLIDOS únicamente ("en el seeder
+            // va solo colores solidos predefinidos como están" — el
+            // degradado queda disponible como opción en Studio, pero no se
+            // siembra acá). `link_list`/`social_links` con la MISMA forma
+            // que produce el Builder anidado de `PageResource.php`
+            // (`{type, data}` por sub-bloque) — `hola@cica360.com` ya es el
+            // contacto real del tenant (ver `Tenant::publicUrl()`/
+            // `Cliente0Seeder`); el teléfono es el de la captura de
+            // referencia del Tech Lead.
+            //
+            // Columna 1 ("marca"), corrección 2026-09-02 ("falta el logo
+            // gris... acompañando con el texto entre comillas, sin título,
+            // no usar el típico heading"): `title` pasa a `null` — el
+            // wordmark ya NO se sube por Studio (no había ningún sub-bloque
+            // `image_link` acá, de hecho) sino que `Colophon.astro` lo
+            // hardcodea (mismo criterio que `Header.astro`: los 3 SVG de
+            // `public/logos/` son del sitio, no contenido de tenant) para
+            // cualquier columna sin título que traiga `description` —
+            // "columna de marca" por convención, no por un campo nuevo.
+            // `description` se mantiene como el texto de la cita — el
+            // frontend le agrega las comillas tipográficas + itálica, no se
+            // hardcodean acá.
+            //
+            // Columna 2 ("Contacto"), corrección 2026-09-02 ("faltan
+            // iconos"): cada link de `link_list` gana `icon` (`LinkIconEnum`,
+            // ver `LinkSchema::make(..., withIcon: true)`) — correo con el
+            // ícono de "enviar" de la captura, teléfono con el logo de
+            // WhatsApp (mismo número, ya era un link a `wa.me`).
+            [
+                'type' => BlockTypeEnum::Colophon,
+                'content' => [
+                    'columns' => [
+                        [
+                            'title' => null,
+                            'description' => 'Conectamos conocimientos, potenciamos decisiones.',
+                            'blocks' => [],
+                        ],
+                        [
+                            'title' => 'Contacto',
+                            'description' => null,
+                            'blocks' => [
+                                [
+                                    'type' => 'link_list',
+                                    'data' => [
+                                        'items' => [
+                                            ['type' => 'text', 'label' => 'hola@cica360.com', 'source_type' => 'url', 'url' => 'mailto:hola@cica360.com', 'target' => '_self', 'icon' => 'email'],
+                                            ['type' => 'text', 'label' => '+598 99 063 352', 'source_type' => 'url', 'url' => 'https://wa.me/59899063352', 'target' => '_blank', 'icon' => 'whatsapp'],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            'title' => 'Síguenos',
+                            'description' => null,
+                            'blocks' => [
+                                [
+                                    'type' => 'social_links',
+                                    'data' => [
+                                        'items' => [
+                                            ['platform' => 'facebook', 'url' => 'https://facebook.com/cica360'],
+                                            ['platform' => 'instagram', 'url' => 'https://instagram.com/cica360'],
+                                            ['platform' => 'linkedin', 'url' => 'https://linkedin.com/company/cica360'],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'properties' => [
+                    'content_width' => 'boxed',
+                    'background_type' => 'solid',
+                    // 2026-09-02, pedido del Tech Lead: fondo predeterminado
+                    // real del pie de página (`#191838`) — distinto del
+                    // `#2D2C4D` (indigo, DEFAULT del Design System) que usa
+                    // el CTA de arriba, a propósito.
+                    'background_color' => '#191838',
+                    'text_color' => '#FFFFFF',
+                    'padding_y' => 'lg',
+                ],
+            ],
+
+            // 2026-09-02, rediseño completo del bloque (ver ADR-042). Nota
+            // histórica: al escribir este bloque CICA360 todavía era Free
+            // Forever (ADR-006) y `copyright_text` quedaba ignorado por el
+            // gate de white-label — por eso el comentario original decía
+            // "no se siembra acá". Ya no aplica: el mismo día se creó el
+            // plan Auspicio/Convenio (ADR-043) y CICA360 fue reasignado a
+            // ese plan — `copyright_text` en este plan SÍ se usa (es el
+            // fragmento "año + nombre" que Console pide para el campo
+            // "Año y nombre (Auspicio/Convenio)", ver `PageResource.php`),
+            // así que ahora se siembra con el valor real cargado por el
+            // Tech Lead en Studio ("2026 CICA360"). `right_type`/`menu_id`/
+            // `right_text` siguen sin seleccionar a propósito ("predeterminado
+            // en los seeders sin nada o vacío", pedido explícito) — el Tech
+            // Lead activa "Mostrar menú" a mano en Studio si lo necesita.
+            [
+                'type' => BlockTypeEnum::FooterBottom,
+                'content' => [
+                    'copyright_text' => '2026 CICA360',
+                ],
+                'properties' => [
+                    'background_type' => 'solid',
+                    'background_color' => '#191838',
+                    'text_color' => '#FFFFFF',
                 ],
             ],
         ]);
@@ -520,6 +715,42 @@ class Cliente0ContentSeeder extends Seeder
         }
 
         $page->blocks()->where('sort_order', '>=', count($blocks))->delete();
+    }
+
+    /**
+     * Agrega el bloque `footer` (referencia al Content compartido tipo
+     * `Footer`, ver `upsertFooterPage()`) al final de una página, en un
+     * `sort_order` posterior al último bloque "de contenido" ya sembrado
+     * por `syncBlocks()`. Separado de `syncBlocks()` a propósito: el id del
+     * Content de footer recién se conoce después de crear TODAS las
+     * páginas de contenido (ver orden en `run()`), así que no puede
+     * incluirse en el array de bloques que arma cada `upsertXPage()`.
+     *
+     * Idempotente igual que `syncBlocks()`: en cada corrida, `syncBlocks()`
+     * de la página vuelve a podar cualquier bloque en `sort_order >=
+     * count($blocks)` (lo que incluye este bloque `footer` de la corrida
+     * anterior) y este método lo vuelve a crear en el siguiente `sort_order`
+     * libre — el resultado neto es el mismo, solo se recrea la fila.
+     */
+    private function appendFooterBlock(Page $page, Tenant $tenant, int $footerPageId): void
+    {
+        $sortOrder = $page->blocks()->max('sort_order');
+        $sortOrder = $sortOrder === null ? 0 : $sortOrder + 1;
+
+        Block::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'page_id' => $page->id, 'sort_order' => $sortOrder],
+            [
+                'lang_iso' => LanguageEnum::Spanish->value,
+                'type' => BlockTypeEnum::Footer->value,
+                'pretitle' => null,
+                'title' => null,
+                'subtitle' => null,
+                'content' => ['footer_page_id' => $footerPageId],
+                'links' => [],
+                'properties' => [],
+                'is_visible' => true,
+            ]
+        );
     }
 
     /**

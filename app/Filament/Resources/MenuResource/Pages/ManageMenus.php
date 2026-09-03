@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\MenuResource\Pages;
 
 use App\Filament\Resources\MenuResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ManageRecords;
 
 class ManageMenus extends ManageRecords
@@ -13,8 +12,12 @@ class ManageMenus extends ManageRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make()
-                ->slideOver(),
+            // 2026-09-02 — usa el mismo `->using()` custom que el botón de
+            // estado vacío (`MenuResource::createAction()`): el guardado
+            // default de `CreateAction` no sabe sincronizar `itemsTree`
+            // (no es una columna real de `Menu` ni una relación nativa).
+            // Ver el docblock de `MenuResource::createAction()`.
+            MenuResource::createAction(),
         ];
     }
 }

@@ -86,6 +86,59 @@ class Tenant extends Model
         return 'https://'.$domain.'/'.ltrim($path, '/');
     }
 
+    /**
+     * Gate de white-label (2026-09-02, pedido del Tech Lead para el bloque
+     * `footer_bottom`: "sólo para los que no son de plan freemium o free,
+     * si es otro plan de pago se le libera la marca blanca"). `plan` es un
+     * string plano en `tenants` (`default('free')`, ver migración) — NO
+     * está enlazado al sub-sistema `Plan`/`Subscription` (billing, fuera de
+     * alcance del MVP). Se acepta `'freemium'` además de `'free'` a
+     * propósito, aunque hoy `PlanSeeder` solo crea el slug `'free'` — para
+     * no tener que tocar este método el día que exista un plan freemium
+     * real con otro slug.
+     *
+     * 2026-09-02, ADR-043: se agrega `'sponsorship'` (plan "Auspicio/
+     * Convenio") a la lista — el Tech Lead lo definió explícitamente como
+     * "tendrá las mismas características del Freemium/Free", así que
+     * cualquier otro gate del sistema que consulte `isFreeTier()` debe
+     * tratarlo igual que Free/Freemium. La ÚNICA excepción es el copyright
+     * del footer, que Auspicio/Convenio SÍ puede editar (de forma acotada)
+     * — ver `isSponsorshipTier()`/`canEditCopyright()`, que existen
+     * justamente porque `isFreeTier()` ya no alcanza para esa decisión.
+     */
+    public function isFreeTier(): bool
+    {
+        return in_array($this->plan, ['free', 'freemium', 'sponsorship'], true);
+    }
+
+    /**
+     * Plan "Auspicio/Convenio" (2026-09-02, ADR-043) — mismas
+     * características que Free/Freemium (`isFreeTier()` ya lo incluye)
+     * salvo el copyright del footer: este plan SÍ puede personalizarlo,
+     * pero de forma acotada (solo año + nombre, dentro de una plantilla
+     * fija con "Powered by Stamless" — nunca queda blanco total). CICA360
+     * (Cliente 0) usa este plan desde ADR-043, en vez de Free Forever puro
+     * (ADR-006).
+     */
+    public function isSponsorshipTier(): bool
+    {
+        return $this->plan === 'sponsorship';
+    }
+
+    /**
+     * ¿Puede este tenant escribir ALGO en `footer_bottom.content.copyright_text`,
+     * aunque sea de forma acotada (Auspicio/Convenio) o total (plan pago
+     * blanco)? 2026-09-02, ADR-043 — antes esto era simplemente
+     * `! isFreeTier()`, pero ya no alcanza: Auspicio/Convenio SÍ puede
+     * editar y a la vez SIGUE siendo free-tier para cualquier otro gate.
+     * Equivalente a "no es Free ni Freemium puro" — ver `isSponsorshipTier()`
+     * para decidir QUÉ plantilla aplica cuando esto da `true`.
+     */
+    public function canEditCopyright(): bool
+    {
+        return ! in_array($this->plan, ['free', 'freemium'], true);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

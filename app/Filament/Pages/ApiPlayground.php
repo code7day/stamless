@@ -6,8 +6,8 @@ use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
@@ -79,6 +79,15 @@ class ApiPlayground extends Page implements HasForms
         'pages.show' => ['group' => 'Pages', 'label' => 'Page por slug (home)', 'method' => 'GET', 'path' => 'pages/home', 'body' => ''],
         'posts.index' => ['group' => 'Posts', 'label' => 'Listar posts', 'method' => 'GET', 'path' => 'posts', 'body' => ''],
         'posts.show' => ['group' => 'Posts', 'label' => 'Post por slug', 'method' => 'GET', 'path' => 'posts/como-elegir-seguro-de-vida', 'body' => ''],
+        // 2026-09-02, ver ADR-044: "Services" nuevo, mismo patrón que "Posts" —
+        // faltaba en este array (reportado en vivo: no aparecía en el sidebar
+        // del Playground ni tenía ejemplo precargado).
+        'services.index' => ['group' => 'Services', 'label' => 'Listar services', 'method' => 'GET', 'path' => 'services', 'body' => ''],
+        'services.show' => ['group' => 'Services', 'label' => 'Service por slug', 'method' => 'GET', 'path' => 'services/{slug}', 'body' => ''],
+        // 2026-09-02 — pedido en vivo tras el fix de Services: "no hay
+        // testimonios" en el sidebar. Sin `.show` a propósito: no hay
+        // endpoint por slug (ver `TestimonialController`).
+        'testimonials.index' => ['group' => 'Testimonials', 'label' => 'Listar testimonials', 'method' => 'GET', 'path' => 'testimonials', 'body' => ''],
         'menus.show' => ['group' => 'Menus', 'label' => 'Menú principal', 'method' => 'GET', 'path' => 'menus/menu-principal', 'body' => ''],
         'sliders.show' => ['group' => 'Sliders', 'label' => 'Slider home', 'method' => 'GET', 'path' => 'sliders/home', 'body' => ''],
         'media.show' => ['group' => 'Media', 'label' => 'Media por uuid', 'method' => 'GET', 'path' => 'media/{uuid}', 'body' => ''],

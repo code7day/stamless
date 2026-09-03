@@ -1,5 +1,11 @@
 *.log
 .DS_Store
+# Certificados TLS locales (mkcert, para el vhost de MAMP Pro en
+# *.stamless.host) — son claves privadas, nunca deben commitearse aunque
+# sean solo para desarrollo local. Ver docs/context (TLS local) o el README
+# de cica360 ("TLS local con mkcert") para cómo regenerarlos.
+*.pem
+*.crt
 .env
 .env.backup
 .env.production

@@ -3,16 +3,19 @@
 namespace App\Filament\Resources;
 
 use App\Enums\MediaDiskEnum;
-use App\Models\Media;
-use Filament\Forms;
-use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
-use Filament\Actions;
 use App\Filament\Resources\MediaResource\Pages;
+use App\Models\Media;
+use Filament\Actions;
+use Filament\Facades\Filament;
+use Filament\Forms;
+use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class MediaResource extends Resource
 {
@@ -46,20 +49,21 @@ class MediaResource extends Resource
                             ->directory('media')
                             ->visibility('public')
                             ->storeFileNamesIn('file_name')
-                            ->getUploadedFileNameForStorageUsing(function (\Livewire\Features\SupportFileUploads\TemporaryUploadedFile $file) {
-                                $tenantSlug = \Filament\Facades\Filament::getTenant()?->slug ?? 'global';
+                            ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file) {
+                                $tenantSlug = Filament::getTenant()?->slug ?? 'global';
                                 $datetime = now()->format('YmdHis');
                                 $extension = $file->getClientOriginalExtension();
+
                                 return "{$tenantSlug}_media_{$datetime}.{$extension}";
                             })
                             ->afterStateUpdated(function ($state, Set $set) {
                                 if ($state) {
                                     $filePath = is_array($state) ? reset($state) : $state;
                                     $set('name', pathinfo($filePath, PATHINFO_FILENAME));
-                                    
+
                                     $diskName = config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public');
                                     $set('disk', $diskName);
-                                    
+
                                     $disk = \Storage::disk($diskName);
                                     if ($disk->exists($filePath)) {
                                         $set('mime_type', $disk->mimeType($filePath));
@@ -79,7 +83,7 @@ class MediaResource extends Resource
                         Forms\Components\Hidden::make('file_name'),
                         Forms\Components\Hidden::make('mime_type'),
                         Forms\Components\Hidden::make('size'),
-                    ])
+                    ]),
             ]);
     }
 
@@ -92,33 +96,34 @@ class MediaResource extends Resource
                     ->disk(fn ($record) => $record->disk?->value ?? 'public')
                     ->square(),
 
+                // "Nombre de archivo" + "Tipo Mime" fusionados debajo de
+                // "Nombre" (2026-09-01, pedido del Tech Lead) — mismo
+                // patrón title/subtitle ya usado en PostResource/PageResource
+                // (`->description()`), pero acá la segunda línea es HTML: un
+                // badge real con el mime type (`Illuminate\Support\HtmlString`
+                // — Filament renderiza `Htmlable` sin escapar en `description()`).
+                // Color del badge según prefijo de mime, ver `mimeBadgeClasses()`
+                // al final de la clase.
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nombre')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('file_name')
-                    ->label('Nombre de archivo')
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('mime_type')
-                    ->label('Tipo Mime')
-                    ->sortable(),
+                    ->searchable(['name', 'file_name'])
+                    ->sortable()
+                    ->weight('bold')
+                    ->description(fn (Media $record): HtmlString => new HtmlString(
+                        e($record->file_name).
+                        ' <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset '.
+                        self::mimeBadgeClasses($record->mime_type).'">'.e($record->mime_type).'</span>'
+                    )),
 
                 Tables\Columns\TextColumn::make('size')
                     ->label('Tamaño')
-                    ->formatStateUsing(fn ($state) => number_format($state / 1024, 2) . ' KB')
+                    ->formatStateUsing(fn ($state) => number_format($state / 1024, 2).' KB')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('disk')
-                    ->label('Disco')
-                    ->badge()
-                    ->color(fn ($state) => match ($state?->value) {
-                        'r2' => 'primary',
-                        's3' => 'warning',
-                        'public' => 'success',
-                        default => 'gray',
-                    }),
+                // Columna "Disco" sacada de la tabla (2026-09-01, pedido del
+                // Tech Lead: "no es relevante") — el filtro de abajo se deja,
+                // sigue sirviendo para acotar la lista aunque el dato ya no
+                // se muestre en cada fila.
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('disk')
@@ -126,8 +131,14 @@ class MediaResource extends Resource
                     ->options(MediaDiskEnum::class),
             ])
             ->actions([
+                // `->modalWidth('md')` (2026-09-02, pedido en vivo del Tech
+                // Lead: el slideOver se veía casi vacío — el form real es 1
+                // sola columna (nombre/archivo/alt), sin necesidad del ancho
+                // default) — mismo patrón `->modalWidth('Nxl')` ya usado en
+                // ServiceResource/SliderResource/TestimonialResource.
                 Actions\EditAction::make()
-                    ->slideOver(),
+                    ->slideOver()
+                    ->modalWidth('md'),
                 Actions\DeleteAction::make(),
             ])
             ->bulkActions([
@@ -138,7 +149,8 @@ class MediaResource extends Resource
             ->defaultPaginationPageOption(50)
             ->emptyStateActions([
                 Actions\CreateAction::make()
-                    ->slideOver(),
+                    ->slideOver()
+                    ->modalWidth('md'),
             ]);
     }
 
@@ -147,5 +159,23 @@ class MediaResource extends Resource
         return [
             'index' => Pages\ManageMedia::route('/'),
         ];
+    }
+
+    /**
+     * Clases Tailwind (mismo look que un badge de Filament: `ring-1
+     * ring-inset`, fondo suave + texto del mismo tono) según el prefijo del
+     * mime type. Usado en la descripción HTML de la columna "Nombre" —
+     * ver `table()` arriba.
+     */
+    private static function mimeBadgeClasses(?string $mimeType): string
+    {
+        $prefix = explode('/', $mimeType ?? '')[0] ?? '';
+
+        return match ($prefix) {
+            'image' => 'bg-success-50 text-success-700 ring-success-600/20 dark:bg-success-400/10 dark:text-success-400 dark:ring-success-400/20',
+            'video' => 'bg-primary-50 text-primary-700 ring-primary-600/20 dark:bg-primary-400/10 dark:text-primary-400 dark:ring-primary-400/20',
+            'application' => 'bg-warning-50 text-warning-700 ring-warning-600/20 dark:bg-warning-400/10 dark:text-warning-400 dark:ring-warning-400/20',
+            default => 'bg-gray-50 text-gray-600 ring-gray-500/10 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20',
+        };
     }
 }

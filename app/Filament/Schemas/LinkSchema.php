@@ -2,18 +2,36 @@
 
 namespace App\Filament\Schemas;
 
+use App\Enums\LinkIconEnum;
+use App\Models\Page;
+use App\Models\Post;
 use Filament\Forms;
-use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Fieldset;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Utilities\Get;
 
 class LinkSchema
 {
-    public static function make(string $name = 'links', string $label = 'Enlaces'): Forms\Components\Repeater
+    /**
+     * @param  bool  $withIcon  Agrega un Select de ícono opcional
+     *                          (`LinkIconEnum`) al ítem — 2026-09-02, solo para el `link_list` de
+     *                          `colophon` ("faltan iconos" en la columna Contacto). `false` por
+     *                          default: los demás ~10 consumidores de `LinkSchema::make()` (CTAs de
+     *                          página, menús, etc.) no lo piden y no deben ganar un campo nuevo sin
+     *                          pedirlo.
+     */
+    public static function make(string $name = 'links', string $label = 'Enlaces', bool $withIcon = false): Forms\Components\Repeater
     {
         return Forms\Components\Repeater::make($name)
             ->label($label)
             ->schema([
+                ...($withIcon ? [
+                    Forms\Components\Select::make('icon')
+                        ->label('Ícono (opcional)')
+                        ->options(LinkIconEnum::class)
+                        ->placeholder('Sin ícono'),
+                ] : []),
+
                 Grid::make(2)
                     ->schema([
                         Forms\Components\Select::make('type')
@@ -50,11 +68,16 @@ class LinkSchema
                             ->options(function (Get $get) {
                                 $sourceType = $get('source_type');
                                 if ($sourceType === 'page') {
-                                    return \App\Models\Page::pluck('title', 'id');
+                                    // ->publiclyLinkable() (2026-09-02, bug real
+                                    // en vivo): excluye Header/Footer — son
+                                    // partials sin URL pública propia, no
+                                    // deben poder elegirse como destino.
+                                    return Page::query()->publiclyLinkable()->pluck('title', 'id');
                                 }
                                 if ($sourceType === 'post') {
-                                    return \App\Models\Post::pluck('title', 'id');
+                                    return Post::pluck('title', 'id');
                                 }
+
                                 return [];
                             })
                             ->visible(fn (Get $get) => in_array($get('source_type'), ['page', 'post']))
@@ -92,7 +115,7 @@ class LinkSchema
                     ])
                     ->columns(2),
             ])
-            ->itemLabel(fn (array $state): ?string => ($state['label'] ?? null) ? ($state['label'] . ' (' . ($state['source_type'] ?? '') . ')') : null)
+            ->itemLabel(fn (array $state): ?string => ($state['label'] ?? null) ? ($state['label'].' ('.($state['source_type'] ?? '').')') : null)
             ->collapsible()
             ->collapsed();
     }
@@ -151,11 +174,13 @@ class LinkSchema
                     ->options(function (Get $get) use ($name) {
                         $sourceType = $get("{$name}.0.source_type");
                         if ($sourceType === 'page') {
-                            return \App\Models\Page::pluck('title', 'id');
+                            // Ver comentario equivalente en make() arriba.
+                            return Page::query()->publiclyLinkable()->pluck('title', 'id');
                         }
                         if ($sourceType === 'post') {
-                            return \App\Models\Post::pluck('title', 'id');
+                            return Post::pluck('title', 'id');
                         }
+
                         return [];
                     })
                     ->visible(fn (Get $get) => in_array($get("{$name}.0.source_type"), ['page', 'post']))

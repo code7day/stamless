@@ -67,7 +67,17 @@ class Cliente0Seeder extends Seeder
         $attributes = [
             'name' => self::TENANT_NAME,
             'slug' => self::TENANT_SLUG,
-            'plan' => 'free',
+            // 2026-09-02, ADR-043: CICA360 pasa de `'free'` a `'sponsorship'`
+            // (plan "Auspicio/Convenio", pedido en vivo del Tech Lead: "este
+            // cliente 0 de cica360 será uno de ellos Plan
+            // Auspicio/Convención"). Sigue siendo free-tier para todo lo
+            // demás (`Tenant::isFreeTier()` ya incluye `'sponsorship'`) —
+            // la única diferencia real es que ahora puede personalizar el
+            // copyright del footer de forma acotada (año + nombre, dentro
+            // de la plantilla fija con "Powered by Stamless"). No reemplaza
+            // ADR-006 (Free Forever + Headless) como concepto general para
+            // futuros tenants — solo reasigna el plan de ESTE tenant.
+            'plan' => 'sponsorship',
             'is_active' => true,
         ];
 
