@@ -1,5 +1,7 @@
 # Genesis CMS — Tarea actual
 
+> **📖 Ver `docs/context/HOME_INTEGRATION.md` antes de tocar el backend de cualquier bloque del Home** (schemas de `PageResource.php`, `PropertiesSchema`, `ResolvesPublicLinks`, módulos de Testimonios/Servicios/Logos/Menú) — resumen curado de dónde vive cada pieza, los patrones ya establecidos y el historial de bugs ya resueltos (theme de Filament, componentes `<x-filament::input.*>`, superficies de docs de API a mantener sincronizadas). El Home de CICA360 (Cliente 0) quedó confirmado por el Tech Lead 2026-09-02 como fiel al diseño de Figma.
+>
 > Última actualización: 2026-09-02 (**Mejoras de UX/UI en el módulo de Contenidos**: Títulos dinámicos de SlideOver según tipo de contenido (*Crear Página*, *Crear Aviso Legal*, *Editar Cabecera (Header)*, etc.), tabs de filtrado (*Páginas*, *Legales*, *Secciones*), botones dinámicos de estado vacío per-tab, footer sticky de SlideOver con `z-index: 50 !important` para no solaparse con sliders/builders, y ocultamiento total de `url_preview` en partials (headers/footers). Tests pasando 100% (43/43). Owner: libre.)  
 > Owner actual: _(libre)_  
 > Estado: **Ready — API cerrada de producto. Próxima sesión = frontend CICA360 en shared hosting.**
