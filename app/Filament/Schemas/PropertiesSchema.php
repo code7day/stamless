@@ -5,7 +5,12 @@ namespace App\Filament\Schemas;
 use App\Enums\AlignContentEnum;
 use App\Enums\BlendModeEnum;
 use App\Enums\DecoratorShapeEnum;
+use App\Enums\FeatureCardStyleEnum;
+use App\Enums\FeatureListStyleEnum;
+use App\Enums\PageTypeEnum;
 use App\Enums\PositionContainerEnum;
+use App\Models\Page;
+use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Utilities\Get;
@@ -495,6 +500,97 @@ class PropertiesSchema
                 ->decimalPlaces(0)
                 ->fillTrack()
                 ->tooltips(),
+
+            // --- Específicos de Features (2026-09-07) ----------------------
+            // Ambos campos son opcionales/tienen default — ningún bloque
+            // rompe si no los declara explícitamente en su propio
+            // `PropertiesSchema::make([...])` (mismo criterio ya aplicado a
+            // TODO este archivo: cada bloque elige su subconjunto, nada acá
+            // es obligatorio para quien construye su propio frontend sobre
+            // la misma API y no necesita este nivel de detalle visual).
+            'feature_style' => Forms\Components\Select::make('properties.feature_style')
+                ->label('Estilo de tarjeta')
+                ->helperText('Cómo se presenta cada característica del grid. "Tarjeta con sombra" es el estilo del diseño de referencia.')
+                ->options(FeatureCardStyleEnum::class)
+                ->default(FeatureCardStyleEnum::BoxedShadow->value),
+            // Toggle simple (no una escala como `media_radius`) — acá lo
+            // que se redondea es la TARJETA completa (envoltorio del item),
+            // no una imagen suelta; solo tiene efecto visual real con
+            // `feature_style: boxed_no_shadow`/`boxed_shadow` (las 2
+            // variantes que dibujan una tarjeta), pero se deja disponible
+            // siempre sin importar el estilo elegido — el frontend decide
+            // si lo aplica.
+            'card_rounded' => Forms\Components\Toggle::make('properties.card_rounded')
+                ->label('Bordes redondeados')
+                ->helperText('Solo aplica con estilo de tarjeta (con o sin sombra).')
+                ->inline(false)
+                ->default(true),
+            // 2026-09-07, corrección del Tech Lead sobre la 1ra versión de
+            // este cambio: el selector "ninguno/lista/grid" vivía como
+            // campo POR ITEM (`content.items[].content_format`, dentro del
+            // `Repeater`) con el label genérico "Contenido adicional" — se
+            // pidió (a) un nombre más claro y (b) moverlo acá, a
+            // `properties`, como UNA sola decisión de estilo para todo el
+            // bloque. No hace falta un selector por item: un item sin
+            // `items[]` cargado (Misión/Visión, solo `description`) no
+            // tiene nada que mostrar en ningún formato; un item CON
+            // `items[]` (Valores) los muestra en el formato que indique
+            // esta property — ver `FeatureListStyleEnum` (reemplaza a
+            // `FeatureContentFormatEnum`, que se elimina).
+            'list_style' => Forms\Components\Select::make('properties.list_style')
+                ->label('Estilo de lista')
+                ->helperText('Cómo mostrar los puntos sueltos (campo "Ítems de la lista") de cualquier característica que los tenga cargados.')
+                ->options(FeatureListStyleEnum::class)
+                ->default(FeatureListStyleEnum::None->value),
+
+            // --- Específicos del header de detalle de Service (2026-09-14) -
+            // Pedido del Tech Lead con capturas del detalle real de CICA360
+            // ("Seguros Financiero"): header más alto que el resto de banners
+            // (~50vh), con capa en degradado al 50% de SU propia altura,
+            // decorador wave y banderas de país flotando sobre el wave —
+            // todo eso es un look FIJO del header de `Service`, no
+            // configurable (a diferencia de `decorator_bottom` de arriba, que
+            // sí lo es campo a campo). Solo 2 decisiones quedan como
+            // `properties`, pedidas explícitamente: el tamaño del header y un
+            // apagador del detalle decorativo. El frontend (`cica360`,
+            // `[slug].astro`) es quien decide la altura real por breakpoint a
+            // partir de este valor — acá solo se guarda la intención.
+            'header_type' => Forms\Components\Select::make('properties.header_type')
+                ->label('Tamaño del header')
+                ->helperText('"Destacado" es ~25% más alto que "Normal" en cada resolución.')
+                ->options([
+                    'normal' => 'Normal',
+                    'destacado' => 'Destacado',
+                ])
+                ->default('normal'),
+            // Flag único para TODO el detalle decorativo del header (wave +
+            // banderas flotantes), no uno por elemento — pedido explícito:
+            // Flag para las banderas de país flotantes en el header — el
+            // decorador wave es la transición permanente del corte inferior y
+            // no se apaga. Este toggle solo oculta las banderas de país.
+            'show_decorative_detail' => Forms\Components\Toggle::make('properties.show_decorative_detail')
+                ->label('Mostrar detalle decorativo')
+                ->helperText('Banderas de país flotando sobre la curva del header. Desactivar para ocultar las banderas.')
+                ->inline(false)
+                ->default(true),
+
+            // Selector dinámico de Footer (2026-09-15, pedido del Tech Lead:
+            // "un propertie para elegir un selector de los footer que deseo que tenga,
+            // devolver el footer elegido en el api de detalle de servicio").
+            'footer_page_id' => Forms\Components\Select::make('properties.footer_page_id')
+                ->label('Pie de página (Footer)')
+                ->helperText('Selecciona el Content tipo "Footer" que se renderizará al final de este servicio.')
+                ->options(function () {
+                    $tenantId = Filament::getTenant()?->id;
+
+                    return Page::query()
+                        ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                        ->where('type', PageTypeEnum::Footer->value)
+                        ->pluck('title', 'id');
+                })
+                ->searchable()
+                ->placeholder('Sin footer')
+                ->nullable(),
         ];
 
         $selectedComponents = [];

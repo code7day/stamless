@@ -29,8 +29,6 @@ class ModuleSeeder extends Seeder
      */
     public function run(): void
     {
-        $plan = Plan::where('slug', 'free')->first();
-
         $moduleIds = [];
 
         foreach (self::CORE_MODULES as $slug => $name) {
@@ -48,7 +46,9 @@ class ModuleSeeder extends Seeder
             $moduleIds[] = $module->id;
         }
 
-        if ($plan) {
+        $plans = Plan::whereIn('slug', ['free', 'sponsorship'])->get();
+
+        foreach ($plans as $plan) {
             $plan->modules()->syncWithoutDetaching($moduleIds);
         }
     }

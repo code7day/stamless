@@ -4,6 +4,7 @@ namespace App\Http\Concerns;
 
 use App\Enums\BlockTypeEnum;
 use App\Enums\MenuItemTypeEnum;
+use App\Enums\PageTypeEnum;
 use App\Http\Resources\Api\V1\Concerns\NormalizesJsonFields;
 use App\Models\Block;
 use App\Models\Media;
@@ -55,6 +56,39 @@ trait ResolvesPublicLinks
         // (`background_type: image`, excluyente con color/degradado) que
         // ya tenía `cta` — ver ADR-041 y su actualización del mismo día.
         'colophon' => ['background_image_id' => 'background_image'],
+        // 2026-09-07, rediseño del bloque `features` (ver `PageResource.php`):
+        // misma 3ª opción de fondo (`background_type: image`) que
+        // `cta`/`colophon` — a diferencia de esos 2 (con un bug latente,
+        // ver el docblock del bloque `features` en `PageResource.php`:
+        // `background_image_id` sin el prefijo `content.` nunca se
+        // guardaba), acá el campo SÍ está declarado como
+        // `content.background_image_id` desde el arranque, así que llega
+        // bien a `$content['background_image_id']` acá abajo.
+        'features' => ['background_image_id' => 'background_image'],
+        // 2026-09-11 (pedido del Tech Lead: "asi deberia poder cambiarse de
+        // la misma forma los demas bloques existentes, todos deberian
+        // permitir personalizar el fondo en 3 tipos, no se por que solo 4
+        // bloques tiene eso") — se extiende la 3ª opción de fondo
+        // (`background_type: image`) a los 8 bloques de sección completa
+        // que solo tenían sólido/degradado. Se dejan afuera, a propósito:
+        // `hero` (ya tiene su propio mecanismo de imagen en modo Manual,
+        // ver `HERO_MANUAL_MEDIA_FIELDS`, confirmado con el Tech Lead:
+        // "en el hero obviar"), `split`/`image` (su "fondo" es el color
+        // DETRÁS de una imagen que ya es el contenido principal del
+        // bloque — una 3ª opción "imagen" ahí sería imagen detrás de
+        // imagen) y `footer`/`footer_bottom` (sin properties visuales o
+        // caso de uso demasiado marginal). Todos declarados con el
+        // prefijo `content.` desde el arranque (mismo criterio correcto
+        // que `features`, NO el bug latente de `cta`/`colophon` de
+        // arriba).
+        'rich_text' => ['background_image_id' => 'background_image'],
+        'faq' => ['background_image_id' => 'background_image'],
+        'contact_form' => ['background_image_id' => 'background_image'],
+        'testimonials' => ['background_image_id' => 'background_image'],
+        'logos' => ['background_image_id' => 'background_image'],
+        'services_grid' => ['background_image_id' => 'background_image'],
+        'testimonials_grid' => ['background_image_id' => 'background_image'],
+        'legal_notice' => ['background_image_id' => 'background_image'],
     ];
 
     /**
@@ -76,7 +110,6 @@ trait ResolvesPublicLinks
     private const array ITEMS_MEDIA_FIELD = [
         'features' => ['image_id', 'image'],
         'logos' => ['media_id', 'media'],
-        'services_grid' => ['image_id', 'image'],
     ];
 
     /**
@@ -184,25 +217,50 @@ trait ResolvesPublicLinks
      * - `hero.content.slider_id` (modo `slider`) → `content.slider_slug`.
      * - `hero.content.background_image*_id` (modo `manual`) → objetos Media.
      * - `heading`/`image`/`split` → sus campos `*_id` de nivel bloque → objetos Media.
-     * - `features`/`logos`/`services_grid` → el `*_id` de cada item en
-     *   `content.items[]` → objeto Media.
+     * - `features`/`logos` → el `*_id` de cada item en `content.items[]` → objeto Media.
      * - `logos` además recorta/ordena `content.items[]` según
      *   `content.limit`/`content.order` del propio bloque (2026-09-01) —
      *   a diferencia de `testimonials`, sin tabla propia: el recorte es
      *   sobre el mismo array que ya vive en `content.items`.
-     * - `services_grid` además resuelve `items[].page_id` → `page_slug` + `href`.
      * - `testimonials` (2026-08-31, ya no vive en `content.items` del
      *   formulario) → se resuelve en runtime contra la tabla real
      *   `testimonials` (`is_visible = true`, tenant-scoped via `HasTenant`),
      *   recortando/ordenando en memoria según `content.limit`/`content.order`
      *   de cada bloque, y se entrega en la misma forma `content.items[]`
      *   (`name`/`role`/`quote`/`avatar`) que ya esperaba el frontend.
+     * - `services_grid` (2026-09-10, ADR pendiente desde ADR-034 resuelto —
+     *   mismo patrón exacto que `testimonials`, ya no vive en `content.items`
+     *   del formulario) → se resuelve en runtime contra la tabla real
+     *   `services` (`published()`, tenant-scoped via `HasTenant`), recortando
+     *   por `content.limit` (`null` = todos — el catálogo completo de
+     *   `/servicios` no trunca, un teaser en otra página sí puede pedir solo
+     *   los primeros N) y ordenando por `sort_order` según `content.order`
+     *   (`asc` = orden manual del catálogo tal cual quedó curado en
+     *   `ServiceResource`, `desc` = invertido — a diferencia de
+     *   `testimonials`, que ordena por `created_at`: acá no hay noción de
+     *   "más reciente primero" que tenga sentido para un catálogo curado a
+     *   mano, así que se usa el mismo `sort_order` que ya usa el endpoint
+     *   standalone `GET /v1/{tenant}/services`, ver `ServiceController`).
+     *   Cada item sale con la MISMA forma que `ServiceSummaryResource`
+     *   (`uuid`/`slug`/`pretitle`/`title`/`subtitle`/`countries`/`image`) más
+     *   `href` (`/servicios/{slug}`, resuelto acá para no obligar al
+     *   frontend a construir la ruta).
+     * - `testimonials_grid` (2026-09-11, pedido del Tech Lead: catálogo
+     *   completo de "Casos de éxito", "un bloque nuevo especial como el de
+     *   servicios") → mismo dataset EXACTO que `testimonials` de arriba
+     *   (comparte la misma query batched — ambos tipos de bloque disparan
+     *   `$hasTestimonialsBlock`), pero ordenado/recortado con el mismo
+     *   criterio que `services_grid` (`sort_order`/`content.limit` nullable,
+     *   NO `created_at`) — un testimonio no tiene página de detalle propia,
+     *   así que el item sale sin `slug`/`href`: `uuid`/`name`/`role`/`quote`/
+     *   `avatar`.
      *
-     * Todo en 4 queries batched (media/pages/sliders/testimonials) sin
-     * importar cuántos bloques tenga la página — mismo patrón que
-     * `attachResolvedLinks()`. Los testimonios se traen en una sola query
-     * (todos los visibles del tenant) aunque la página tenga más de un
-     * bloque `testimonials`, para no repetir el `SELECT` por bloque.
+     * Todo en 4 queries batched (media/pages/sliders/testimonials+services)
+     * sin importar cuántos bloques tenga la página — mismo patrón que
+     * `attachResolvedLinks()`. Los testimonios y los servicios se traen cada
+     * uno en una sola query (todos los visibles/publicados del tenant)
+     * aunque la página tenga más de un bloque de su tipo, para no repetir el
+     * `SELECT` por bloque.
      *
      * @param  iterable<object{type: BlockTypeEnum, content: ?array}>  $blocks
      * @param  bool  $resolveFooterBlocks  Guard anti-recursión (2026-09-01, ver bloque `footer` más abajo):
@@ -225,6 +283,7 @@ trait ResolvesPublicLinks
         $footerPageIds = [];
         $menuIds = [];
         $hasTestimonialsBlock = false;
+        $hasServicesGridBlock = false;
 
         foreach ($blocks as $block) {
             $content = $block->content ?? [];
@@ -261,14 +320,16 @@ trait ResolvesPublicLinks
             }
 
             if ($type === 'services_grid') {
-                foreach ($content['items'] ?? [] as $item) {
-                    if (! empty($item['page_id'])) {
-                        $pageIds[] = $item['page_id'];
-                    }
-                }
+                $hasServicesGridBlock = true;
             }
 
-            if ($type === 'testimonials') {
+            // `testimonials_grid` (2026-09-11, pedido del Tech Lead: "Casos
+            // de éxito"... "un bloque nuevo especial como el de servicios")
+            // comparte la MISMA query batched de `$testimonials` que ya
+            // arma el bloque `testimonials` (teaser) — mismo dataset (todos
+            // los visibles del tenant), cada bloque recorta/ordena su
+            // propia copia en memoria más abajo (ver `transformBlockContent()`).
+            if ($type === 'testimonials' || $type === 'testimonials_grid') {
                 $hasTestimonialsBlock = true;
             }
 
@@ -333,6 +394,21 @@ trait ResolvesPublicLinks
         foreach ($testimonials as $testimonial) {
             if ($testimonial->avatar_id) {
                 $mediaIds[] = $testimonial->avatar_id;
+            }
+        }
+
+        // Idem para `services_grid` (2026-09-10) — una sola query batched de
+        // TODOS los servicios publicados del tenant, compartida entre todos
+        // los bloques `services_grid` de la respuesta (ej. un teaser en el
+        // Home + el catálogo completo en `/servicios`), cada uno recorta su
+        // propia copia en memoria según su `content.limit`/`content.order`.
+        $servicesGrid = $hasServicesGridBlock
+            ? Service::query()->published()->get()
+            : collect();
+
+        foreach ($servicesGrid as $service) {
+            if ($service->image_id) {
+                $mediaIds[] = $service->image_id;
             }
         }
 
@@ -413,7 +489,7 @@ trait ResolvesPublicLinks
             : collect();
 
         foreach ($blocks as $block) {
-            $block->resolved_content = $this->transformBlockContent($block, $media, $pages, $sliders, $testimonials, $footerPages, $resolveFooterBlocks, $posts, $menus);
+            $block->resolved_content = $this->transformBlockContent($block, $media, $pages, $sliders, $testimonials, $footerPages, $resolveFooterBlocks, $posts, $menus, $servicesGrid);
         }
     }
 
@@ -421,13 +497,14 @@ trait ResolvesPublicLinks
      * @param  Collection<int, Media>  $media
      * @param  Collection<int, Page>  $pages
      * @param  Collection<int, Slider>  $sliders
-     * @param  Collection<int, Testimonial>  $testimonials  Todos los visibles del tenant, sin recortar — cada bloque `testimonials` recorta acá según su propio `content.limit`/`content.order`.
+     * @param  Collection<int, Testimonial>  $testimonials  Todos los visibles del tenant, sin recortar — cada bloque `testimonials`/`testimonials_grid` recorta acá según su propio `content.limit`/`content.order` (distinto criterio de orden cada uno, ver comentario de la clase).
      * @param  Collection<int, Page>  $footerPages  Páginas tipo `Footer` referenciadas por algún bloque `footer`, con sus propios bloques visibles ya cargados (`with('blocks')`) — ver `attachResolvedBlockContent()`.
      * @param  Collection<int, Post>  $posts  Solo la usa `colophon` (sub-bloques `link_list`/`image_link` con `source_type: post`) — ver `attachResolvedBlockContent()`.
      * @param  Collection<int, Menu>  $menus  Solo la usa `footer_bottom` ("Mostrar menú") — cada `Menu` ya trae `items` filtrados a nivel principal + activos, con `resolved_href` seteado — ver `attachResolvedBlockContent()`.
+     * @param  Collection<int, Service>  $servicesGrid  Todos los publicados del tenant, sin recortar — cada bloque `services_grid` recorta acá según su propio `content.limit`/`content.order` (mismo criterio que `$testimonials`).
      * @return array<string, mixed>
      */
-    private function transformBlockContent(object $block, Collection $media, Collection $pages, Collection $sliders, Collection $testimonials = new Collection, Collection $footerPages = new Collection, bool $resolveFooterBlocks = true, Collection $posts = new Collection, Collection $menus = new Collection): array
+    private function transformBlockContent(object $block, Collection $media, Collection $pages, Collection $sliders, Collection $testimonials = new Collection, Collection $footerPages = new Collection, bool $resolveFooterBlocks = true, Collection $posts = new Collection, Collection $menus = new Collection, Collection $servicesGrid = new Collection): array
     {
         $content = $block->content ?? [];
         $type = $block->type?->value;
@@ -501,15 +578,27 @@ trait ResolvesPublicLinks
             unset($content['limit'], $content['order']);
         }
 
-        if ($type === 'services_grid' && isset($content['items'])) {
-            $content['items'] = array_values(array_map(function (array $item) use ($pages) {
-                $page = $pages->get(self::scalarOrNull($item['page_id'] ?? null));
-                $item['page_slug'] = $page?->slug;
-                $item['href'] = $page ? ($page->is_home ? '/' : '/'.$page->slug) : null;
-                unset($item['page_id']);
+        if ($type === 'services_grid') {
+            $ordered = ($content['order'] ?? 'asc') === 'desc'
+                ? $servicesGrid->sortByDesc('sort_order')
+                : $servicesGrid->sortBy('sort_order');
 
-                return $item;
-            }, $content['items']));
+            $limited = empty($content['limit']) ? $ordered : $ordered->take(max(1, (int) $content['limit']));
+
+            $content['items'] = $limited->values()
+                ->map(fn (Service $service): array => [
+                    'uuid' => $service->uuid,
+                    'slug' => $service->slug,
+                    'href' => '/servicios/'.$service->slug,
+                    'pretitle' => $service->pretitle,
+                    'title' => $service->title,
+                    'subtitle' => $service->subtitle,
+                    'countries' => $service->countriesResolved(),
+                    'image' => $this->resolveMediaRef($service->image_id, $media),
+                ])
+                ->all();
+
+            unset($content['limit'], $content['order']);
         }
 
         if ($type === 'testimonials') {
@@ -521,6 +610,35 @@ trait ResolvesPublicLinks
 
             $content['items'] = $ordered->take($limit)->values()
                 ->map(fn (Testimonial $testimonial): array => [
+                    'name' => $testimonial->name,
+                    'role' => $testimonial->role,
+                    'quote' => $testimonial->quote,
+                    'avatar' => $this->resolveMediaRef($testimonial->avatar_id, $media),
+                ])
+                ->all();
+
+            unset($content['limit'], $content['order']);
+        }
+
+        // `testimonials_grid` (2026-09-11, pedido del Tech Lead: "Casos de
+        // éxito"... "un bloque nuevo especial como el de servicios... la
+        // configuracion todo igual al de servicios en el admin") — mismo
+        // dataset que `testimonials` (arriba, `$testimonials` ya trae TODOS
+        // los visibles del tenant, compartido entre ambos tipos de bloque),
+        // pero ordenado por `sort_order` (curaduría manual del
+        // drag-reorder de `TestimonialResource`) en vez de `created_at` —
+        // mismo criterio exacto que distingue `services_grid` de un
+        // hipotético teaser de servicios (ver ADR-049).
+        if ($type === 'testimonials_grid') {
+            $ordered = ($content['order'] ?? 'asc') === 'desc'
+                ? $testimonials->sortByDesc('sort_order')
+                : $testimonials->sortBy('sort_order');
+
+            $limited = empty($content['limit']) ? $ordered : $ordered->take(max(1, (int) $content['limit']));
+
+            $content['items'] = $limited->values()
+                ->map(fn (Testimonial $testimonial): array => [
+                    'uuid' => $testimonial->uuid,
                     'name' => $testimonial->name,
                     'role' => $testimonial->role,
                     'quote' => $testimonial->quote,
@@ -744,8 +862,17 @@ trait ResolvesPublicLinks
      * HTML sanitizado. Si ya viene como string (un `Textarea` plano, o
      * contenido legado guardado como HTML antes de este fix), lo devuelve
      * tal cual — nunca se reprocesa un string como si fuera JSON.
+     *
+     * `protected` (2026-09-14, antes `private`): `ServiceController::
+     * show()` ahora lo llama directo para `content.why_choose_us.text`
+     * (`ServiceResource.php` en Filament, mismo campo pasado de `Textarea`
+     * a `RichEditor`) — un método `private` de un trait NO es heredable por
+     * la clase que lo usa vía su padre (`ServiceController extends
+     * Controller`, y es `Controller` quien hace `use ResolvesPublicLinks`),
+     * así que `private` rompería con "Call to private method... from
+     * scope". El comportamiento no cambia, solo la visibilidad.
      */
-    private function renderRichContent(mixed $value): ?string
+    protected function renderRichContent(mixed $value): ?string
     {
         if (is_string($value)) {
             return $value;
@@ -824,6 +951,153 @@ trait ResolvesPublicLinks
             'url' => $item->url(),
             'alt_text' => $item->alt_text,
             'mime_type' => $item->mime_type,
+        ];
+    }
+
+    /**
+     * 2026-09-13 (pedido del Tech Lead): SEO/OG a nivel de tenant, editable en
+     * Preferencias (dropdown del perfil, ver `App\Filament\Pages\Preferences`)
+     * y usado como FALLBACK por Page/Post/Service cuando la página/publicación/
+     * servicio puntual no define su propio `meta.seo_*`/`meta.og_*` — mismo
+     * dataset por tenant que ya usan `services_grid`/`testimonials_grid`, acá
+     * vía `Setting`/`setting()` (ver `SettingService`) en vez de una tabla
+     * dedicada nueva, porque son 7 escalares sueltos sin necesidad de su
+     * propio modelo.
+     *
+     * Al mismo tiempo cierra un bug preexistente (detectado al implementar
+     * esto, presente desde que existe el tab "SEO / Enlaces"): `meta` salía
+     * de la API tal cual estaba en DB, es decir con `og_image_rect_id`/
+     * `og_image_square_id` como el id INTERNO de `Media` crudo — nunca se
+     * resolvía a una URL pública, a diferencia de cualquier otra imagen del
+     * resto del contrato (ADR-018). Acá se resuelve siempre (con o sin
+     * fallback de por medio) al mismo shape `{uuid, url, alt_text, mime_type}`
+     * que ya usa `resolveMediaRef()`, y el campo cambia de nombre en la
+     * response: `og_image_rect_id` → `og_image_rect`, `og_image_square_id` →
+     * `og_image_square` (nunca se expone el id crudo).
+     *
+     * @param  iterable<object{meta: ?array}>  $records  Modelos con un atributo `meta` (Page, Post, Service).
+     */
+    protected function attachResolvedSeoMeta(iterable $records): void
+    {
+        $records = collect($records);
+
+        $defaults = $this->seoDefaults();
+
+        $mediaIds = [];
+
+        foreach ($records as $record) {
+            $meta = $record->meta ?? [];
+
+            foreach (['og_image_rect_id', 'og_image_square_id'] as $idKey) {
+                if (! empty($meta[$idKey])) {
+                    $mediaIds[] = $meta[$idKey];
+                }
+            }
+        }
+
+        foreach (['og_image_rect_id', 'og_image_square_id'] as $idKey) {
+            if (! empty($defaults[$idKey])) {
+                $mediaIds[] = $defaults[$idKey];
+            }
+        }
+
+        $media = $mediaIds ? Media::whereIn('id', $this->uniqueScalarIds($mediaIds, 'meta.og_image'))->get()->keyBy('id') : collect();
+
+        foreach ($records as $record) {
+            $record->resolved_meta = $this->mergeSeoDefaults($record->meta ?? [], $defaults, $media);
+        }
+    }
+
+    /**
+     * Claves textuales: fallback directo campo-por-campo (`blank()` en vez de
+     * `empty()` — un `seo_title` guardado como `""` tras borrarlo a mano en
+     * Studio debe caer al default igual que si nunca se hubiera guardado).
+     * Imágenes: siempre resueltas a objeto público, propias primero, default
+     * del tenant si la página no tiene la suya — nunca se expone el id crudo
+     * (ver docblock de `attachResolvedSeoMeta()`).
+     *
+     * @param  Collection<int, Media>  $media
+     * @return array<string, mixed>
+     */
+    private function mergeSeoDefaults(array $meta, array $defaults, Collection $media): array
+    {
+        foreach (['seo_title', 'seo_keywords', 'seo_description', 'og_title', 'og_description'] as $key) {
+            if (blank($meta[$key] ?? null)) {
+                $meta[$key] = $defaults[$key] ?? null;
+            }
+        }
+
+        $meta['og_image_rect'] = $this->resolveMediaRef($meta['og_image_rect_id'] ?? null, $media)
+            ?? $this->resolveMediaRef($defaults['og_image_rect_id'] ?? null, $media);
+        unset($meta['og_image_rect_id']);
+
+        $meta['og_image_square'] = $this->resolveMediaRef($meta['og_image_square_id'] ?? null, $media)
+            ?? $this->resolveMediaRef($defaults['og_image_square_id'] ?? null, $media);
+        unset($meta['og_image_square_id']);
+
+        return $meta;
+    }
+
+    /**
+     * @return array{seo_title: ?string, seo_keywords: ?string, seo_description: ?string, og_title: ?string, og_description: ?string, og_image_rect_id: ?string, og_image_square_id: ?string}
+     */
+    private function seoDefaults(): array
+    {
+        return [
+            'seo_title' => setting('seo.default_title'),
+            'seo_keywords' => setting('seo.default_keywords'),
+            'seo_description' => setting('seo.default_description'),
+            'og_title' => setting('og.default_title'),
+            'og_description' => setting('og.default_description'),
+            'og_image_rect_id' => setting('og.default_image_rect_id'),
+            'og_image_square_id' => setting('og.default_image_square_id'),
+        ];
+    }
+
+    /**
+     * Resuelve el Content tipo Footer referenciado (2026-09-15, pedido del Tech Lead:
+     * "un propertie para elegir un selector de los footer que deseo que tenga...
+     * devolver el footer elegido en el api de detalle de servicio, nos falta footer dinamico elegido en studio").
+     *
+     * Carga el `Page` tipo Footer por id (scopeado al tenant por `TenantScope`),
+     * resuelve sus bloques con links y assets (anti-recursión `resolveFooterBlocks: false`),
+     * y entrega la estructura completa `['slug' => ..., 'blocks' => [...]]` con la misma
+     * forma que `content.footer_page` en el bloque `footer` de una Página.
+     *
+     * @return array{slug: string, blocks: array<int, array<string, mixed>>}|null
+     */
+    public function resolveFooterPage(?int $footerPageId): ?array
+    {
+        if (! $footerPageId) {
+            return null;
+        }
+
+        $footerPage = Page::where('type', PageTypeEnum::Footer->value)
+            ->where('id', $footerPageId)
+            ->first();
+
+        if (! $footerPage) {
+            return null;
+        }
+
+        $footerBlocks = $footerPage->blocks()->where('is_visible', true)->get();
+
+        $this->attachResolvedLinks([...$footerBlocks->all()]);
+        $this->attachResolvedBlockContent($footerBlocks, resolveFooterBlocks: false);
+
+        return [
+            'slug' => $footerPage->slug,
+            'blocks' => $footerBlocks->values()->map(fn (Block $footerBlock): array => [
+                'uuid' => $footerBlock->uuid,
+                'type' => $footerBlock->type?->value,
+                'pretitle' => $footerBlock->pretitle,
+                'title' => $footerBlock->title,
+                'subtitle' => $footerBlock->subtitle,
+                'content' => self::asObject($footerBlock->resolved_content ?? $footerBlock->content),
+                'links' => $footerBlock->resolved_links ?? [],
+                'properties' => self::asObject($footerBlock->properties),
+                'sort_order' => $footerBlock->sort_order,
+            ])->all(),
         ];
     }
 }

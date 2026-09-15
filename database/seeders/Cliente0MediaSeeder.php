@@ -170,6 +170,115 @@ class Cliente0MediaSeeder extends Seeder
             'name' => 'Logo socio 10',
             'alt' => 'Empresa asociada 10',
         ],
+        // Encabezado de "Sobre CICA" (bloque `heading`, 2026-09-05): 3
+        // recortes responsivos ya subidos por el Tech Lead a
+        // `storage/app/public/media/` — foto de skyline con silueta,
+        // referencia real en `docs/UX-UI-design/ABOUT.pdf` (cica360).
+        'header_desktop' => [
+            'file' => 'cica360_media_header-desktop.webp',
+            'name' => 'Encabezado Sobre CICA — Desktop',
+            'alt' => 'Vista de rascacielos al atardecer con la silueta de una persona en primer plano',
+        ],
+        'header_tablet' => [
+            'file' => 'cica360_media_header-tablet.webp',
+            'name' => 'Encabezado Sobre CICA — Tablet',
+            'alt' => 'Vista de rascacielos al atardecer con la silueta de una persona en primer plano',
+        ],
+        'header_mobile' => [
+            'file' => 'cica360_media_header-mobile.webp',
+            'name' => 'Encabezado Sobre CICA — Móvil',
+            'alt' => 'Vista de rascacielos al atardecer con la silueta de una persona en primer plano',
+        ],
+
+        // Bloque `features` de "Sobre CICA" (Misión/Visión/Valores,
+        // 2026-09-07): 3 fotos ya subidas por el Tech Lead a
+        // `storage/app/public/media/`, una por item — reemplazan los
+        // íconos heroicon placeholder que traía el seed original.
+        'mission' => [
+            'file' => 'cica360_media_mission.webp',
+            'name' => 'Misión — CICA360',
+            'alt' => 'Asesora de CICA360 sonriendo en una oficina con vista a la ciudad',
+        ],
+        'vision' => [
+            'file' => 'cica360_media_vision.webp',
+            'name' => 'Visión — CICA360',
+            'alt' => 'Equipo de CICA360 señalando el horizonte urbano al atardecer',
+        ],
+        'values' => [
+            'file' => 'cica360_media_values.webp',
+            'name' => 'Valores — CICA360',
+            'alt' => 'Asesor y clientes de CICA360 dándose la mano en una oficina',
+        ],
+
+        // Catálogo de Servicios (2026-09-11, ver `Cliente0ServicesSeeder` y
+        // ADR-049): 9 fotos reales, una por servicio del catálogo real del
+        // Tech Lead (reemplaza el reuso cíclico de 6 imágenes genéricas de
+        // la 1ra vuelta de este módulo, que ya no aplica — cada servicio
+        // real tiene su propia foto dedicada).
+        'service_seguridad_financiera' => [
+            'file' => 'cica360_media_service_seguridad_financiera.webp',
+            'name' => 'Servicio — Seguridad Financiera',
+            'alt' => 'Seguridad Financiera — seguros y retiros con enfoque de protección',
+        ],
+        'service_seguro_financiero' => [
+            'file' => 'cica360_media_service_seguro_financiero.webp',
+            'name' => 'Servicio — Seguro Financiero',
+            'alt' => 'Seguro Financiero — cuidamos tu patrimonio en cada paso',
+        ],
+        'service_asesoria_y_consultoria_estrategica' => [
+            'file' => 'cica360_media_service_asesoria_y_consultoria_estrategica.webp',
+            'name' => 'Servicio — Asesoría y Consultoría Estratégica',
+            'alt' => 'Asesoría y Consultoría Estratégica — impulso clave para emprendedores y PyMES',
+        ],
+        'service_asesoria_contable_y_financiera' => [
+            'file' => 'cica360_media_service_asesoria_contable_y_financiera.webp',
+            'name' => 'Servicio — Asesoría Contable y Financiera',
+            'alt' => 'Asesoría Contable y Financiera — gestión clara para empresas en crecimiento',
+        ],
+        'service_asesoria_editorial_integral' => [
+            'file' => 'cica360_media_service_asesoria_editorial_integral.webp',
+            'name' => 'Servicio — Asesoría Editorial Integral',
+            'alt' => 'Asesoría Editorial Integral — edición, diseño y publicación de nivel profesional',
+        ],
+        'service_turismo_y_asesoria_vacacional' => [
+            'file' => 'cica360_media_service_turismo_y_asesoria_vacacional.webp',
+            'name' => 'Servicio — Turismo y Asesoría Vacacional',
+            'alt' => 'Turismo y Asesoría Vacacional — pasajes, hoteles y experiencias a tu medida',
+        ],
+        'service_bienes_raices_e_inversion' => [
+            'file' => 'cica360_media_service_bienes_raices_e_inversion.webp',
+            'name' => 'Servicio — Bienes Raíces e Inversión',
+            'alt' => 'Bienes Raíces e Inversión — compra, venta y proyectos inmobiliarios seguros',
+        ],
+        'service_asesoramiento_legal_integral' => [
+            'file' => 'cica360_media_service_asesoramiento_legal_integral.webp',
+            'name' => 'Servicio — Asesoramiento Legal Integral',
+            'alt' => 'Asesoramiento Legal Integral — respaldo jurídico estratégico en toda la región',
+        ],
+        'service_asesoria_notarial' => [
+            'file' => 'cica360_media_service_asesoria_notarial.webp',
+            'name' => 'Servicio — Asesoría Notarial',
+            'alt' => 'Asesoría Notarial — escribanía ágil y segura en Uruguay y Argentina',
+        ],
+
+        // Open Graph por defecto del tenant (2026-09-13, ver genesis
+        // ADR-065 — "considerar en el seeder de contenido inicial como
+        // setting general tanto para el SEO como para el OG", ya subidas
+        // por el Tech Lead a `storage/app/public/media/`): usadas por
+        // `Cliente0ContentSeeder::upsertSeoDefaults()` para poblar
+        // `og.default_image_rect_id`/`og.default_image_square_id` — el
+        // fallback que aplica `ResolvesPublicLinks::attachResolvedSeoMeta()`
+        // en CUALQUIER página/post/servicio que no suba su propia imagen OG.
+        'og_horizontal' => [
+            'file' => 'cica360_media_og_horizontal.jpg',
+            'name' => 'Open Graph — Horizontal (1200x630, default del sitio)',
+            'alt' => 'CICA360 — Seguros, fondos, asesoría comercial, contable, jurídica, educación a distancia y bienes raíces',
+        ],
+        'og_square' => [
+            'file' => 'cica360_media_og_square.jpg',
+            'name' => 'Open Graph — Cuadrada (600x600, default del sitio)',
+            'alt' => 'CICA360 — Seguros, fondos, asesoría comercial, contable, jurídica, educación a distancia y bienes raíces',
+        ],
     ];
 
     public function run(): void

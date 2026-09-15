@@ -45,8 +45,8 @@ class DatabaseSeeder extends Seeder
             Cliente0Seeder::class,
             Cliente0MediaSeeder::class,
             Cliente0TestimonialsSeeder::class,
-            Cliente0ServicesSeeder::class,
             Cliente0ContentSeeder::class,
+            Cliente0ServicesSeeder::class,
             Cliente0HomeSlidesSeeder::class,
             Cliente0PostsSeeder::class,
         ]);

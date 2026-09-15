@@ -14,8 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'tenant_id', 'uuid', 'lang_iso', 'pretitle', 'title', 'subtitle', 'slug',
-    'status', 'image_id', 'countries', 'content', 'meta', 'links', 'properties',
-    'sort_order', 'published_at',
+    'status', 'image_id', 'image_detail_id', 'countries', 'content', 'meta',
+    'links', 'properties', 'sort_order', 'published_at',
 ])]
 class Service extends Model
 {
@@ -42,6 +42,20 @@ class Service extends Model
     public function image(): BelongsTo
     {
         return $this->belongsTo(Media::class, 'image_id');
+    }
+
+    /**
+     * Imagen secundaria/opcional (2026-09-14, pedido del Tech Lead): más
+     * panorámica/apaisada, pensada para el header del detalle — `image`
+     * (la principal) sigue siendo la miniatura del catálogo. El fallback
+     * "si no hay `imageDetail`, usar `image`" NO vive acá ni en el API: es
+     * responsabilidad del frontend consumidor (`cica360/[slug].astro`),
+     * mismo criterio ya usado para otros fallbacks visuales puntuales
+     * (ej. la cadena de `ogImage` en esa misma página).
+     */
+    public function imageDetail(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'image_detail_id');
     }
 
     /**

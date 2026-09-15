@@ -5,6 +5,7 @@ namespace App\Filament\Schemas;
 use App\Enums\LinkIconEnum;
 use App\Models\Page;
 use App\Models\Post;
+use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Grid;
@@ -67,15 +68,22 @@ class LinkSchema
                             ->searchable()
                             ->options(function (Get $get) {
                                 $sourceType = $get('source_type');
+                                $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+
                                 if ($sourceType === 'page') {
                                     // ->publiclyLinkable() (2026-09-02, bug real
                                     // en vivo): excluye Header/Footer — son
                                     // partials sin URL pública propia, no
                                     // deben poder elegirse como destino.
-                                    return Page::query()->publiclyLinkable()->pluck('title', 'id');
+                                    return Page::query()
+                                        ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                                        ->publiclyLinkable()
+                                        ->pluck('title', 'id');
                                 }
                                 if ($sourceType === 'post') {
-                                    return Post::pluck('title', 'id');
+                                    return Post::query()
+                                        ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                                        ->pluck('title', 'id');
                                 }
 
                                 return [];
@@ -173,12 +181,19 @@ class LinkSchema
                     ->searchable()
                     ->options(function (Get $get) use ($name) {
                         $sourceType = $get("{$name}.0.source_type");
+                        $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+
                         if ($sourceType === 'page') {
                             // Ver comentario equivalente en make() arriba.
-                            return Page::query()->publiclyLinkable()->pluck('title', 'id');
+                            return Page::query()
+                                ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                                ->publiclyLinkable()
+                                ->pluck('title', 'id');
                         }
                         if ($sourceType === 'post') {
-                            return Post::pluck('title', 'id');
+                            return Post::query()
+                                ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                                ->pluck('title', 'id');
                         }
 
                         return [];

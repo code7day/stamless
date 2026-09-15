@@ -4,8 +4,20 @@ namespace App\Providers\Filament;
 
 use App\Filament\Pages\ChangePassword;
 use App\Filament\Pages\Preferences;
+use App\Filament\Widgets\LeadsOverviewWidget;
+use App\Filament\Widgets\PlanStatusWidget;
+use App\Filament\Widgets\PlanUsageWidget;
+use App\Filament\Widgets\RecentContactsWidget;
+use App\Filament\Widgets\WelcomeWidget;
 use App\Http\Middleware\SyncTenantManagerWithFilament;
 use App\Models\Tenant;
+use App\Models\User;
+use Caresome\FilamentAuthDesigner\AuthDesignerPlugin;
+use Caresome\FilamentAuthDesigner\Data\AuthPageConfig;
+use Caresome\FilamentAuthDesigner\Enums\MediaPosition;
+use DutchCodingCompany\FilamentSocialite\FilamentSocialitePlugin;
+use DutchCodingCompany\FilamentSocialite\Provider;
+use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -19,8 +31,6 @@ use Filament\Support\Assets\Js;
 use Filament\Support\Colors\Color;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\View\PanelsRenderHook;
-use Filament\Widgets\AccountWidget;
-use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -62,6 +72,14 @@ class PanelCmsProvider extends PanelProvider
             ->default()
             ->id('cms')
             ->path('') // Serve at the root del dominio de Studio (ver config/stamless.php)
+            // 2026-09-14, pedido del Tech Lead: "activar el sidebar
+            // collapsible" — nativo de Filament, colapsa a una barra angosta
+            // con solo íconos (queda un botón para expandir/contraer), no
+            // lo oculta del todo (`sidebarFullyCollapsibleOnDesktop()` es la
+            // otra opción de Filament para eso, no lo que se pidió). Sin
+            // costo de build: es puro Alpine/CSS que ya trae Filament, no
+            // requiere `npm run build` ni tocar el theme del panel.
+            ->sidebarCollapsibleOnDesktop()
             // 2026-09-02, fix real en vivo: `MenuTreeBuilder` se renderizaba
             // SIN estilos (sin drag handle, sin badges, sin bordes/cards) —
             // reportado con captura de "Editar Menú" mostrando una lista de
@@ -84,8 +102,64 @@ class PanelCmsProvider extends PanelProvider
             ->domain(parse_url(config('stamless.urls.studio'), PHP_URL_HOST))
             ->login()
             ->tenant(Tenant::class, slugAttribute: 'slug')
+            // 2026-09-13, pedido del Tech Lead: cada cuenta pertenece a
+            // EXACTAMENTE 1 tenant (`User::getTenants()` siempre devuelve 0
+            // o 1 elemento — `tenant_id` es una columna propia de `User`,
+            // no un pivot muchos-a-muchos), así que el selector de tenant
+            // de Filament (avatar + nombre + flecha "▾" en el sidebar) no
+            // puede ofrecer nunca una segunda opción para cambiar — solo
+            // insinúa una funcionalidad de multi-proyecto que no existe y
+            // confunde ("como si tuviera acceso a más proyectos"). Se
+            // apaga por completo (`tenantMenu(false)` saca el bloque
+            // entero del sidebar, no solo la flecha) y, en su lugar, el
+            // nombre del tenant pasa a ser el brand del panel — así cada
+            // cliente ve "su" Studio (ej. "CICA360"), no un genérico
+            // "Stamless" seguido de un selector que no hace nada.
+            ->tenantMenu(false)
+            // El brand del panel es el nombre del tenant + un sufijo
+            // "Studio" (`.fi-logo-suffix` en el theme del panel, ver
+            // `resources/css/filament/cms/theme.css`) — ej. "CICA360
+            // Studio" — pero SOLO para tenants que pueden personalizarlo
+            // (`canPersonalizeStudioBrand()`, 2026-09-13: gate de plan
+            // pago, mismo criterio que `canEditCopyright()` — Free/
+            // Freemium NO, Auspicio/Convenio y planes pagos SÍ). Un tenant
+            // Free ve el genérico "Stamless Studio" (`config('app.name')`
+            // + el mismo sufijo) — su nombre real de proyecto se muestra
+            // en el bloque `sidebar-project-info` de abajo en su lugar
+            // (ver `SIDEBAR_LOGO_AFTER` más abajo), NO acá. `HtmlString`
+            // porque `getBrandName()` hace `{{ $brandName }}` en el Blade
+            // de Filament (`components/logo.blade.php`) — Blade no escapa
+            // un valor `Htmlable`, así que el `<span>` se renderiza tal
+            // cual. `e($displayName)` igual escapa el nombre real del
+            // tenant (dato de usuario) antes de insertarlo en el HTML.
+            ->brandName(function (): HtmlString {
+                $tenant = Filament::getTenant();
+
+                $displayName = ($tenant instanceof Tenant && $tenant->canPersonalizeStudioBrand() && filled($tenant->name))
+                    ? $tenant->name
+                    : config('app.name');
+
+                return new HtmlString(e($displayName).' <span class="fi-logo-suffix">Studio</span>');
+            })
+            // 2026-09-13, ADR-064 (paleta dual-primary de Stamless):
+            // `Color::Amber` es literalmente el color de referencia/demo de
+            // Filament (lo trae "de fábrica" cualquier panel sin
+            // personalizar) — el Tech Lead lo notó ("el amber lo relacionan
+            // con Filament básico") y se reemplaza por el primary OFICIAL de
+            // Studio, `--sl-primary` (`#D97706`, hover conceptual
+            // `#B45309`). `Color::hex()` genera una rampa de 11 tonos
+            // (50-950) propia vía OKLCH a partir de este hex — es un array
+            // NUEVO, no una referencia al `Amber` de Filament. Studio es el
+            // panel de CADA TENANT ("creación, taller"); Platform (ver
+            // `PanelPlatformProvider`) es el super-admin B2B y usa un primary
+            // DISTINTO a propósito (teal `#0F766E`, "operación, control") —
+            // el color ahora también sirve como señal de en qué panel estás
+            // parado. El wordmark/logo de Stamless NO se recolorea con
+            // ninguno de los dos (tinta `--sl-ink` `#171412`, ver ADR-064).
+            // Runtime puro (Filament inyecta las CSS custom properties
+            // `--primary-*` por request) — no requiere `npm run build`.
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::hex('#D97706'),
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
@@ -103,6 +177,115 @@ class PanelCmsProvider extends PanelProvider
                     .'<script src="'.asset('js/filament/menu-tree-builder.js').'?v='.filemtime(public_path('js/filament/menu-tree-builder.js')).'" defer></script>'
                 )
             )
+            // Favicon de Stamless (2026-09-13, pedido del Tech Lead) — set
+            // completo ya generado y publicado en `public/favicon/` +
+            // `public/favicon.ico` (no requiere build de Vite, son archivos
+            // estáticos servidos tal cual). Segundo `->renderHook()` sobre el
+            // mismo `HEAD_END` que el de arriba a propósito: Filament
+            // ACUMULA los closures por hook (`HasRenderHooks::renderHook()`
+            // los apila en un array, no los reemplaza), así que separarlo
+            // deja cada bloque con una sola responsabilidad (activos
+            // versionados con `filemtime()` arriba, favicon estático acá)
+            // sin tener que tocar el closure existente. Sin `filemtime()`
+            // acá: a diferencia del CSS/JS de arriba (que cambian seguido en
+            // desarrollo), un favicon prácticamente nunca se reemplaza en
+            // caliente. `site.webmanifest` también se actualizó (`name`/
+            // `short_name`/`theme_color`) — venía con los valores default
+            // del generador ("MyWebSite"/blanco), ahora dice "Stamless" y
+            // usa el ámbar del panel (`Color::Amber`, ver `->colors()` más
+            // abajo).
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString(
+                    '<link rel="icon" type="image/png" href="'.asset('favicon/favicon-96x96.png').'" sizes="96x96">'
+                    .'<link rel="icon" type="image/svg+xml" href="'.asset('favicon/favicon.svg').'">'
+                    .'<link rel="shortcut icon" href="'.asset('favicon.ico').'">'
+                    .'<link rel="apple-touch-icon" sizes="180x180" href="'.asset('favicon/apple-touch-icon.png').'">'
+                    .'<link rel="manifest" href="'.asset('favicon/site.webmanifest').'">'
+                    // ADR-064: color de la barra de UI del navegador (pestañas
+                    // Android/PWA), alineado al mismo `--sl-primary` del panel.
+                    .'<meta name="theme-color" content="#D97706">'
+                )
+            )
+            // 2026-09-13, pedido del Tech Lead: donde antes estaba el
+            // selector de tenant (ahora apagado, `tenantMenu(false)` arriba)
+            // va un bloque estático "nombre del proyecto" + "Plan actual:
+            // X" en letra más chica debajo — pero SOLO para Free/Freemium
+            // (`! canPersonalizeStudioBrand()`): "los auspicios y otros
+            // planes de pago solo mostrarán el titular Studio" — un tenant
+            // de pago ya ve su nombre real personalizado en el brand de
+            // arriba (ej. "CICA360 Studio"), así que este bloque sería
+            // información duplicada; para Free, en cambio, el brand
+            // muestra el genérico "Stamless Studio", así que ESTE es el
+            // único lugar donde ese tenant ve su nombre de proyecto real,
+            // más un recordatorio de su plan actual. Mismo hook
+            // (`SIDEBAR_LOGO_AFTER`) donde Filament renderiza el
+            // `<x-filament-panels::tenant-menu />` original — misma
+            // posición visual, contenido no interactivo (sin dropdown/
+            // flecha) en vez del switcher.
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_LOGO_AFTER,
+                function (): HtmlString {
+                    $tenant = Filament::getTenant();
+
+                    if (! ($tenant instanceof Tenant) || $tenant->canPersonalizeStudioBrand()) {
+                        return new HtmlString('');
+                    }
+
+                    return new HtmlString(view('filament.cms.sidebar-project-info', [
+                        'projectName' => $tenant->name,
+                        'planLabel' => $tenant->planLabel(),
+                    ])->render());
+                }
+            )
+            ->plugins([
+                AuthDesignerPlugin::make()
+                    ->login(fn (AuthPageConfig $config) => $config
+                        ->media(asset('images/auth/stamless-login-cover.jpg'))
+                        ->mediaPosition(MediaPosition::Left)
+                        ->themeToggle()
+                    ),
+                FilamentSocialitePlugin::make()
+                    ->providers([
+                        Provider::make('google')
+                            ->label('Google')
+                            ->icon('fab-google')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.google.client_id')) && ! empty(config('services.google.client_secret'))),
+                        Provider::make('linkedin-openid')
+                            ->label('LinkedIn')
+                            ->icon('fab-linkedin')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.linkedin-openid.client_id')) && ! empty(config('services.linkedin-openid.client_secret'))),
+                        Provider::make('twitter-oauth-2')
+                            ->label('X')
+                            ->icon('fab-x-twitter')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.twitter-oauth-2.client_id')) && ! empty(config('services.twitter-oauth-2.client_secret'))),
+                        Provider::make('instagram')
+                            ->label('Instagram')
+                            ->icon('fab-instagram')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.instagram.client_id')) && ! empty(config('services.instagram.client_secret'))),
+                        Provider::make('facebook')
+                            ->label('Facebook')
+                            ->icon('fab-facebook')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.facebook.client_id')) && ! empty(config('services.facebook.client_secret'))),
+                        Provider::make('microsoft')
+                            ->label('Microsoft')
+                            ->icon('fab-microsoft')
+                            ->outlined(true)
+                            ->stateless(true)
+                            ->visible(fn (): bool => ! empty(config('services.microsoft.client_id')) && ! empty(config('services.microsoft.client_secret'))),
+                    ])
+                    ->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null),
+            ])
             ->userMenuItems([
                 MenuItem::make()
                     ->label('Preferencias')
@@ -118,10 +301,30 @@ class PanelCmsProvider extends PanelProvider
             ->pages([
                 Dashboard::class,
             ])
+            // 2026-09-13, pedido del Tech Lead (Nivel 1 del plan de
+            // Dashboard): "quitar el widget Filament, dejar el de
+            // bienvenida (pero agregar en un badge el tipo de plan)".
+            // `FilamentInfoWidget` (promo/versión del framework, sin valor
+            // para el cliente) se saca; `AccountWidget` nativo se reemplaza
+            // por `WelcomeWidget` propio (mismo saludo + botón de salir,
+            // vista propia con el badge de plan agregado) — ver su docblock.
+            // Se suman 4 widgets más, mismo día, siguiente pedido ("faltan
+            // los widgets para mostrar todo estos indicadores" + "falta un
+            // widget en segundo orden... plan y botón de mejorar plan"):
+            // `$sort` de cada clase controla el orden (Welcome=-50,
+            // PlanStatus=-40, Leads=-30, PlanUsage=-20, RecentContacts=-10,
+            // espaciados de a 10 para poder insertar uno nuevo en el medio
+            // sin renumerar todo) — no hace falta ordenar el array acá,
+            // Filament ordena por `$sort` al armar el Dashboard. Welcome y
+            // PlanStatus comparten la primera fila (columna 1 cada uno);
+            // PlanUsage y RecentContacts comparten la última.
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
-                AccountWidget::class,
-                FilamentInfoWidget::class,
+                WelcomeWidget::class,
+                PlanStatusWidget::class,
+                LeadsOverviewWidget::class,
+                PlanUsageWidget::class,
+                RecentContactsWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -2,17 +2,22 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\FormatsUsageBadge;
 use App\Filament\Resources\TestimonialResource\Pages;
 use App\Filament\Schemas\MediaUpload;
+use App\Models\Tenant;
 use App\Models\Testimonial;
 use Filament\Actions;
+use Filament\Facades\Filament;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Schmeits\FilamentCharacterCounter\Forms\Components\Textarea as CharacterTextarea;
 
 /**
  * Módulo de Testimonios / Casos de Éxito (2026-08-31) — antes vivían como
@@ -28,6 +33,8 @@ use Filament\Tables\Table;
  */
 class TestimonialResource extends Resource
 {
+    use FormatsUsageBadge;
+
     protected static ?string $model = Testimonial::class;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-chat-bubble-left-right';
@@ -39,6 +46,62 @@ class TestimonialResource extends Resource
     protected static ?string $modelLabel = 'Testimonio';
 
     protected static ?string $slug = 'testimonials';
+
+    /**
+     * Límite de testimonios/casos de éxito por plan (2026-09-11, pedido del
+     * Tech Lead: "para free con 6 testimonios o casos de exito y para
+     * auspicio con 20 testimonios").
+     */
+    public static function isTestimonialLimitReached(): bool
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return false;
+        }
+
+        $limit = $tenant->maxTestimonials();
+
+        if ($limit === null) {
+            return false;
+        }
+
+        return Testimonial::where('tenant_id', $tenant->id)->count() >= $limit;
+    }
+
+    public static function testimonialLimitMessage(): string
+    {
+        $tenant = Filament::getTenant();
+        $limit = $tenant instanceof Tenant ? $tenant->maxTestimonials() : null;
+
+        return "El plan actual permite hasta {$limit} testimonios / casos de éxito. Para crear uno nuevo, eliminar primero alguno existente.";
+    }
+
+    /**
+     * 2026-09-13, pedido del Tech Lead: badge "usado/límite" en la opción
+     * de menú del sidebar (ver `FormatsUsageBadge`).
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::formatUsageBadge(Testimonial::where('tenant_id', $tenant->id)->count(), $tenant->maxTestimonials());
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::usageBadgeColor(Testimonial::where('tenant_id', $tenant->id)->count(), $tenant->maxTestimonials());
+    }
 
     /**
      * Layout "avatar a la izquierda, datos a la derecha" (2026-08-31, UX;
@@ -75,10 +138,10 @@ class TestimonialResource extends Resource
                         Group::make()
                             ->schema([
                                 Forms\Components\TextInput::make('name')
-                                ->label('Nombre del autor')
-                                ->required()
-                                ->maxLength(255)
-                                ->columnSpan(1),
+                                    ->label('Nombre del autor')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('role')
                                     ->label('Puesto / Empresa (Opcional)')
@@ -94,10 +157,12 @@ class TestimonialResource extends Resource
                             ])
                             ->columnSpan(1),
 
-                        Forms\Components\Textarea::make('quote')
+                        CharacterTextarea::make('quote')
                             ->label('Testimonio / Frase')
                             ->required()
                             ->rows(4)
+                            ->maxLength(500)
+                            ->characterLimit(300)
                             ->columnSpanFull(),
                     ])
                     ->columnSpanFull(),
@@ -136,10 +201,49 @@ class TestimonialResource extends Resource
                     ->falseLabel('Solo ocultos'),
             ])
             ->actions([
-                Actions\EditAction::make()
-                    ->slideOver()
-                    ->modalWidth('2xl'),
-                Actions\DeleteAction::make(),
+                // 2026-09-13 (ADR-059, addendum): acciones de fila agrupadas
+                // en un menú desplegable (mismo patrón que `ApiTokens::
+                // table()`).
+                Actions\ActionGroup::make([
+                    Actions\EditAction::make()
+                        ->slideOver()
+                        ->modalWidth('2xl'),
+
+                    // Duplicar (2026-09-13, ADR-061 addendum): mismo patrón
+                    // que Page/Post/Service — clonar el registro para que el
+                    // cliente pueda partir de un testimonio ya cargado en vez
+                    // de tipear todo de cero. Sin slug ni relaciones hijas acá,
+                    // así que sólo hace falta regenerar `uuid` y arrancar
+                    // oculto (`is_visible = false`) para que no aparezca
+                    // duplicado en la API pública hasta que lo revisen.
+                    Actions\ReplicateAction::make()
+                        ->label('Duplicar')
+                        // 2026-09-13 (ADR-061, addendum UX): modal propio en
+                        // vez del genérico "Replicar :label" de Filament.
+                        ->modalHeading(fn (Testimonial $record): string => "¿Duplicar el testimonio de \"{$record->name}\"?")
+                        ->modalDescription('Se creará una copia oculta de este testimonio para que puedas editarla sin afectar al original.')
+                        ->modalSubmitActionLabel('Sí, duplicar')
+                        ->modalFooterActionsAlignment('center')
+                        ->excludeAttributes(['uuid'])
+                        ->beforeReplicaSaved(function (Testimonial $record, Testimonial $replica): void {
+                            $replica->tenant_id = $record->tenant_id;
+                            $replica->name = "{$record->name} (copia)";
+                            $replica->is_visible = false;
+                        })
+                        ->disabled(fn (): bool => self::isTestimonialLimitReached())
+                        ->tooltip(fn (): ?string => self::isTestimonialLimitReached() ? self::testimonialLimitMessage() : null)
+                        ->before(function (Actions\ReplicateAction $action) {
+                            if (! self::isTestimonialLimitReached()) {
+                                return;
+                            }
+
+                            Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::testimonialLimitMessage())->send();
+                            $action->halt();
+                        })
+                        ->successNotificationTitle('Testimonio duplicado'),
+
+                    Actions\DeleteAction::make(),
+                ]),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
@@ -170,7 +274,17 @@ class TestimonialResource extends Resource
             ->emptyStateActions([
                 Actions\CreateAction::make()
                     ->slideOver()
-                    ->modalWidth('2xl'),
+                    ->modalWidth('2xl')
+                    ->disabled(fn (): bool => self::isTestimonialLimitReached())
+                    ->tooltip(fn (): ?string => self::isTestimonialLimitReached() ? self::testimonialLimitMessage() : null)
+                    ->before(function (Actions\CreateAction $action) {
+                        if (! self::isTestimonialLimitReached()) {
+                            return;
+                        }
+
+                        Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::testimonialLimitMessage())->send();
+                        $action->halt();
+                    }),
             ]);
     }
 

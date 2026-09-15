@@ -2,10 +2,14 @@
 
 namespace App\Providers;
 
+use App\Services\SettingService;
+use App\Services\TenantManager;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -15,12 +19,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(\App\Services\TenantManager::class, function () {
-            return new \App\Services\TenantManager();
+        $this->app->singleton(TenantManager::class, function () {
+            return new TenantManager;
         });
 
-        $this->app->singleton(\App\Services\SettingService::class, function ($app) {
-            return new \App\Services\SettingService($app->make(\App\Services\TenantManager::class));
+        $this->app->singleton(SettingService::class, function ($app) {
+            return new SettingService($app->make(TenantManager::class));
         });
     }
 
@@ -29,9 +33,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (str_starts_with(config('app.url', ''), 'https://') || str_starts_with(config('stamless.urls.studio', ''), 'https://')) {
+            URL::forceScheme('https');
+        }
+
         // MAMP PRO sirve la app en https://stamless.host
         // → excluimos 'server' (php artisan serve) de `composer dev`
         DevCommands::except('server');
+
+        Gate::before(function ($user, $ability) {
+            return $user->is_super_admin ? true : null;
+        });
 
         $this->configureApiRateLimiting();
     }

@@ -7,6 +7,7 @@ use App\Enums\MenuItemTypeEnum;
 use App\Models\Page;
 use App\Models\Post;
 use App\Models\Service;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Field;
 
 /**
@@ -78,7 +79,13 @@ class MenuTreeBuilder extends Field
      */
     public function getPageOptions(): array
     {
-        return Page::query()->publiclyLinkable()->pluck('title', 'id')->all();
+        $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+
+        return Page::query()
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+            ->publiclyLinkable()
+            ->pluck('title', 'id')
+            ->all();
     }
 
     /**
@@ -86,7 +93,12 @@ class MenuTreeBuilder extends Field
      */
     public function getPostOptions(): array
     {
-        return Post::query()->pluck('title', 'id')->all();
+        $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+
+        return Post::query()
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+            ->pluck('title', 'id')
+            ->all();
     }
 
     /**
@@ -97,7 +109,13 @@ class MenuTreeBuilder extends Field
      */
     public function getServiceOptions(): array
     {
-        return Service::query()->published()->pluck('title', 'id')->all();
+        $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+
+        return Service::query()
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+            ->published()
+            ->pluck('title', 'id')
+            ->all();
     }
 
     /**

@@ -41,6 +41,9 @@ class PostController extends Controller
         }
 
         $this->attachResolvedLinks([$post]);
+        // 2026-09-13: fallback de SEO/OG a nivel tenant, ver
+        // `ResolvesPublicLinks::attachResolvedSeoMeta()`.
+        $this->attachResolvedSeoMeta([$post]);
 
         return $this->success(new PostResource($post));
     }

@@ -6,6 +6,7 @@ use App\Enums\HomepageNameEnum;
 use App\Enums\PageTypeEnum;
 use App\Models\Page;
 use Closure;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
@@ -33,6 +34,7 @@ final class HeadingFieldset
         bool $hasIsHome = false,
         ?string $pretitleLabel = null,
         ?string $subtitleLabel = null,
+        ?string $modelClass = Page::class,
     ): Group {
         $fieldsetInputs = [];
 
@@ -56,22 +58,17 @@ final class HeadingFieldset
         if ($hasSlug) {
             $titleInput
                 ->live(onBlur: true)
-                ->afterStateUpdated(function (Get $get, Set $set, Component $livewire, ?string $state) use ($afterTitleUpdated) {
+                ->afterStateUpdated(function (Get $get, Set $set, Component $livewire, ?string $state) use ($afterTitleUpdated, $modelClass) {
                     $typeVal = $get('type');
                     if ($typeVal instanceof \BackedEnum) {
                         $typeVal = $typeVal->value;
                     }
 
-                    $isNoPublicUrlType = in_array($typeVal, [
-                        PageTypeEnum::Footer->value,
-                        PageTypeEnum::Header->value,
-                    ], true);
+                    $isNoPublicUrlType = $typeVal === PageTypeEnum::Footer->value;
 
                     $slug = Str::slug($state ?? '');
                     if ($typeVal === PageTypeEnum::Footer->value) {
                         $slug = 'footer-'.$slug;
-                    } elseif ($typeVal === PageTypeEnum::Header->value) {
-                        $slug = 'header-'.$slug;
                     }
 
                     if ($isNoPublicUrlType || ! $get('custom_slug_active')) {
@@ -81,7 +78,7 @@ final class HeadingFieldset
                         } elseif (property_exists($livewire, 'record') && isset($livewire->record)) {
                             $recordId = is_object($livewire->record) ? $livewire->record->id : $livewire->record;
                         }
-                        $set('slug', self::validSlug($slug, $recordId));
+                        $set('slug', self::validSlug($slug, $recordId, $modelClass));
                     }
 
                     if ($afterTitleUpdated) {
@@ -122,10 +119,7 @@ final class HeadingFieldset
                         $typeVal = $typeVal->value;
                     }
 
-                    return ! in_array($typeVal, [
-                        PageTypeEnum::Footer->value,
-                        PageTypeEnum::Header->value,
-                    ], true);
+                    return $typeVal !== PageTypeEnum::Footer->value;
                 })
                 ->content(function (Get $get) {
                     $slug = $get('slug');
@@ -170,10 +164,7 @@ final class HeadingFieldset
                                         $typeVal = $typeVal->value;
                                     }
 
-                                    return ! in_array($typeVal, [
-                                        PageTypeEnum::Footer->value,
-                                        PageTypeEnum::Header->value,
-                                    ], true);
+                                    return $typeVal !== PageTypeEnum::Footer->value;
                                 }),
                         ])
                         ->columns(2),
@@ -181,17 +172,19 @@ final class HeadingFieldset
                     TextInput::make('slug')
                         ->label('URL (Slug)')
                         ->required()
-                        ->unique(Page::class, 'slug', ignoreRecord: true)
+                        ->scopedUnique(
+                            model: $modelClass ?? Page::class,
+                            column: 'slug',
+                            ignoreRecord: true,
+                            modifyQueryUsing: fn ($query) => $query->where('tenant_id', Filament::getTenant()?->id ?? auth()->user()?->tenant_id),
+                        )
                         ->visible(function (Get $get) {
                             $typeVal = $get('type');
                             if ($typeVal instanceof \BackedEnum) {
                                 $typeVal = $typeVal->value;
                             }
 
-                            return (bool) $get('custom_slug_active') && ! in_array($typeVal, [
-                                PageTypeEnum::Footer->value,
-                                PageTypeEnum::Header->value,
-                            ], true);
+                            return (bool) $get('custom_slug_active') && $typeVal !== PageTypeEnum::Footer->value;
                         }),
 
                     Hidden::make('slug')
@@ -201,10 +194,7 @@ final class HeadingFieldset
                                 $typeVal = $typeVal->value;
                             }
 
-                            return ! (bool) $get('custom_slug_active') || in_array($typeVal, [
-                                PageTypeEnum::Footer->value,
-                                PageTypeEnum::Header->value,
-                            ], true);
+                            return ! (bool) $get('custom_slug_active') || $typeVal === PageTypeEnum::Footer->value;
                         }),
                 ]);
         }
@@ -213,7 +203,7 @@ final class HeadingFieldset
             ->columnSpanFull();
     }
 
-    public static function validSlug(string $slug, ?int $recordId = null): string
+    public static function validSlug(string $slug, ?int $recordId = null, ?string $modelClass = Page::class): string
     {
         if (empty($slug)) {
             return '';
@@ -221,8 +211,12 @@ final class HeadingFieldset
 
         $originalSlug = $slug;
         $count = 1;
+        $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+        $targetModel = $modelClass ?? Page::class;
 
-        while (Page::where('slug', $slug)
+        while ($targetModel::query()
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+            ->where('slug', $slug)
             ->when($recordId, fn ($query) => $query->where('id', '!=', $recordId))
             ->exists()) {
             $slug = "{$originalSlug}-{$count}";

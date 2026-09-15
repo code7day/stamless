@@ -37,11 +37,25 @@ class ServiceResource extends JsonResource
             'subtitle' => $this->subtitle,
             'content' => self::asObject($this->content),
             'countries' => $this->countriesResolved(),
-            'meta' => self::asObject($this->meta),
+            // `resolved_meta` (fallback de tenant + `og_image_*` resueltas a
+            // URL) lo setea `ResolvesPublicLinks::attachResolvedSeoMeta()` en
+            // el controller — ver su docblock. `?? $this->meta` es defensivo
+            // (nunca debería faltar viniendo de `ServiceController::show()`).
+            'meta' => self::asObject($this->resolved_meta ?? $this->meta),
             'links' => $this->resolved_links ?? [],
             'properties' => self::asObject($this->properties),
             'published_at' => $this->published_at?->toISOString(),
             'image' => MediaResource::optional($this->image),
+            // 2026-09-14: imagen secundaria/opcional, pensada para el header
+            // del detalle (más panorámica). El fallback "si es null, usar
+            // `image`" NO se resuelve acá — queda a criterio del frontend
+            // consumidor, mismo patrón que la cadena de `ogImage` en
+            // `cica360/[slug].astro`.
+            'image_detail' => MediaResource::optional($this->imageDetail),
+            // 2026-09-15: footer dinámico elegido en Studio (ver
+            // `ServiceController::show()` y `ResolvesPublicLinks::resolveFooterPage()`).
+            // Objeto `{slug, blocks: [...]}` o null si no tiene asignado.
+            'footer' => $this->resolved_footer ?? null,
         ];
     }
 }

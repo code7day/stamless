@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use App\Enums\LanguageEnum;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 

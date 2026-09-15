@@ -28,8 +28,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 trait ResolvesTenant
 {
     /**
-     * @throws NotFoundHttpException  Si el tenant no existe o está inactivo (nunca se revela cuál de las dos razones, para no filtrar información).
-     * @throws AccessDeniedHttpException  Si el token autenticado pertenece a otro tenant.
+     * @throws NotFoundHttpException Si el tenant no existe o está inactivo (nunca se revela cuál de las dos razones, para no filtrar información).
+     * @throws AccessDeniedHttpException Si el token autenticado pertenece a otro tenant.
      */
     protected function resolveTenant(string $tenantSlug): Tenant
     {

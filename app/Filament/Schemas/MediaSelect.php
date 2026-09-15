@@ -9,12 +9,14 @@ namespace App\Filament\Schemas;
 // archivos del folder de trabajo del usuario. Seguro de borrar en un PR
 // normal fuera de este sandbox.
 
-use Filament\Forms\Components\Select;
+use App\Models\Media;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Utilities\Set;
-use App\Models\Media;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class MediaSelect
 {
@@ -25,12 +27,12 @@ class MediaSelect
             ->options(function () {
                 return Media::all()->mapWithKeys(function ($media) {
                     $url = $media->disk === 'public' ? "/storage/{$media->path}" : "/storage/{$media->path}";
-                    
+
                     $isImage = str_starts_with($media->mime_type, 'image/');
-                    $iconHtml = $isImage 
+                    $iconHtml = $isImage
                         ? "<img src='{$url}' class='w-8 h-8 rounded object-cover' style='max-width: 32px; max-height: 32px; display: inline-block;' onerror=\"this.style.display='none'\" />"
                         : "<div class='w-8 h-8 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 font-bold text-[9px]' style='width: 32px; height: 32px; display: inline-flex;'>DOC</div>";
-                    
+
                     $html = "<div class='flex items-center gap-2 py-0.5'>
                         {$iconHtml}
                         <div class='flex flex-col text-left'>
@@ -38,7 +40,7 @@ class MediaSelect
                             <span class='text-[10px] text-gray-400' style='line-height: 1.1;'>{$media->file_name}</span>
                         </div>
                     </div>";
-                    
+
                     return [$media->id => $html];
                 });
             })
@@ -57,16 +59,17 @@ class MediaSelect
                     ->directory('media')
                     ->visibility('public')
                     ->storeFileNamesIn('file_name')
-                    ->getUploadedFileNameForStorageUsing(function (\Livewire\Features\SupportFileUploads\TemporaryUploadedFile $file) {
-                        $tenantSlug = \Filament\Facades\Filament::getTenant()?->slug ?? 'global';
+                    ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file) {
+                        $tenantSlug = Filament::getTenant()?->slug ?? 'global';
                         $datetime = now()->format('YmdHis');
                         $extension = $file->getClientOriginalExtension();
+
                         return "{$tenantSlug}_media_{$datetime}.{$extension}";
                     })
                     ->afterStateUpdated(function ($state, Set $set) {
                         if ($state) {
                             $file = is_array($state) ? reset($state) : $state;
-                            if ($file instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile) {
+                            if ($file instanceof TemporaryUploadedFile) {
                                 $originalName = $file->getClientOriginalName();
                                 $set('name', pathinfo($originalName, PATHINFO_FILENAME));
                             } elseif (is_string($file)) {
@@ -84,19 +87,19 @@ class MediaSelect
             ])
             ->createOptionUsing(function (array $data) {
                 $filePath = is_array($data['path']) ? reset($data['path']) : $data['path'];
-                
+
                 $diskName = config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public');
                 $disk = \Storage::disk($diskName);
-                
+
                 $size = 0;
                 $mimeType = 'image/jpeg';
                 if ($disk->exists($filePath)) {
                     $size = $disk->size($filePath);
                     $mimeType = $disk->mimeType($filePath);
                 }
-                
+
                 $media = Media::create([
-                    'tenant_id' => \Filament\Facades\Filament::getTenant()?->id,
+                    'tenant_id' => Filament::getTenant()?->id,
                     'name' => $data['name'],
                     'path' => $filePath,
                     'file_name' => $data['file_name'] ?? basename($filePath),
@@ -106,7 +109,7 @@ class MediaSelect
                     'alt_text' => $data['alt_text'] ?? null,
                     'lang_iso' => 'es',
                 ]);
-                
+
                 return $media->id;
             });
     }

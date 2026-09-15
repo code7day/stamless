@@ -14,6 +14,7 @@ use App\Models\FormFieldDefinition;
 use App\Models\Menu;
 use App\Models\MenuItem;
 use App\Models\Page;
+use App\Models\Setting;
 use App\Models\Slider;
 use App\Models\Tenant;
 use Illuminate\Database\Seeder;
@@ -43,13 +44,31 @@ class Cliente0ContentSeeder extends Seeder
 
         $form = $this->upsertContactForm($tenant);
 
+        // Orden 2026-09-07 (antes: `sobre-cica` se creaba 1ro, antes que
+        // `casos-de-exito`): `upsertSobreCicaPage()` ahora clona el bloque
+        // `testimonials` de la home con un link a la página `casos-de-exito`
+        // (`$this->link('Más casos de éxito', 'page', $pages['casos-de-exito']->id, ...)`,
+        // mismo patrón que usa `upsertHomePage()`) — necesita que esa página
+        // ya exista en `$pages` para resolver el id, así que `casos-de-exito`
+        // (y `servicios`, sin dependencias) pasan a crearse ANTES.
         $pages = [
             'contacto' => $this->upsertContactoPage($tenant, $form),
-            'sobre-cica' => $this->upsertSobreCicaPage($tenant),
+            // 2026-09-11 (revert): `servicios` había pasado a depender de
+            // `$pages['contacto']` para un CTA final propio — se detectó
+            // duplicado (ver comentario en `upsertServiciosPage()`, el CTA
+            // ya viene incluido vía el bloque `footer` compartido) y se
+            // sacó; `servicios` vuelve a no tener dependencias, mismo
+            // criterio que `casos-de-exito`.
             'servicios' => $this->upsertServiciosPage($tenant),
             'casos-de-exito' => $this->upsertCasosDeExitoPage($tenant),
         ];
+        $pages['sobre-cica'] = $this->upsertSobreCicaPage($tenant, $pages);
         $pages['footer'] = $this->upsertFooterPage($tenant, $pages);
+        // 2026-09-13, pedido del Tech Lead: footer propio para la página de
+        // Contacto, sin el CTA "¿Listo para transformar tu negocio?" (ver
+        // docblock de `upsertFooterContactoPage()`) — el resto del sitio
+        // sigue usando `footer-principal` (con CTA) tal cual.
+        $pages['footer-contacto'] = $this->upsertFooterContactoPage($tenant);
         $pages['home'] = $this->upsertHomePage($tenant, $pages);
 
         // Bloque `footer` (2026-09-01, pedido del Tech Lead): se agrega al
@@ -60,18 +79,41 @@ class Cliente0ContentSeeder extends Seeder
         // que tenía `BaseLayout.astro` en el frontend, ver ADR
         // correspondiente en DECISIONS.md). Se hace en un segundo paso,
         // fuera de `syncBlocks()` de cada página, porque el Content de
-        // footer recién existe en este punto del seeder.
-        foreach (['contacto', 'sobre-cica', 'servicios', 'casos-de-exito', 'home'] as $slug) {
+        // footer recién existe en este punto del seeder. `contacto` es la
+        // ÚNICA excepción (2026-09-13): usa `footer-contacto` en vez de
+        // `footer-principal` — ver comentario de arriba.
+        foreach (['sobre-cica', 'servicios', 'casos-de-exito', 'home'] as $slug) {
             $this->appendFooterBlock($pages[$slug], $tenant, $pages['footer']->id);
         }
+        $this->appendFooterBlock($pages['contacto'], $tenant, $pages['footer-contacto']->id);
 
         $this->upsertMainMenu($tenant, $pages);
+
+        // 2026-09-13 (pedido del Tech Lead, ver genesis ADR-065): "considerar
+        // en el seeder de contenido inicial como setting general tanto para
+        // el SEO como para el OG" — sin dependencia de ninguna `$pages` de
+        // arriba, puede ir al final sin importar el orden.
+        $this->upsertSeoDefaults($tenant);
     }
 
     /**
-     * Form "Contacto principal" + sus 4 campos (name/email/phone/message),
-     * reutilizando las `FormFieldDefinition` globales sembradas por
-     * `FormFieldDefinitionSeeder` (no se inventan definitions nuevas).
+     * Form "Contacto principal" — reutiliza las `FormFieldDefinition`
+     * globales sembradas por `FormFieldDefinitionSeeder` (no se inventan
+     * definitions nuevas), pero cada `FormField` de ESTE form puede pisar
+     * el `label`/`is_required`/`options` del default global — necesario acá
+     * porque el mockup real de "Contactame" (2026-09-11, pedido del Tech
+     * Lead: "quiero que se genere el formulario basico y que envie al
+     * endpoint correcto") pide labels específicos ("WhatsApp" en vez de
+     * "Teléfono", "Consulta" en vez de "Mensaje") y 2 campos nuevos tipo
+     * `select` con opciones concretas de CICA360 (país, área de interés) —
+     * el catálogo global (`FormFieldDefinitionSeeder`) no tiene opinión
+     * sobre esos valores, son propios de este tenant/form.
+     *
+     * `ContactSubmissionService::splitPayload()` (genesis) arma el `Contact`
+     * a partir de `Form::fields()` — cualquier campo NO listado acá,
+     * aunque el frontend lo mande, se ignora en silencio; agregar un campo
+     * nuevo al form REAL es sumarlo a este array, no tocar el frontend
+     * primero.
      */
     private function upsertContactForm(Tenant $tenant): Form
     {
@@ -90,8 +132,137 @@ class Cliente0ContentSeeder extends Seeder
             ]
         );
 
-        foreach (['name', 'email', 'phone', 'message'] as $sortOrder => $key) {
-            $definition = FormFieldDefinition::where('key', $key)->first();
+        // País (2026-09-11, ampliado el mismo día: "aumentar mas paises del
+        // continente latinoamericano centro-sur"): los 8 originales tenían
+        // bandera real ya sembrada para el catálogo de Servicios
+        // (`sources/flags/` → `public/flags/` en cica360) — este `<select>`
+        // de Contacto es texto plano, SIN ícono de bandera, así que sumar
+        // países acá no depende de tener un asset de bandera nuevo. Se
+        // completa el resto de Sudamérica hispanohablante (Colombia,
+        // Venezuela) + Centroamérica hispanohablante (Panamá, Costa Rica,
+        // Nicaragua, Honduras, El Salvador, Guatemala) — CONTINENTE
+        // deliberadamente acotado a Centro y Sudamérica: sin México
+        // (Norteamérica), sin Caribe (Cuba/Rep. Dominicana/Puerto Rico) ni
+        // Guyana/Surinam/Belice (no hispanohablantes), no pedidos. Sigue
+        // sin ser el listado ISO completo de `CountryEnum` (genesis, otro
+        // dominio, el de Servicios). "Argentina" primero porque así lo
+        // muestra el mockup (valor por default del `<select>`).
+        $countryOptions = [
+            ['value' => 'AR', 'label' => 'Argentina'],
+            ['value' => 'UY', 'label' => 'Uruguay'],
+            ['value' => 'BR', 'label' => 'Brasil'],
+            ['value' => 'BO', 'label' => 'Bolivia'],
+            ['value' => 'CL', 'label' => 'Chile'],
+            ['value' => 'PY', 'label' => 'Paraguay'],
+            ['value' => 'PE', 'label' => 'Perú'],
+            ['value' => 'EC', 'label' => 'Ecuador'],
+            ['value' => 'CO', 'label' => 'Colombia'],
+            ['value' => 'VE', 'label' => 'Venezuela'],
+            ['value' => 'PA', 'label' => 'Panamá'],
+            ['value' => 'CR', 'label' => 'Costa Rica'],
+            ['value' => 'NI', 'label' => 'Nicaragua'],
+            ['value' => 'HN', 'label' => 'Honduras'],
+            ['value' => 'SV', 'label' => 'El Salvador'],
+            ['value' => 'GT', 'label' => 'Guatemala'],
+        ];
+
+        // Área de interés (2026-09-11): los 9 títulos REALES del catálogo
+        // de Servicios (`Cliente0ServicesSeeder`, mismo orden) — copiados a
+        // mano, no una relación en vivo a la tabla `services`: si el
+        // catálogo cambia, esta lista se actualiza acá también (alcance
+        // "formulario básico" pedido explícitamente, sin sincronización
+        // dinámica).
+        $areaOfInterestOptions = [
+            ['value' => 'Seguridad Financiera', 'label' => 'Seguridad Financiera'],
+            ['value' => 'Seguro Financiero', 'label' => 'Seguro Financiero'],
+            ['value' => 'Asesoría y Consultoría Estratégica', 'label' => 'Asesoría y Consultoría Estratégica'],
+            ['value' => 'Asesoría Contable y Financiera', 'label' => 'Asesoría Contable y Financiera'],
+            ['value' => 'Asesoría Editorial Integral', 'label' => 'Asesoría Editorial Integral'],
+            ['value' => 'Turismo y Asesoría Vacacional', 'label' => 'Turismo y Asesoría Vacacional'],
+            ['value' => 'Bienes Raíces e Inversión', 'label' => 'Bienes Raíces e Inversión'],
+            ['value' => 'Asesoramiento Legal Integral', 'label' => 'Asesoramiento Legal Integral'],
+            ['value' => 'Asesoría Notarial', 'label' => 'Asesoría Notarial'],
+        ];
+
+        // Reglas de formato adicionales (2026-09-12, pedido del Tech Lead:
+        // "validar bien los campos que sean coherentes y congruentes al
+        // dato y tipo de dato" — con el detalle exacto de nombre/correo/
+        // ciudad) — van en `FormField::validation_rules` (columna del
+        // esquema desde el inicio del proyecto, sin uso real hasta esta
+        // fecha, ver `ContactSubmissionService::rulesForField()`), NO
+        // hardcodeadas por nombre de campo en el servicio: así el servicio
+        // sigue siendo 100% genérico/dinámico para cualquier form/tenant, y
+        // estas reglas puntuales de CICA360 quedan como DATA acá, igual que
+        // `options` de país/área de interés más arriba.
+        //
+        // `$letterPattern`: "solo debe permitirse letras, un solo espacio
+        // entre cada palabra ni al final, los espacios que desee entre cada
+        // grupo de letras" — `\p{L}` (Unicode) cubre acentos/ñ/ç del
+        // español y portugués sin listar cada letra a mano; el `?:` interno
+        // hace que cada grupo de letras tenga como máximo un espacio antes
+        // (nunca 2 seguidos), y el anchor `^...$` descarta espacio inicial o
+        // final. Mismo pattern para nombre y ciudad — mismo pedido exacto
+        // para ambos ("minimo 3 caracteres y maximo 40").
+        $letterPattern = 'regex:/^\p{L}+(?: \p{L}+)*$/u';
+        $nameRules = ['min:3', 'max:40', $letterPattern];
+        $cityRules = ['min:3', 'max:40', $letterPattern];
+
+        // Email: "no tenga caracteres especiales fuera del standar ...
+        // guion, underline, punto intermedio, al menos un @, y validar que
+        // el dominio sea un standar tld" — se suma ENCIMA de la regla base
+        // `email:rfc,filter` que ya aplica el servicio para cualquier campo
+        // tipo `FormFieldTypeEnum::Email` (esta regex es la capa EXTRA,
+        // específica de este form, que fuerza el TLD final de 2-24 letras).
+        $emailRules = ['regex:/^[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$/'];
+
+        // WhatsApp: 2026-09-12 (2da vuelta) — el frontend ahora arma
+        // `phone` como "+{código de país}{dígitos del número local}" (ej.
+        // "+51987654321", ver `ContactForm.tsx`), y ESE formato ya lo cubre
+        // por completo la regla BASE de `ContactSubmissionService::
+        // rulesForField()` para cualquier campo `FormFieldTypeEnum::Tel`
+        // ("+" opcional + solo dígitos) — no hace falta una
+        // `validation_rules` extra acá, sería una regex duplicada que con
+        // el tiempo podría desincronizarse de la real. Si CICA360 llegara a
+        // necesitar algo MÁS estricto que la regla base (ej. un rango de
+        // longitud propio), ahí sí volvería a tener sentido sumarla acá.
+
+        // Consulta: 2026-09-12 (3ra vuelta) — "esa textarea debe tener una
+        // validacion coherente al tipo de info que recibirá, nada de html,
+        // solo texto, signos de puntuacion o cualquier otro pero solo texto
+        // plano". Allow-list (en vez de una block-list, más segura por
+        // diseño: cualquier caracter NUEVO/raro que aparezca en el futuro
+        // queda afuera por default, no hay que acordarse de agregarlo a una
+        // lista de "prohibidos"): letras Unicode (`\p{L}`, cubre acentos/ñ),
+        // dígitos (`\p{N}`), espacios en blanco (`\s`, incluye saltos de
+        // línea — es un `<textarea>`) y puntuación/símbolos de uso normal
+        // en una consulta en español (`. , ; : ! ? ' " ( ) - _ ¿ ¡ % / @ #
+        // & * + = $ °`). Deliberadamente AFUERA: `< > { } [ ] \ \` ~ ^ |` —
+        // los caracteres típicos de HTML/markup/código, que es justo lo que
+        // se pidió excluir. Es una capa MÁS estricta que `NoHtmlTags` (que
+        // solo bloquea tags bien formados) — acá directamente ningún
+        // caracter fuera de la lista pasa, tag válido o no.
+        $messageRules = ['regex:/^[\p{L}\p{N}\s.,;:!?\'"()\-_¿¡%\/@#&*+=$°]*$/u'];
+
+        // Orden/labels/`required` (2026-09-12, pedido del Tech Lead sobre
+        // el orden de campos del mockup original: "cambiar el orden:
+        // nombre, correo, pais, whatsapp, cuidad, area interes, caja de
+        // consulta" — reemplaza el orden anterior, Ciudad ya NO va 3ra).
+        // `label`/`required`/`validation_rules` acá SIEMPRE pisan el
+        // default de la `FormFieldDefinition` (que sigue siendo genérico,
+        // reusable por cualquier otro form/tenant sin este copy/reglas
+        // puntuales).
+        $fieldsConfig = [
+            ['key' => 'name', 'label' => 'Nombre y Apellido', 'required' => true, 'validation_rules' => $nameRules],
+            ['key' => 'email', 'label' => 'Correo electrónico', 'required' => true, 'validation_rules' => $emailRules],
+            ['key' => 'country', 'label' => 'País', 'required' => true, 'options' => $countryOptions],
+            ['key' => 'phone', 'label' => 'WhatsApp', 'required' => false],
+            ['key' => 'city', 'label' => 'Ciudad', 'required' => true, 'validation_rules' => $cityRules],
+            ['key' => 'area_of_interest', 'label' => 'Área de interés', 'required' => true, 'options' => $areaOfInterestOptions],
+            ['key' => 'message', 'label' => 'Consulta', 'required' => false, 'validation_rules' => $messageRules],
+        ];
+
+        foreach ($fieldsConfig as $sortOrder => $config) {
+            $definition = FormFieldDefinition::where('key', $config['key'])->first();
 
             if (! $definition) {
                 continue;
@@ -101,10 +272,12 @@ class Cliente0ContentSeeder extends Seeder
                 ['form_id' => $form->id, 'name' => $definition->key],
                 [
                     'field_definition_id' => $definition->id,
-                    'label' => $definition->label,
+                    'label' => $config['label'],
                     'type' => $definition->type->value,
-                    'is_required' => $definition->default_required,
+                    'is_required' => $config['required'],
                     'is_encrypted' => $definition->default_encrypted,
+                    'options' => $config['options'] ?? null,
+                    'validation_rules' => $config['validation_rules'] ?? null,
                     'sort_order' => $sortOrder,
                     'is_active' => true,
                 ]
@@ -122,24 +295,83 @@ class Cliente0ContentSeeder extends Seeder
         ]);
 
         $this->syncBlocks($page, $tenant, [
+            // Heading (Sección de Títulos) — 2026-09-06, mismo patrón que
+            // `upsertSobreCicaPage()` (ver ese método para el detalle
+            // completo del degradado/decorador), replicado acá a pedido
+            // del Tech Lead: "generar en seeder el contenido inicial, con
+            // el primer bloque heading para las paginas internas de
+            // servicios, casos de exito, contactos". Sin un PDF de diseño
+            // propio para esta página (a diferencia de `sobre-cica`, que sí
+            // tenía `ABOUT.pdf`), se reutilizan las MISMAS 3 imágenes de
+            // encabezado (`header_desktop/tablet/mobile`, ver
+            // `Cliente0MediaSeeder`) como banner genérico compartido entre
+            // páginas internas.
+            //
+            // Título/subtítulo con voseo rioplatense (2026-09-06, pedido
+            // explícito del Tech Lead: "los titulos o subtitulos del
+            // hearings que sean mas uruguayos que es parecido al lexico
+            // argento", con ejemplo puntual "en contacto que diga
+            // 'Contactame'") — a propósito DISTINTO del título "Contacto"
+            // del ítem de menú (`upsertFooterPage()`/nav principal): acá es
+            // el titular del banner, no la etiqueta de navegación, así que
+            // puede divergir. No se tocó el eslogan compartido
+            // "Conectamos conocimientos, potenciamos decisiones." (usado
+            // en 3 lugares más: Hero, footer, ver `upsertHomePage()`) por
+            // ser una marca/tagline transversal, no copy propio de este
+            // bloque.
             [
-                'type' => BlockTypeEnum::RichText,
-                'title' => 'Hablemos',
-                'content' => ['body' => '<p>Escríbenos y un asesor de CICA360 se pondrá en contacto contigo a la brevedad para conversar sobre seguros, finanzas, asesoría legal o bienes raíces.</p>'],
+                'type' => BlockTypeEnum::Heading,
+                'title' => 'Contactame',
+                'subtitle' => 'Contanos en qué podemos ayudarte',
+                'content' => [
+                    'image_desktop_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-desktop.webp'),
+                    'image_tablet_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-tablet.webp'),
+                    'image_mobile_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-mobile.webp'),
+                ],
                 'properties' => [
-                    'text_align' => 'left',
-                    'content_width' => 'narrow',
-                    'padding_y' => 'sm',
-                    'show_scroll_indicator' => false,
-                    'show_link' => false,
+                    'background_type' => 'image',
+                    'overlay_color' => '#2D2C4D',
+                    'overlay_opacity' => 90,
+                    'decorator_bottom' => 'wave',
+                    // 2026-09-11 (pedido del Tech Lead: "el bloque heading
+                    // tiene el decorator blanco en contactame cuando tiene
+                    // que tener el mismo color del fondo del bloque
+                    // formulario") — el decorador inferior de este banner es
+                    // la "costura" visual hacia la sección de abajo
+                    // (`contact_form`, ver el bloque siguiente en este mismo
+                    // array: `background_color: '#F6F6F6'`), así que su
+                    // color tiene que calzar con ESE fondo, no quedar
+                    // blanco puro (`#ffffff`, el default de
+                    // `Heading.astro::decoratorFill()` cuando no se setea
+                    // explícito) — antes coincidía "por accidente" con el
+                    // default, pero era el valor equivocado para lo que
+                    // sigue debajo.
+                    'decorator_bottom_color' => '#F6F6F6',
+                    'title_alignment' => 'center',
                 ],
             ],
+            // 2026-09-11 (pedido del Tech Lead, con captura del bloque
+            // `rich_text` "Hablemos" tal como se veía renderizado sobre el
+            // formulario): "no necesitamos este bloque, y el formulario no
+            // debe tener nada en el heading" — el `rich_text` introductorio
+            // se elimina por completo (antes vivía acá, entre el banner
+            // `heading` y `contact_form`); el bloque `contact_form` pierde
+            // su `title`/`content.intro` — el mockup real de "Contactame"
+            // (ver PROGRESS.md, misma fecha) va directo del banner al
+            // formulario, sin ningún texto intermedio.
             [
                 'type' => BlockTypeEnum::ContactForm,
-                'title' => 'Envíanos tu consulta',
                 'content' => [
                     'form_id' => $form->id,
-                    'intro' => 'Completá el formulario y te responderemos en menos de 24 horas hábiles.',
+                ],
+                // 2026-09-11 (pedido del Tech Lead, mockup real de
+                // "Contactame"): "la espectativa tambien indica que el
+                // fondo es cicagray-50" — mismo `#F6F6F6` ya usado como
+                // fondo de `services_grid`/`testimonials_grid` (ver
+                // entradas de PROGRESS.md del 2026-09-11).
+                'properties' => [
+                    'background_type' => 'solid',
+                    'background_color' => '#F6F6F6',
                 ],
             ],
         ]);
@@ -147,7 +379,10 @@ class Cliente0ContentSeeder extends Seeder
         return $page;
     }
 
-    private function upsertSobreCicaPage(Tenant $tenant): Page
+    /**
+     * @param  array<string, Page>  $pages  Ya creadas (contacto/servicios/casos-de-exito) — ver orden en `run()`.
+     */
+    private function upsertSobreCicaPage(Tenant $tenant, array $pages): Page
     {
         $page = $this->upsertPage($tenant, 'sobre-cica', 'Sobre CICA360', 'Centro Internacional de Consultoría y Asesoría', [
             'seo_title' => 'Sobre nosotros | CICA360',
@@ -155,33 +390,318 @@ class Cliente0ContentSeeder extends Seeder
         ]);
 
         $this->syncBlocks($page, $tenant, [
+            // Heading (Sección de Títulos) — 2026-09-05, pedido del Tech
+            // Lead con referencia real `docs/UX-UI-design/ABOUT.pdf`
+            // (cica360): franja superior con imagen de fondo (skyline con
+            // silueta, tono violeta), título "Sobre CICA" + subtítulo, y
+            // decorador inferior tipo onda en blanco (mismo criterio visual
+            // que separa el Hero del resto del contenido en la home).
+            // `pretitle` queda vacío a propósito: en el PDF el texto grande
+            // en blanco ES el título, no hay una línea de pretitle propia
+            // arriba (el "Sobre CICA" que se ve en el nav es el link activo
+            // del menú, no parte de este bloque).
+            [
+                'type' => BlockTypeEnum::Heading,
+                'title' => 'Sobre CICA',
+                'subtitle' => 'Conectamos conocimientos, potenciamos decisiones.',
+                'content' => [
+                    'image_desktop_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-desktop.webp'),
+                    'image_tablet_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-tablet.webp'),
+                    'image_mobile_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-mobile.webp'),
+                ],
+                'properties' => [
+                    'background_type' => 'image',
+                    // Overlay degradado (spec de Figma, 2026-09-06): capa
+                    // intermedia entre la imagen de fondo y el texto, color
+                    // sólido del 0% al 35% de la sección (100% de opacidad),
+                    // degradando a transparente hacia el 100% (ver
+                    // `Heading.astro`, `linear-gradient` + `color-mix()`).
+                    // Sin este par de properties el bloque NUNCA pintaba el
+                    // overlay: `overlayOpacity` caía a 0 por default
+                    // (`properties.overlay_opacity ?? 0`) y la condición
+                    // `overlayOpacity > 0 && properties.overlay_color` del
+                    // componente fallaba en silencio — el código del
+                    // degradado estaba bien, pero sin datos sembrados nunca
+                    // se ejecutaba.
+                    //
+                    // `overlay_opacity`: el tramo sólido (0-35%) NO está
+                    // pensado para verse del todo — el propósito es quedar
+                    // oculto detrás del navbar (`Header.astro`,
+                    // `position: fixed`, ~88px de alto en reposo: `pt-7` +
+                    // `data-glass-bar` `h-[60px]`), no atenuado sobre la
+                    // imagen. Un intento anterior (mismo día) bajó esto a
+                    // `40` pensando que el tramo sólido se veía "exagerado"
+                    // — pero esa vuelta tenía el overlay en `inset-0` (a lo
+                    // largo de TODA la sección, cientos de px), muy por
+                    // encima del alto real del navbar, así que gran parte
+                    // del tramo sólido quedaba VISIBLE en vez de oculta. El
+                    // fix real fue del lado de cica360 (`Heading.astro`,
+                    // altura del overlay ajustada contra el navbar y luego
+                    // a `h-[70%]` de la sección) — acá el dato pasó primero
+                    // a `100` (valor literal del spec), y ahora, pedido
+                    // explícito del Tech Lead (captura del panel de
+                    // Filament con el slider en `90`): default inicial
+                    // sembrado en `90`, no `100` — deja un resquicio mínimo
+                    // de transparencia incluso en el tramo "sólido".
+                    'overlay_color' => '#2D2C4D',
+                    'overlay_opacity' => 90,
+                    // Decorador inferior: onda blanca, sólida (sin
+                    // degradado) — mismo valor (`wave`, SINGULAR) que
+                    // consume `DecoratorShapeEnum`/`DecoratorShape` en el
+                    // frontend; ver fix del `Select` de este bloque en
+                    // `PageResource.php` (antes ofrecía `'waves'`, plural,
+                    // que nunca hubiera coincidido).
+                    'decorator_bottom' => 'wave',
+                    'decorator_bottom_color' => '#ffffff',
+                    'title_alignment' => 'center',
+                ],
+            ],
+            // Texto Enriquecido, 2do bloque de la página — 2026-09-06,
+            // reemplaza el placeholder anterior ("Quiénes somos", con
+            // decorador inferior) a pedido del Tech Lead, con captura de
+            // referencia: bloque simple, SIN heading — ni `pretitle` ni
+            // `title` ni `subtitle`, solo el párrafo de `content.body` (por
+            // eso no se setea `title` acá; `RichText.astro` ya renderiza
+            // condicionalmente esos 3 campos, así que omitirlos alcanza,
+            // sin properties nuevas). Tampoco lleva `decorator_top`/
+            // `decorator_bottom` — pedido explícito ("no necesita
+            // decorator"), simplemente no se declaran esas properties (mismo
+            // criterio que el bloque introductorio del Home, ver
+            // `upsertHomePage()` más abajo, que tampoco las declara).
+            // `content_width: boxed` + `padding_y: lg` — mismo par de
+            // valores que ese bloque introductorio del Home (línea ~465,
+            // el `rich_text` que sigue al Hero) para quedar alineado al
+            // mismo ritmo vertical/ancho de columna que ya usan los demás
+            // bloques del sitio, en vez de reinventar un tercer valor
+            // (antes tenía `content_width: narrow` + `padding_y: md`, sin
+            // relación con ningún otro bloque).
+            // Copy: mismo significado/enfoque del texto original que pasó
+            // el Tech Lead, con un giro leve a voseo rioplatense en 2ª
+            // persona ("te ofrecemos", "tus necesidades", "te acompaña",
+            // "asesorarte") — mismo criterio ya aplicado a otros heading de
+            // páginas internas (ver "Contactame" en `upsertContactoPage()`),
+            // sin agregar ni quitar ningún concepto: sigue siendo enfoque
+            // integral/cercano/profesional + red de profesionales +
+            // compromiso/transparencia/visión estratégica, en el mismo
+            // orden. El cierre en `<strong>` reproduce el énfasis en
+            // negrita de la captura de referencia.
             [
                 'type' => BlockTypeEnum::RichText,
-                'title' => 'Quiénes somos',
-                'content' => ['body' => '<p>CICA360 es un centro internacional de consultoría y asesoría que integra seguros, finanzas y temas jurídicos en un mismo lugar, para que profesionales, familias y empresas tomen mejores decisiones sin perder tiempo entre proveedores.</p>'],
+                'content' => ['body' => '<p>En CICA creemos que cada persona, familia, emprendimiento o empresa tiene su propio camino. Por eso te ofrecemos un enfoque integral, cercano y profesional, que entiende tus necesidades específicas y te acompaña con soluciones efectivas. Somos una red de profesionales especializados en distintas áreas, unidos por una misma vocación: <strong>asesorarte con compromiso, transparencia y visión estratégica.</strong></p>'],
                 'properties' => [
                     'text_align' => 'center',
-                    'content_width' => 'narrow',
-                    'padding_y' => 'md',
+                    'content_width' => 'boxed',
+                    'padding_y' => 'lg',
                     'show_scroll_indicator' => false,
-                    // Demostración de decorador inferior — mismo sistema visual
-                    // que Hero/Slide (ver DecoratorShapeEnum).
-                    'decorator_bottom' => 'wave',
-                    'decorator_bottom_color' => '#E8E4ED',
-                    'decorator_bottom_opacity' => 100,
                     'show_link' => false,
                 ],
             ],
+            // Features (Misión/Visión/Valores) — 2026-09-07, reemplaza el
+            // placeholder original (íconos heroicon + copy genérico) por el
+            // contenido real que pasó el Tech Lead ("con esos datos tal
+            // cual preparar el seeder"), con captura de referencia: 3
+            // tarjetas con foto real arriba (`cica360_media_mission/
+            // vision/values.webp`, ya subidas a `storage/app/public/media/`
+            // — ver `Cliente0MediaSeeder`), Misión/Visión en párrafo,
+            // Valores como lista de viñetas. `icon` se deja sin setear en
+            // los 3 — ahora que hay imagen real, el ícono heroicon queda
+            // como respaldo opcional para items SIN foto (no es el caso
+            // acá).
+            //
+            // CORRECCIÓN 2026-09-07: `content_format` (por item) se movió a
+            // `properties.list_style` (por BLOQUE) — ver
+            // `FeatureListStyleEnum` y el docblock del bloque `features` en
+            // `PageResource.php`. Ya no se setea nada por item; Misión/
+            // Visión no traen `items[]` así que no les afecta el formato de
+            // lista/grid, y Valores sí trae `items[]` así que se muestra
+            // según `list_style` abajo.
+            //
+            // CORRECCIÓN 2026-09-07 (2da vuelta, Tech Lead: "en este diseño
+            // no se usa ningun heading, no te diste cuenta?"): se sacó el
+            // `title: 'Misión, visión y valores'` que se había agregado acá
+            // — la captura de referencia (Figma "Desktop - ABOUT-US") iba
+            // directo del párrafo introductorio a las 3 tarjetas, sin ningún
+            // heading de sección entre medio.
+            //
+            // REVERSIÓN DELIBERADA 2026-09-09 (pedido explícito del Tech
+            // Lead, motivo distinto al de la decisión de arriba — no es que
+            // el heading "esté mal", es una necesidad nueva): en tablet/
+            // mobile, `Features.astro` pinea esta sección a
+            // `100vh`/`100dvh` mientras dura el scroll horizontal del
+            // carousel (necesario por cómo funciona el pin de GSAP
+            // ScrollTrigger — ver PROGRESS.md de cica360, 2026-09-09,
+            // "el height:100vh era necesario, no cosmético"); con las
+            // tarjetas centradas verticalmente en una sección de pantalla
+            // completa, sin heading quedaba mucho vacío arriba/abajo del
+            // carousel. Pedido textual: "poner un mejor titulo y subtitulo
+            // un poco largos ahi para disimular un poco... que no sea un
+            // simple relleno si no que sea util y con proposito" —
+            // título/subtítulo con enfoque persuasivo/PNL
+            // (presuposiciones, predicados sensoriales, refuerzo de
+            // estabilidad/confianza), coherente con la identidad de marca
+            // (voseo regional ya establecido en el resto del sitio) y
+            // reforzando los mismos VALORES que las tarjetas de abajo listan
+            // (transparencia, cercanía, compromiso) para que el heading no
+            // se sienta desconectado del contenido que presenta.
+            // CORRECCIÓN 2026-09-09 (2da vuelta, error real en vivo): el
+            // primer intento de este pretitle/título/subtítulo rompió el
+            // seeder — `QueryException`, "value too long for type character
+            // varying(255)" (`subtitle` de `blocks` es `varchar(255)`, el
+            // texto original rondaba los 265 caracteres). Corrección del
+            // Tech Lead, con el error real como evidencia: "muy largo el
+            // titulo, tiene que ser mas corto y no estamos usando
+            // pretitulo" — se saca `pretitle` por completo (consistente con
+            // el resto de este seeder: `testimonials`/`logos` en esta misma
+            // página tampoco usan pretitle, no era una excepción a propósito
+            // acá) y el `title`/`subtitle` bajan de una oración larga a algo
+            // mucho más corto.
+            //
+            // CORRECCIÓN 2026-09-09 (3ra vuelta, mismo día): el subtítulo de
+            // la 2da vuelta (185 caracteres, con dos puntos + enumeración)
+            // ya entraba en la columna, pero el Tech Lead marcó un problema
+            // distinto de estilo: "recuerda que los subtitulos tampoco
+            // deberian ser una descripcion, son subtitulos, largo pero no
+            // muy largos" — un subtítulo es una FRASE, no un párrafo
+            // descriptivo con puntuación interna. Se acortó a una sola
+            // oración de 58 caracteres.
+            //
+            // CORRECCIÓN 2026-09-09 (4ta vuelta, mismo día, con captura en
+            // vivo): "un poco mas de texto en el subtitulo creo que
+            // exageraste" — la vuelta anterior se pasó de corta en la
+            // dirección opuesta. Se sube a 86 caracteres, un punto medio
+            // entre las 2 correcciones previas: una sola oración fluida (NO
+            // una lista con dos puntos, sigue siendo una frase real), un
+            // poco más larga que el resto de los subtítulos de este seeder
+            // pero sin llegar a sonar a descripción/párrafo.
+            // CORRECCIÓN 2026-09-09 (5ta vuelta, mismo día, pedido de layout no
+            // de estilo): "Cambiar titulo y subtitulo para que el titulo no
+            // pase de una linea y el subtitulo no pase de 2 lineas" — en
+            // `Features.astro` (cica360) el heading vive dentro de la
+            // sección pineada a `100vh` en mobile/tablet (ver PROGRESS.md de
+            // cica360, "Features.astro"), así que cuánto texto ocupa
+            // verticalmente importa para el layout, no solo para el estilo.
+            // El título anterior (35 caracteres, "La confianza se construye
+            // de cerca") envolvía a 2 líneas incluso en el breakpoint más
+            // chico; el subtítrulo anterior (86 caracteres) envolvía a 3.
+            // Se acortan ambos manteniendo el mismo enfoque persuasivo/PNL
+            // ya establecido (presuposición, cercanía, confianza, refuerzo
+            // de los mismos valores que listan las tarjetas de abajo —
+            // Cercanía/Transparencia/Compromiso están en `content.items`
+            // "Valores" más abajo en este mismo bloque): título baja a 19
+            // caracteres ("Confianza de cerca", cabe en 1 línea en
+            // cualquier resolución del sitio), subtítulo baja a 51
+            // caracteres ("Cercanía, transparencia y compromiso en cada
+            // paso.", cabe en 2 líneas).
             [
                 'type' => BlockTypeEnum::Features,
-                'title' => 'Misión, visión y valores',
+                'title' => 'Confianza de cerca',
+                'subtitle' => 'Cercanía, transparencia y compromiso en cada paso.',
                 'content' => [
                     'items' => [
-                        ['icon' => 'heroicon-o-flag', 'title' => 'Misión', 'description' => 'Integrar seguros, finanzas y asesoría legal en un servicio único, transparente y cercano.'],
-                        ['icon' => 'heroicon-o-eye', 'title' => 'Visión', 'description' => 'Ser el socio de referencia de profesionales y empresas de la región en la gestión integral de su patrimonio.'],
-                        ['icon' => 'heroicon-o-heart', 'title' => 'Valores', 'description' => 'Transparencia, cercanía y compromiso de largo plazo con cada cliente.'],
+                        [
+                            'image_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_mission.webp'),
+                            'title' => 'Misión',
+                            'description' => 'Brindar asesoría integral, confiable y de calidad, respondiendo con agilidad y empatía a las necesidades reales de nuestros clientes.',
+                        ],
+                        [
+                            'image_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_vision.webp'),
+                            'title' => 'Visión',
+                            'description' => 'Ser referentes en consultoría multidisciplinaria en Latinoamérica, conectando soluciones con personas y organizaciones que buscan crecer.',
+                        ],
+                        [
+                            'image_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_values.webp'),
+                            'title' => 'Valores',
+                            'items' => ['Profesionalismo', 'Empatía', 'Transparencia', 'Compromiso', 'Innovación', 'Cercanía'],
+                        ],
                     ],
                 ],
+                // `feature_style: boxed_shadow` es ya el default de
+                // `PropertiesSchema` (ver `FeatureCardStyleEnum`) — se
+                // sigue seteando EXPLÍCITO acá (mismo criterio que
+                // `background_type` en el resto del seeder) porque es
+                // justamente el estilo que trae el diseño de referencia,
+                // no un valor "de paso". Mismo criterio para `list_style:
+                // list` (ver `FeatureListStyleEnum`) — es el formato que
+                // necesita "Valores" para mostrar sus viñetas.
+                //
+                // FIX 2026-09-07 (reportado por el Tech Lead: "te diste
+                // cuenta que falta el tipo de fondo color?"): `background_type:
+                // solid` estaba seteado pero SIN `background_color` — sin un
+                // color base cargado, `resolveBackgroundStyle()` (cica360,
+                // `src/lib/background.ts`) devuelve `''` y la sección queda
+                // transparente pese a decir "Sólido". Se agrega
+                // `background_color: '#F6F6F6'` (mismo tono off-white que
+                // `text_background_color` de los bloques `rich_text`
+                // "¿Qué hacemos?" del Home, ver más abajo en este archivo) —
+                // da contraste contra las tarjetas blancas de `boxed_shadow`
+                // sin competir con ellas. Valor razonable por consistencia,
+                // pendiente confirmación visual del Tech Lead.
+                'properties' => [
+                    'feature_style' => 'boxed_shadow',
+                    'card_rounded' => true,
+                    'list_style' => 'list',
+                    'background_type' => 'solid',
+                    'background_color' => '#F6F6F6',
+                    'content_width' => 'boxed',
+                    'padding_y' => 'lg',
+                ],
+            ],
+            // Testimonials ("Casos de éxito") + Logos ("Empresas con las que
+            // trabajamos") — 2026-09-07, pedido explícito del Tech Lead con
+            // captura de referencia (Figma "Desktop - ABOUT-US"): "falta los
+            // bloques Testimonios y logos / Socios con todo lo que tienen en
+            // home, practicamente clonarlos antes del footer". El bloque CTA
+            // ("¿Listo para transformar tu negocio?") que se ve al pie en la
+            // captura NO se agrega acá — ya viene incluido automáticamente
+            // vía el bloque `footer` compartido (`appendFooterBlock()`,
+            // referencia a `upsertFooterPage()`, que ya tiene ese CTA desde
+            // 2026-09-01) — agregarlo de nuevo acá lo duplicaría.
+            //
+            // Testimonials: mismo bloque que `upsertHomePage()` (`limit: 5`,
+            // `order: desc`, colores `cicagreen-500`/`400`, link "Más casos
+            // de éxito" → `casos-de-exito`) — la captura muestra el mismo
+            // patrón exacto (3 tarjetas visibles + botón "MÁS CASOS DE
+            // ÉXITO"), así que se clona tal cual en vez de reinventar un 2do
+            // criterio de cuántos mostrar. Requiere `$pages['casos-de-exito']`
+            // ya creada — ver el reordenamiento en `run()`.
+            [
+                'type' => BlockTypeEnum::Testimonials,
+                'title' => 'Casos de éxito',
+                'subtitle' => 'Conectamos conocimientos, potenciamos decisiones.',
+                'content' => ['limit' => 5, 'order' => 'desc'],
+                'properties' => ['background_type' => 'solid', 'background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff', 'show_link' => true],
+                'links' => [
+                    $this->link('Más casos de éxito', 'page', $pages['casos-de-exito']->id, null, 'outline'),
+                ],
+            ],
+            // Logos: mismos 10 items + mismo filtro grayscale/opacidad que
+            // `upsertHomePage()` (mismo carousel, misma data — no hay un 2do
+            // set de logos para esta página). Title/subtitle SÍ cambian: la
+            // captura de referencia de "Sobre CICA" trae su propio subtítulo
+            // ("Soluciones integrales diseñadas para impulsar tu negocio"),
+            // distinto al de la home ("Aseguradoras, estudios jurídicos y
+            // organizaciones que confían en nuestra asesoría") — se respeta
+            // el texto tal cual aparece en cada captura en vez de forzar el
+            // mismo subtítulo en las 2 páginas.
+            [
+                'type' => BlockTypeEnum::Logos,
+                'title' => 'Empresas con las que trabajamos',
+                'subtitle' => 'Soluciones integrales diseñadas para impulsar tu negocio',
+                'content' => [
+                    'items' => [
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_1.png'), 'alt' => 'Empresa asociada 1', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_2.png'), 'alt' => 'Empresa asociada 2', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_3.png'), 'alt' => 'Empresa asociada 3', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_4.png'), 'alt' => 'Empresa asociada 4', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_5.png'), 'alt' => 'Empresa asociada 5', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_6.png'), 'alt' => 'Empresa asociada 6', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_7.png'), 'alt' => 'Empresa asociada 7', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_8.png'), 'alt' => 'Empresa asociada 8', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_9.png'), 'alt' => 'Empresa asociada 9', 'url' => null],
+                        ['media_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_logo_10.png'), 'alt' => 'Empresa asociada 10', 'url' => null],
+                    ],
+                ],
+                'properties' => ['media_filter_grayscale' => 100, 'media_opacity' => 60],
             ],
         ]);
 
@@ -196,34 +716,98 @@ class Cliente0ContentSeeder extends Seeder
         ]);
 
         $this->syncBlocks($page, $tenant, [
+            // Heading (Sección de Títulos) — mismo patrón/motivo que el de
+            // `upsertContactoPage()` (ver ese método para el detalle
+            // completo). Subtítulo con voseo rioplatense (queda tal cual
+            // se pidió). Título: 2da vuelta (mismo día) — el título largo
+            // con voseo ("Descubrí nuestros servicios") caía a 2 líneas en
+            // mobile/375px; el Tech Lead pidió acortar o volver al título
+            // corto del diseño original, conservando SOLO "Contactame"
+            // (`upsertContactoPage()`) como la excepción con tono argento
+            // — acá vuelve a ser "Servicios", igual al que ya recibe
+            // `upsertPage()` más abajo.
             [
-                'type' => BlockTypeEnum::RichText,
-                'title' => 'Qué ofrecemos',
-                'content' => ['body' => '<p>Un equipo multidisciplinario que acompaña a profesionales, familias y empresas en las decisiones que más impactan su futuro.</p>'],
-                'properties' => [
-                    'text_align' => 'center',
-                    'content_width' => 'boxed',
-                    'padding_y' => 'sm',
-                    'show_scroll_indicator' => false,
-                    'show_link' => false,
-                ],
-            ],
-            [
-                'type' => BlockTypeEnum::ServicesGrid,
-                'title' => 'Nuestros servicios',
+                'type' => BlockTypeEnum::Heading,
+                'title' => 'Servicios',
+                'subtitle' => 'Te acompañamos en cada etapa de tu proyecto',
                 'content' => [
-                    'items' => [
-                        ['title' => 'Seguros generales', 'subtitle' => 'Cobertura patrimonial y de responsabilidad civil a medida.'],
-                        ['title' => 'Seguros de vida y salud', 'subtitle' => 'Protección para vos y tu familia ante imprevistos.'],
-                        ['title' => 'Fondos y seguros EE.UU.', 'subtitle' => 'Acceso a productos financieros y de seguro internacionales.'],
-                        ['title' => 'Asesoría comercial', 'subtitle' => 'Estrategia y acompañamiento para negocios en crecimiento.'],
-                        ['title' => 'Asesoría contable y financiera', 'subtitle' => 'Orden financiero y cumplimiento tributario.'],
-                        ['title' => 'Servicios jurídicos', 'subtitle' => 'Asesoría legal preventiva y contractual.'],
-                        ['title' => 'Educación a distancia', 'subtitle' => 'Formación continua para profesionales y equipos.'],
-                        ['title' => 'Bienes raíces', 'subtitle' => 'Inversión y gestión inmobiliaria acompañada.'],
-                    ],
+                    'image_desktop_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-desktop.webp'),
+                    'image_tablet_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-tablet.webp'),
+                    'image_mobile_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-mobile.webp'),
+                ],
+                'properties' => [
+                    'background_type' => 'image',
+                    'overlay_color' => '#2D2C4D',
+                    'overlay_opacity' => 90,
+                    'decorator_bottom' => 'wave',
+                    // 2026-09-11 (pedido del Tech Lead: "cicagray-50 es el
+                    // background del bloque servicio y el mismo del
+                    // decorador en el header"): antes `#ffffff` — pasa a
+                    // `#F6F6F6` (`--color-cicagray-50` en cica360/global.css)
+                    // para que el decorador se funda con el fondo del bloque
+                    // `services_grid` de abajo, en vez de la costura blanca
+                    // contra un fondo gris.
+                    'decorator_bottom_color' => '#F6F6F6',
+                    'title_alignment' => 'center',
                 ],
             ],
+            [
+                // 2026-09-10 (2da vuelta, corrección del Tech Lead: "en el
+                // contenido inicial [la página de] servicio[s] no tiene[n]
+                // el bloque de texto enriquecido"): el mockup real de
+                // "Servicios" no tiene ningún párrafo introductorio entre el
+                // banner y el grid — va directo del Heading al catálogo. Se
+                // saca el bloque `rich_text` ("Qué ofrecemos") que se había
+                // agregado sin base en el diseño de referencia.
+                //
+                // 2026-09-10: ya no trae `content.items` — el catálogo vive
+                // en la tabla `services` (9 registros reales, ver
+                // `Cliente0ServicesSeeder`), resuelto en runtime por
+                // `ResolvesPublicLinks` (mismo patrón que `testimonials`,
+                // ADR-033/ADR-049).
+                //
+                // 2026-09-11 (pedido del Tech Lead: "falta especificar la
+                // cantidad a mostrar de forma dinamica como 9 y el orden
+                // manual del catalogo"): antes `limit: null` (sin tope,
+                // "todos los publicados") — pasa a `limit: 9` como ejemplo
+                // explícito de la configuración admin-editable del bloque
+                // (`content.limit`/`content.order`, ver "Catálogo de
+                // servicios" en `PageResource.php`), en vez de dejarla sin
+                // usar en el contenido semilla. `order: asc` = orden MANUAL,
+                // el `sort_order` curado a mano en `ServiceResource` (no
+                // recencia, a diferencia de `testimonials` — ver ADR-049).
+                //
+                // Sin `title` (2da vuelta, mismo pedido: "el bloque de
+                // servicios [va] pero sin titulo de contenido"): el mockup
+                // no tiene ningún heading propio arriba del grid — el banner
+                // superior ("Servicios") ya cumple ese rol. `BlockHeading`
+                // (cica360) no renderiza nada si pretitle/title/subtitle
+                // están los 3 ausentes, así que basta con no setearlos acá.
+                'type' => BlockTypeEnum::ServicesGrid,
+                'content' => ['limit' => 9, 'order' => 'asc'],
+                // 2026-09-11 (pedido del Tech Lead: "cicagray-50 es el
+                // background del bloque servicio y el mismo del decorador
+                // en el header") — mismo hex que `decorator_bottom_color`
+                // del bloque `heading` de arriba (`#F6F6F6`,
+                // `--color-cicagray-50` en cica360/global.css), para que la
+                // ola del banner se funda con el fondo de este bloque en
+                // vez de cortar contra blanco.
+                'properties' => [
+                    'background_type' => 'solid',
+                    'background_color' => '#F6F6F6',
+                ],
+            ],
+            // 2026-09-11 (revert, bug real reportado con captura: "doble
+            // bloque en el contenido inicial" — 2 banners idénticos "¿Listo
+            // para transformar tu negocio?" apilados): el CTA final NO se
+            // agrega acá — ya viene incluido automáticamente vía el bloque
+            // `footer` compartido (`appendFooterBlock()`, referencia a
+            // `upsertFooterPage()`, que ya tiene ese CTA desde 2026-09-01) —
+            // agregarlo de nuevo acá lo duplicaba, exactamente como en
+            // `upsertHomePage()`/`upsertSobreCicaPage()` (ver comentario
+            // idéntico más abajo en este mismo archivo). Se había agregado
+            // por error en la 1ra vuelta de este cambio, sin recordar este
+            // precedente ya establecido.
         ]);
 
         return $page;
@@ -237,25 +821,83 @@ class Cliente0ContentSeeder extends Seeder
         ]);
 
         $this->syncBlocks($page, $tenant, [
+            // Heading (Sección de Títulos) — mismo patrón/motivo que el de
+            // `upsertContactoPage()` (ver ese método para el detalle
+            // completo). Subtítulo con voseo rioplatense (queda tal cual
+            // se pidió). Título: 2da vuelta (mismo día) — el título largo
+            // con voseo ("Conocé nuestros casos de éxito") caía a 2 líneas
+            // en mobile/375px; el Tech Lead pidió acortar o volver al
+            // título corto del diseño original, conservando SOLO
+            // "Contactame" (`upsertContactoPage()`) como la excepción con
+            // tono argento — acá vuelve a ser "Casos de éxito", igual al
+            // que ya recibe `upsertPage()` más abajo.
             [
-                'type' => BlockTypeEnum::Testimonials,
-                'title' => 'Lo que dicen nuestros clientes',
-                // 2026-08-31: ya no trae `content.items` — los testimonios
-                // de ejemplo (12, ver `Cliente0TestimonialsSeeder`) viven en
-                // la tabla `testimonials`. Este bloque solo define el
-                // filtro: acá se muestran los 4 más recientes, no los 12 —
-                // a diferencia de la home (`upsertHomePage()`, `limit: 3`),
-                // esta página SÍ está dedicada 100% a testimonios, así que
-                // en un paso siguiente podría subirse el límite o sumar
-                // paginación; por ahora se deja en 4 para no saturar de
-                // entrada, mismo criterio "muestra un poco, no el dataset
-                // completo" que ya usaba antes de tener 12 sembrados.
-                'content' => ['limit' => 4, 'order' => 'desc'],
-                // Colores del sistema de diseño CICA360 (2026-08-31, pedido
-                // del Tech Lead): `cicagreen-500`/`cicagreen-400` — ver
-                // `cica360/src/styles/global.css` (`--color-cicagreen-*`),
-                // no un teal ad-hoc como antes (`#2b7c89`).
-                'properties' => ['background_type' => 'solid', 'background_color' => '#206576', 'item_background_color' => '#4D919E', 'text_color' => '#ffffff'],
+                'type' => BlockTypeEnum::Heading,
+                'title' => 'Casos de éxito',
+                'subtitle' => 'Historias reales de quienes ya confiaron en nosotros',
+                'content' => [
+                    'image_desktop_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-desktop.webp'),
+                    'image_tablet_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-tablet.webp'),
+                    'image_mobile_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_header-mobile.webp'),
+                ],
+                'properties' => [
+                    'background_type' => 'image',
+                    'overlay_color' => '#2D2C4D',
+                    'overlay_opacity' => 90,
+                    'decorator_bottom' => 'wave',
+                    // 2026-09-11 (mismo criterio que `upsertServiciosPage()`,
+                    // pedido del Tech Lead: "cicagray-50 es el background
+                    // del bloque servicio y el mismo del decorador en el
+                    // header"): `#ffffff` → `#F6F6F6` para que la ola se
+                    // funda con el fondo del bloque `testimonials_grid` de
+                    // abajo, en vez de cortar contra blanco.
+                    'decorator_bottom_color' => '#F6F6F6',
+                    'title_alignment' => 'center',
+                ],
+            ],
+            [
+                // 2026-09-11, reemplazo completo (pedido del Tech Lead, con
+                // captura de mockup "Casos de éxito" — grid 3×3 real de
+                // tarjetas con avatar/frase/nombre + botón "MÁS CASOS", no
+                // un teaser): "es un bloque de testimonios que creamos a
+                // modo preview o resumen solo para home u otras paginas,
+                // pero este tiene que ser un bloque nuevo especial como el
+                // de servicios, donde va el heading y luego la
+                // configuracion todo igual al de servicios en el admin".
+                // Antes: `BlockTypeEnum::Testimonials` (el bloque teaser,
+                // `limit: 4, order: desc` por recencia, colores
+                // `cicagreen-*` ad-hoc de esta página) — pasa a
+                // `BlockTypeEnum::TestimonialsGrid` (mismo tratamiento
+                // exacto que `services_grid` en `upsertServiciosPage()`,
+                // ver ADR nuevo): `order: asc` (orden manual curado a mano
+                // en `TestimonialResource`, NO recencia), sin `title` (el
+                // mockup no tiene heading propio sobre el grid — el banner
+                // superior ya cumple ese rol, mismo criterio que
+                // `services_grid`), fondo `cicagray-50` (mismo color que el
+                // decorador del banner de arriba).
+                //
+                // `content.limit: 9` (2026-09-11, 2da vuelta — antes
+                // `null`/sin tope): "se necesita dejar la cantidad a
+                // mostrar y orden que este seteado e integrado con el
+                // frontsite" — mismo criterio explícito ya aplicado a
+                // `services_grid` (ver comentario de `upsertServiciosPage()`
+                // más arriba): ejemplificar el campo admin-editable
+                // (`content.limit`, Section "Catálogo de casos de éxito" en
+                // `PageResource.php`) con un valor concreto en vez de dejarlo
+                // sin usar. A diferencia de servicios (9 de 9, sin recorte
+                // real), acá SÍ recorta de verdad: hay 12 testimonios
+                // sembrados (`Cliente0TestimonialsSeeder`), así que 9
+                // demuestra el límite en acción — `TestimonialsGrid.astro`
+                // ya resuelve `content.items[]` (recortado/ordenado server-
+                // side en `ResolvesPublicLinks::transformBlockContent()`,
+                // rama `testimonials_grid`) sin cambios de código, mismo
+                // mecanismo 100% client-side de "Más casos" ya integrado.
+                'type' => BlockTypeEnum::TestimonialsGrid,
+                'content' => ['limit' => 9, 'order' => 'asc'],
+                'properties' => [
+                    'background_type' => 'solid',
+                    'background_color' => '#F6F6F6',
+                ],
             ],
         ]);
 
@@ -517,7 +1159,56 @@ class Cliente0ContentSeeder extends Seeder
                     $this->link('Empezar a planificar', 'page', $pages['contacto']->id),
                 ],
             ],
+            ...$this->footerColophonAndBottomBlocks(),
+        ]);
 
+        return $page;
+    }
+
+    /**
+     * 2026-09-13, pedido del Tech Lead con captura ("tiene que haber un
+     * footer adicional para contactos... en esa sección footer de
+     * contactos solo tenga el colophon y la barra inferior con sus
+     * propiedades, osea lo mismo que el footer principal pero sin el
+     * bloque CTA") — el CTA "¿Listo para transformar tu negocio?" tiene
+     * sentido en el resto del sitio (invita a ir a la página de Contacto),
+     * pero ES redundante en la propia página de Contacto: el visitante ya
+     * está ahí. Reusa `footerColophonAndBottomBlocks()` (idéntico
+     * Colophon/FooterBottom que `footer-principal`, mismo contacto/redes/
+     * copyright — un solo lugar para mantenerlos en sincro) sin el bloque
+     * `cta` inicial.
+     */
+    private function upsertFooterContactoPage(Tenant $tenant): Page
+    {
+        $page = Page::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'lang_iso' => LanguageEnum::Spanish->value, 'slug' => 'footer-contactos'],
+            [
+                'title' => 'Footer Contactos',
+                'is_home' => false,
+                'type' => PageTypeEnum::Footer->value,
+                'status' => PublishStatusEnum::Published->value,
+                'meta' => [],
+                'published_at' => now(),
+            ]
+        );
+
+        $this->syncBlocks($page, $tenant, $this->footerColophonAndBottomBlocks());
+
+        return $page;
+    }
+
+    /**
+     * Colophon + FooterBottom compartidos entre `footer-principal` (con
+     * CTA propio antepuesto) y `footer-contactos` (sin CTA) — extraído acá
+     * el mismo día que se agregó este 2do footer, para que ambos footers
+     * muestren siempre el mismo contacto/redes/copyright sin mantener 2
+     * copias del mismo array que puedan desincronizarse con el tiempo.
+     *
+     * @return list<array{type: BlockTypeEnum, content?: array, properties?: array}>
+     */
+    private function footerColophonAndBottomBlocks(): array
+    {
+        return [
             // COLOPHON (2026-09-02, pedido del Tech Lead, con captura de
             // referencia: 3 columnas — marca/tagline, contacto, redes
             // sociales). Seed con colores SÓLIDOS únicamente ("en el seeder
@@ -628,9 +1319,7 @@ class Cliente0ContentSeeder extends Seeder
                     'text_color' => '#FFFFFF',
                 ],
             ],
-        ]);
-
-        return $page;
+        ];
     }
 
     private function upsertMainMenu(Tenant $tenant, array $pages): void
@@ -768,5 +1457,58 @@ class Cliente0ContentSeeder extends Seeder
             'url' => $url,
             'target' => '_self',
         ];
+    }
+
+    /**
+     * SEO/Open Graph por defecto del tenant (2026-09-13, ver genesis
+     * ADR-065 y `App\Filament\Pages\Preferences`) — pedido explícito del
+     * Tech Lead: "considerar en el seeder de contenido inicial como setting
+     * general tanto para el SEO como para el OG". Sin esto, una página sin
+     * su propio `meta.seo_*`/`meta.og_*` (la gran mayoría del contenido
+     * inicial) cae en una API pública sin ningún `og:image` y con
+     * título/descripción repitiendo en cascada el mismo dato base — visible
+     * en vivo al inspeccionar "Ver código fuente" del sitio. Este método
+     * puebla ese fallback con copy genérico real de CICA360 (no un
+     * placeholder tipo "Lorem ipsum") y las 2 imágenes OG (horizontal
+     * 1200x630 / cuadrada 600x600) que el Tech Lead ya subió a
+     * `storage/app/public/media/` — ver `Cliente0MediaSeeder::FILES`
+     * (`og_horizontal`/`og_square`).
+     *
+     * A diferencia del resto de este seeder (que crea `Page`/`Block`/etc.,
+     * todos con `HasTenant`), `Setting` no auto-completa `tenant_id` en un
+     * contexto de seeder (no hay tenant resuelto en `TenantManager`, eso
+     * solo pasa en un request HTTP real vía `SyncTenantManagerWithFilament`/
+     * `ResolvesTenant`) — se pasa `tenant_id` explícito en el `updateOrCreate`,
+     * mismo patrón que `Media::firstOrCreate()` en `Cliente0MediaSeeder`.
+     * `updateOrCreate` por `['tenant_id', 'key']` (mismo índice único de la
+     * tabla `settings`) hace esto idempotente, igual que el resto del
+     * seeder — no pisa un valor que el Tech Lead ya haya cambiado a mano
+     * desde Preferencias EXCEPTO que welcome de nuevo con el mismo valor
+     * (comportamiento aceptado: es contenido inicial, no un valor protegido).
+     */
+    private function upsertSeoDefaults(Tenant $tenant): void
+    {
+        $values = [
+            'seo.default_title' => 'CICA360 — Seguros, Fondos y Asesoría Integral',
+            'seo.default_keywords' => 'seguros, fondos de inversión, asesoría comercial, asesoría contable, asesoría jurídica, educación a distancia, bienes raíces, CICA360',
+            'seo.default_description' => 'CICA360 es tu aliado integral en seguros, fondos, asesoría comercial, contable y jurídica, educación a distancia y bienes raíces — todo en un solo lugar.',
+            'og.default_title' => 'CICA360 — Tu aliado integral en seguros y asesoría',
+            'og.default_description' => 'Seguros, fondos, asesoría comercial, contable, jurídica, educación a distancia y bienes raíces. Conocé todo lo que CICA360 puede hacer por vos.',
+            'og.default_image_rect_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_og_horizontal.jpg'),
+            'og.default_image_square_id' => Cliente0MediaSeeder::mediaId($tenant, 'cica360_media_og_square.jpg'),
+        ];
+
+        foreach ($values as $key => $value) {
+            // `Cliente0MediaSeeder::mediaId()` devuelve `null` si el archivo
+            // no se sembró (por ejemplo, un checkout sin los assets nuevos
+            // todavía) — se guarda igual como `null` en vez de omitir la
+            // clave, mismo criterio que el resto de este seeder con FKs de
+            // imagen opcionales (`upsertHomePage()`, etc.): la ausencia del
+            // archivo no debe romper el seeder completo.
+            Setting::updateOrCreate(
+                ['tenant_id' => $tenant->id, 'key' => $key],
+                ['value' => $value]
+            );
+        }
     }
 }

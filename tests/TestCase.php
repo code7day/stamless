@@ -15,7 +15,8 @@ abstract class TestCase extends BaseTestCase
     {
         if (str_starts_with($url, '/v1/')) {
             $apiHost = parse_url(config('stamless.urls.api', config('app.url')), PHP_URL_HOST);
-            return 'https://' . $apiHost . $url;
+
+            return 'https://'.$apiHost.$url;
         }
 
         return parent::prepareUrlForRequest($url);

@@ -1,7 +1,7 @@
 # Genesis CMS — Arquitectura
 
 > Documento de referencia de arquitectura. Actualizar cuando cambien decisiones estructurales.
-> Última actualización: 2026-08-20 (auditoría y consolidación del ecosistema de dominios/rutas/seguridad/excepciones — ver §4, ADR-012/016/018/020/023/024/025)
+> Última actualización: 2026-09-13 (**SEO/Open Graph por defecto del tenant — §10.2, ADR-065**: fallback tenant-wide vía `Setting`, expuesto en Preferencias, resolución de imagen OG a URL). Antes, mismo día (**Paleta de marca Stamless — §10.1, ADR-064**: dual-primary Studio ámbar `#D97706` / Platform teal `#0F766E`, wordmark monocromo). Antes, 2026-08-20 (auditoría y consolidación del ecosistema de dominios/rutas/seguridad/excepciones — ver §4, ADR-012/016/018/020/023/024/025)
 
 ---
 
@@ -245,6 +245,47 @@ API REST v1 (implementada — este borrador quedó desactualizado, ver la fuente
 - [ ] Tests de aislamiento (tenant A no ve datos de tenant B)
 - [ ] Rate limiting por tenant en API pública
 - [ ] Secrets y config por entorno (`.env`), nunca en repo
+
+---
+
+## 10.1 Identidad de marca / tokens de color (ver ADR-064)
+
+Paleta oficial de Stamless — no improvisar hex nuevos en Filament/landing sin actualizar esta tabla y ADR-064.
+
+| Token | Hex | Uso |
+|-------|-----|-----|
+| `--sl-primary` | `#D97706` | Studio (panel de cada tenant) — `Filament primary`, botones, acentos |
+| `--sl-primary-hover` | `#B45309` | Studio — hover/active |
+| `--sl-primary-tint` | `#F5A524` | Highlights suaves, focus ring suave (Studio y landing) |
+| `--sl-platform-primary` | `#0F766E` | Platform (super-admin B2B) — `Filament primary`, DISTINTO a propósito del de Studio |
+| `--sl-platform-primary-hover` | `#115E59` | Platform — hover/active |
+| `--sl-ink` | `#171412` | Texto principal (no negro puro) — también la tinta del wordmark/logo, que NUNCA se recolorea con un primary |
+| `--sl-paper` | `#FAF7F2` | Fondos claros / landing |
+| `--sl-muted` | `#8A8175` | Labels, meta |
+| `--sl-dark` | `#1C1917` | Superficies modo oscuro |
+
+Dónde vive cada uno:
+- **Studio** (`App\Providers\Filament\PanelCmsProvider`): `->colors(['primary' => Color::hex('#D97706')])` + favicon/`theme-color` propios.
+- **Platform** (`App\Providers\Filament\PanelPlatformProvider`): `->colors(['primary' => Color::hex('#0F766E')])` + `theme-color` propia — nunca reutiliza el ámbar de Studio.
+- **Landing** (`resources/views/public/home.blade.php`): CSS vars declaradas a mano en `:root` (sin Tailwind, hand-authored) — sin `--sl-platform-primary` ahí, la landing no linkea a Platform todavía.
+- **Favicon/manifest** (`public/favicon/`): `site.webmanifest` es de Studio específicamente (`theme_color`/`background_color` alineados a `#D97706`/`#FAF7F2`); Platform no tiene manifest propio, solo favicon + meta `theme-color` teal.
+
+`Color::hex()` (Filament, vía OKLCH) es runtime puro — cambiar cualquiera de estos NO requiere `npm run build`.
+
+---
+
+## 10.2 SEO/Open Graph: defaults de tenant + fallback en la API (ver ADR-065)
+
+Cada Page/Legal/Service/Post define su propio `meta.seo_*`/`meta.og_*` (tab "SEO / Enlaces" en Studio). Cuando NO lo hace, la API pública completa esos campos con un default a nivel TENANT, editable en **Preferencias** (menú del avatar, `App\Filament\Pages\Preferences`) — mezclado ahí junto a `locale`/`timezone` por decisión explícita de UX (una sola página en el menú del perfil), pese a ser un scope distinto (tenant-wide vs. por-usuario).
+
+Almacenamiento: `Setting`/`setting()` (no una tabla dedicada — 7 escalares por tenant, el caso de uso exacto de `Setting`), claves `seo.default_title` / `seo.default_keywords` / `seo.default_description` / `og.default_title` / `og.default_description` / `og.default_image_rect_id` / `og.default_image_square_id`.
+
+Resolución en la API (`GET /v1/{tenant}/{pages,posts,services}/{slug}`, solo endpoints de detalle — los `index`/summary nunca expusieron `meta`):
+
+1. El controller llama `ResolvesPublicLinks::attachResolvedSeoMeta([$record])` junto a `attachResolvedLinks()`, seteando el atributo transitorio `resolved_meta` (mismo patrón que `resolved_links`/`resolved_content` — nunca pisa `meta` en DB).
+2. Campos de texto (`seo_title`/`seo_keywords`/`seo_description`/`og_title`/`og_description`): fallback campo-por-campo con `blank()` (un valor guardado como `""` también cae al default).
+3. Imágenes (`og_image_rect_id`/`og_image_square_id`): SIEMPRE se resuelven a un objeto Media público (`{uuid, url, alt_text, mime_type}`, vía el `resolveMediaRef()` ya existente) — propia primero, default del tenant si la página no tiene la suya. Nunca se expone el id interno; el campo cambia de nombre en la response (`og_image_rect`/`og_image_square`). Esto cierra un bug preexistente: antes de ADR-065, estos 2 ids salían crudos en `meta` sin resolver, inconsistente con el resto del contrato público (ADR-018).
+4. `PageResource`/`PostResource`/`ServiceResource` leen `resolved_meta ?? meta` (el `?? meta` es defensivo).
 
 ---
 

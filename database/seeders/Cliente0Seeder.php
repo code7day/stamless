@@ -15,6 +15,7 @@ use App\Models\Tenant;
 use App\Models\TenantModule;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Role;
 
 class Cliente0Seeder extends Seeder
 {
@@ -119,30 +120,39 @@ class Cliente0Seeder extends Seeder
                 'email' => self::OWNER_EMAIL,
                 'tenant_id' => $tenant->id,
             ])->save();
-
-            return;
+        } else {
+            $owner = User::create([
+                'name' => 'CICA360 Owner',
+                'email' => self::OWNER_EMAIL,
+                'password' => 'password123',
+                'tenant_id' => $tenant->id,
+                'email_verified_at' => now(),
+            ]);
         }
 
-        User::create([
-            'name' => 'CICA360 Owner',
-            'email' => self::OWNER_EMAIL,
-            'password' => 'password123',
+        setPermissionsTeamId($tenant->id);
+        $adminRole = Role::firstOrCreate([
+            'name' => 'Admin',
+            'guard_name' => 'web',
             'tenant_id' => $tenant->id,
-            'email_verified_at' => now(),
         ]);
+        $owner->assignRole($adminRole);
     }
 
     private function upsertSubscription(Tenant $tenant): void
     {
-        $plan = Plan::where('slug', 'free')->first();
+        $plan = Plan::where('slug', $tenant->plan)->first()
+            ?? Plan::where('slug', 'sponsorship')->first()
+            ?? Plan::where('slug', 'free')->first();
 
         if (! $plan) {
             return;
         }
 
-        Subscription::firstOrCreate(
-            ['tenant_id' => $tenant->id, 'plan_id' => $plan->id],
+        Subscription::updateOrCreate(
+            ['tenant_id' => $tenant->id],
             [
+                'plan_id' => $plan->id,
                 'status' => SubscriptionStatusEnum::Active->value,
                 'billing_cycle' => BillingCycleEnum::Monthly->value,
                 'current_period_start' => now(),

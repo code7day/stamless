@@ -21,7 +21,7 @@ return new class extends Migration
         Schema::table('tenants', function (Blueprint $table) {
             $defaultRaw = DB::connection()->getDriverName() === 'sqlite'
                 ? ''
-                : DB::raw("substr(md5(random()::text), 1, 12)");
+                : DB::raw('substr(md5(random()::text), 1, 12)');
 
             $table->string('short_hash', 12)->default($defaultRaw);
             $table->boolean('is_active')->default(true);

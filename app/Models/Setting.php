@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Observers\SettingObserver;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(['tenant_id', 'uuid', 'key', 'value', 'type', 'description'])]
 class Setting extends Model
@@ -17,6 +18,6 @@ class Setting extends Model
      */
     protected static function booted(): void
     {
-        static::observe(\App\Observers\SettingObserver::class);
+        static::observe(SettingObserver::class);
     }
 }

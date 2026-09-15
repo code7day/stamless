@@ -48,6 +48,38 @@ class FormFieldDefinitionSeeder extends Seeder
             'required' => false,
             'encrypted' => false,
         ],
+        // 2026-09-11 (pedido del Tech Lead, con captura de mockup real del
+        // form de "Contactame": Nombre y Apellido/Correo/Ciudad/WhatsApp/
+        // País/Área de interés/Consulta): 3 campos nuevos, reusables por
+        // cualquier form de cualquier tenant (mismo criterio que el resto
+        // de este catálogo global). `city` es texto libre; `country`/
+        // `area_of_interest` son `select` — este catálogo GLOBAL solo fija
+        // el tipo de campo, sin `options` propias (`FormFieldDefinition`
+        // no las persiste hoy, ver `run()`: nunca se le pasa `options` al
+        // `updateOrCreate`); las opciones concretas (países de CICA360, el
+        // catálogo real de servicios) viven por-`FormField`, específicas de
+        // CADA form — ver `Cliente0ContentSeeder::upsertContactForm()`.
+        [
+            'key' => 'city',
+            'label' => 'Ciudad',
+            'type' => FormFieldTypeEnum::Text,
+            'required' => true,
+            'encrypted' => false,
+        ],
+        [
+            'key' => 'country',
+            'label' => 'País',
+            'type' => FormFieldTypeEnum::Select,
+            'required' => true,
+            'encrypted' => false,
+        ],
+        [
+            'key' => 'area_of_interest',
+            'label' => 'Área de interés',
+            'type' => FormFieldTypeEnum::Select,
+            'required' => true,
+            'encrypted' => false,
+        ],
         [
             'key' => 'message',
             'label' => 'Mensaje',

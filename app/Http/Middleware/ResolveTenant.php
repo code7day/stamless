@@ -2,11 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Tenant;
+use App\Services\TenantManager;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Services\TenantManager;
-use App\Models\Tenant;
 
 class ResolveTenant
 {
@@ -35,7 +35,7 @@ class ResolveTenant
             }
 
             // 2. Resolve by domain/hostname
-            if (!$tenant) {
+            if (! $tenant) {
                 $host = $request->getHost();
                 $tenant = Tenant::whereHas('domains', function ($query) use ($host) {
                     $query->where('domain', $host);

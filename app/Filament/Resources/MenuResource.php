@@ -2,12 +2,16 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\FormatsUsageBadge;
 use App\Filament\Forms\Components\MenuTreeBuilder;
 use App\Filament\Resources\MenuResource\Pages;
 use App\Models\Menu;
 use App\Models\MenuItem;
+use App\Models\Tenant;
 use Filament\Actions;
+use Filament\Facades\Filament;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Group;
@@ -18,11 +22,14 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MenuResource extends Resource
 {
+    use FormatsUsageBadge;
+
     protected static ?string $model = Menu::class;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-bars-3';
@@ -41,6 +48,154 @@ class MenuResource extends Resource
      * reciben del `$data` completo del form.
      */
     private const array MENU_FIELDS = ['name', 'slug', 'lang_iso'];
+
+    /**
+     * Límite de items de menú por plan (2026-09-11, pedido del Tech Lead:
+     * "para free con 7 items de menu y para auspicio con 12 items") — a
+     * diferencia de todos los demás recursos con límite (Page/Post/Service/
+     * Testimonial/Slider/Media, un `->disabled()` en el botón "Crear" que
+     * compara contra un `count()` YA guardado en DB), acá no hay un botón
+     * "Crear item" individual: `itemsTree` es un árbol completo que se
+     * edita en el navegador y se sincroniza TODO junto recién al guardar el
+     * `Menu` (ver `syncMenuTree()`). Por eso el gate va en `->before()` de
+     * las acciones Crear/Editar del `Menu`, contra el `itemsTree` que
+     * llega en `$data` — no se puede deshabilitar un botón por adelantado
+     * porque el conteo final depende de lo que el usuario arme en el
+     * editor antes de guardar.
+     *
+     * Cuenta el array COMPLETO (todos los niveles de profundidad, no solo
+     * la raíz) — "items de menú" en el pedido del Tech Lead no distingue
+     * por nivel, y `itemsTree` ya es un array plano con un `depth` por
+     * ítem, así que `count()` sobre él es literalmente el total de items
+     * del menú sin importar si son de nivel 1, 2 o 3.
+     *
+     * @param  array<int, array<string, mixed>>  $itemsTree
+     */
+    private static function exceedsMenuItemLimit(array $itemsTree): bool
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return false;
+        }
+
+        $limit = $tenant->maxMenuItems();
+
+        if ($limit === null) {
+            return false;
+        }
+
+        return count($itemsTree) > $limit;
+    }
+
+    private static function menuItemLimitMessage(): string
+    {
+        $tenant = Filament::getTenant();
+        $limit = $tenant instanceof Tenant ? $tenant->maxMenuItems() : null;
+
+        return "El plan actual permite hasta {$limit} items de menú en total (todos los niveles). Quita algunos antes de guardar.";
+    }
+
+    /**
+     * Límite de CANTIDAD de menús (2026-09-13, ver `Tenant::maxMenus()`) —
+     * distinto de `exceedsMenuItemLimit()` de arriba, que limita items
+     * DENTRO de cada menú. Mismo patrón que `isPostLimitReached()`/etc. del
+     * resto de resources simples.
+     */
+    public static function isMenuLimitReached(): bool
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return false;
+        }
+
+        $limit = $tenant->maxMenus();
+
+        if ($limit === null) {
+            return false;
+        }
+
+        return Menu::where('tenant_id', $tenant->id)->count() >= $limit;
+    }
+
+    public static function menuLimitMessage(): string
+    {
+        $tenant = Filament::getTenant();
+        $limit = $tenant instanceof Tenant ? $tenant->maxMenus() : null;
+
+        return "El plan actual permite hasta {$limit} menús. Para crear uno nuevo, eliminar primero alguno existente.";
+    }
+
+    /**
+     * 2026-09-13, pedido del Tech Lead: badge "usado/límite" en la opción
+     * de menú del sidebar (ver `FormatsUsageBadge` y `Tenant::maxMenus()`).
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::formatUsageBadge(Menu::where('tenant_id', $tenant->id)->count(), $tenant->maxMenus());
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::usageBadgeColor(Menu::where('tenant_id', $tenant->id)->count(), $tenant->maxMenus());
+    }
+
+    /**
+     * 2026-09-13 (ADR-061 addendum): mismo helper que Page/Post/Service/
+     * Slider para generar un slug único al duplicar, scopeado por
+     * `lang_iso`.
+     */
+    private static function duplicateSlug(Menu $record): string
+    {
+        $base = $record->slug.'-copia';
+        $candidate = $base;
+        $suffix = 2;
+
+        while (Menu::where('tenant_id', $record->tenant_id)->where('slug', $candidate)->where('lang_iso', $record->lang_iso)->exists()) {
+            $candidate = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Clona recursivamente el árbol de `MenuItem`s (hasta 3 niveles vía
+     * `parent_id`, ver `MENU_FIELDS`/`syncMenuTree()`) hacia el `Menu`
+     * duplicado. Se recorre nivel por nivel para poder reasignar
+     * `parent_id` de cada hijo al ID YA GUARDADO de su padre recién
+     * clonado — no alcanza con `replicate()` simple porque los hijos
+     * necesitan apuntar a las copias nuevas, no a los items originales.
+     *
+     * @param  Collection<int, MenuItem>  $items
+     */
+    private static function duplicateMenuItemsRecursive($items, ?int $newParentId, int $newMenuId): void
+    {
+        foreach ($items as $item) {
+            $newItem = $item->replicate(['uuid']);
+            $newItem->tenant_id = $item->tenant_id;
+            $newItem->menu_id = $newMenuId;
+            $newItem->parent_id = $newParentId;
+            $newItem->save();
+
+            if ($item->children->isNotEmpty()) {
+                self::duplicateMenuItemsRecursive($item->children, $newItem->id, $newMenuId);
+            }
+        }
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -61,7 +216,12 @@ class MenuResource extends Resource
                                     ->label('Slug')
                                     ->required()
                                     ->maxLength(255)
-                                    ->unique(ignoreRecord: true),
+                                    ->scopedUnique(
+                                        model: Menu::class,
+                                        column: 'slug',
+                                        ignoreRecord: true,
+                                        modifyQueryUsing: fn ($query) => $query->where('tenant_id', Filament::getTenant()?->id ?? auth()->user()?->tenant_id),
+                                    ),
 
                                 Forms\Components\Hidden::make('lang_iso')
                                     ->default('es'),
@@ -124,23 +284,84 @@ class MenuResource extends Resource
 
             ])
             ->actions([
-                Actions\EditAction::make()
-                    ->slideOver()
-                    // 2026-09-02 — `itemsTree` no es una columna real de
-                    // `Menu` ni una relación nativa de Filament (ver
-                    // `form()` arriba), así que el guardado default de
-                    // `EditAction` ($record->update($data) con TODO
-                    // `$data`, incluido `itemsTree`) no sirve: `Menu`
-                    // ignora esa key silenciosamente por no estar en su
-                    // `#[Fillable]`, y los items nunca se sincronizan.
-                    // `->using()` reemplaza el proceso default por
-                    // completo: actualiza solo los campos propios de
-                    // `Menu` y sincroniza el árbol aparte.
-                    ->using(function (array $data, Menu $record): void {
-                        $record->update(Arr::only($data, self::MENU_FIELDS));
-                        static::syncMenuTree($record, $data['itemsTree'] ?? []);
-                    }),
-                Actions\DeleteAction::make(),
+                // 2026-09-13 (ADR-059, addendum): "los listados de cada
+                // apartado o modulo, agrupar las acciones" — mismo patrón
+                // aplicado en `ApiTokens::table()`: acciones de fila
+                // agrupadas en un menú desplegable en vez de enlaces
+                // sueltos.
+                Actions\ActionGroup::make([
+                    Actions\EditAction::make()
+                        ->slideOver()
+                        // 2026-09-02 — `itemsTree` no es una columna real de
+                        // `Menu` ni una relación nativa de Filament (ver
+                        // `form()` arriba), así que el guardado default de
+                        // `EditAction` ($record->update($data) con TODO
+                        // `$data`, incluido `itemsTree`) no sirve: `Menu`
+                        // ignora esa key silenciosamente por no estar en su
+                        // `#[Fillable]`, y los items nunca se sincronizan.
+                        // `->using()` reemplaza el proceso default por
+                        // completo: actualiza solo los campos propios de
+                        // `Menu` y sincroniza el árbol aparte.
+                        ->before(function (array $data, Actions\EditAction $action) {
+                            if (! self::exceedsMenuItemLimit($data['itemsTree'] ?? [])) {
+                                return;
+                            }
+
+                            Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::menuItemLimitMessage())->send();
+                            $action->halt();
+                        })
+                        ->using(function (array $data, Menu $record): void {
+                            $record->update(Arr::only($data, self::MENU_FIELDS));
+                            static::syncMenuTree($record, $data['itemsTree'] ?? []);
+                        }),
+
+                    // Duplicar (2026-09-13, ADR-061 addendum): clona el Menú
+                    // (nuevo uuid + slug único) y TODO su árbol de items
+                    // (recursivo hasta 3 niveles, ver
+                    // `duplicateMenuItemsRecursive()`). Gateado por
+                    // `isMenuLimitReached()` (agregado el mismo día,
+                    // `Tenant::maxMenus()`) — duplicar cuenta como crear un
+                    // menú nuevo, no debe esquivar el tope de cantidad. El
+                    // límite de items DENTRO del menú (`maxMenuItems()`) no
+                    // aplica acá: duplicar conserva la misma cantidad de
+                    // items que ya tenía el original, que por construcción
+                    // ya pasó ese límite al guardarse.
+                    Actions\ReplicateAction::make()
+                        ->label('Duplicar')
+                        // 2026-09-13 (ADR-061, addendum UX): modal propio en
+                        // vez del genérico "Replicar :label" de Filament.
+                        ->modalHeading(fn (Menu $record): string => "¿Duplicar el menú \"{$record->name}\"?")
+                        ->modalDescription('Se creará una copia con todos sus elementos (incluidos submenús), lista para editar de forma independiente.')
+                        ->modalSubmitActionLabel('Sí, duplicar')
+                        ->modalFooterActionsAlignment('center')
+                        ->excludeAttributes(['uuid', 'slug'])
+                        ->beforeReplicaSaved(function (Menu $record, Menu $replica): void {
+                            $replica->name = "{$record->name} (copia)";
+                            $replica->slug = self::duplicateSlug($record);
+                        })
+                        ->after(function (Menu $record, Actions\ReplicateAction $action): void {
+                            $replica = $action->getReplica();
+
+                            self::duplicateMenuItemsRecursive(
+                                $record->rootItems()->with('children.children')->get(),
+                                null,
+                                $replica->id,
+                            );
+                        })
+                        ->disabled(fn (): bool => self::isMenuLimitReached())
+                        ->tooltip(fn (): ?string => self::isMenuLimitReached() ? self::menuLimitMessage() : null)
+                        ->before(function (Actions\ReplicateAction $action) {
+                            if (! self::isMenuLimitReached()) {
+                                return;
+                            }
+
+                            Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::menuLimitMessage())->send();
+                            $action->halt();
+                        })
+                        ->successNotificationTitle('Menú duplicado'),
+
+                    Actions\DeleteAction::make(),
+                ]),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
@@ -166,6 +387,29 @@ class MenuResource extends Resource
     {
         return Actions\CreateAction::make()
             ->slideOver()
+            // 2026-09-13: límite de CANTIDAD de menús (`isMenuLimitReached()`)
+            // — a diferencia del límite de items de abajo, este ya se sabe
+            // ANTES de abrir el form (no depende de `itemsTree`), así que
+            // sigue el mismo patrón `disabled()`/`tooltip()` que el resto de
+            // recursos con límite (avisa antes de que el usuario pierda
+            // tiempo llenando el modal).
+            ->disabled(fn (): bool => self::isMenuLimitReached())
+            ->tooltip(fn (): ?string => self::isMenuLimitReached() ? self::menuLimitMessage() : null)
+            ->before(function (array $data, Actions\CreateAction $action) {
+                if (self::isMenuLimitReached()) {
+                    Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::menuLimitMessage())->send();
+                    $action->halt();
+
+                    return;
+                }
+
+                if (! self::exceedsMenuItemLimit($data['itemsTree'] ?? [])) {
+                    return;
+                }
+
+                Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::menuItemLimitMessage())->send();
+                $action->halt();
+            })
             ->using(function (array $data): Menu {
                 $menu = Menu::create(Arr::only($data, self::MENU_FIELDS));
                 static::syncMenuTree($menu, $data['itemsTree'] ?? []);
@@ -257,6 +501,7 @@ class MenuResource extends Resource
                 $sortOrder = $sortCounters[$sortKey] ??= 0;
 
                 $attributes = [
+                    'tenant_id' => $menu->tenant_id,
                     'menu_id' => $menu->id,
                     'parent_id' => $parentId,
                     'lang_iso' => $menu->lang_iso,

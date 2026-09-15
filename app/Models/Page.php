@@ -5,8 +5,10 @@ namespace App\Models;
 use App\Enums\LanguageEnum;
 use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
+use App\Services\TenantManager;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
+use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -36,6 +38,83 @@ class Page extends Model
     // papelera (filtro, restaurar, borrado permanente, vaciar papelera)
     // vive en `PageResource`.
     use SoftDeletes;
+
+    /**
+     * Invariante "solo 1 página Home por tenant a la vez" (2026-09-13, bug
+     * reportado por el Tech Lead: al EDITAR una página y prender el toggle
+     * `is_home` desde el form, la página que antes era Home se quedaba
+     * también marcada, resultando en 2 páginas con `is_home=true` — el
+     * form (`HeadingFieldset::make(hasIsHome: true)`) solo seteaba el valor
+     * en el registro que se estaba guardando, sin desactivar las demás; esa
+     * lógica vivía SOLO en el ícono clickeable de la columna "Inicio" de
+     * `PageResource::table()`, un segundo camino de guardado que la
+     * duplicaba a mano y que quedó desincronizado del form. Centralizado
+     * acá como hook de modelo para que valga sin importar el camino de
+     * guardado (form de editar/crear, ícono de tabla, factories, API a
+     * futuro, etc.) — un solo lugar de verdad en vez de 2 implementaciones
+     * que pueden divergir. Scope por `tenant_id` únicamente (no por
+     * `lang_iso`): "Home" es un concepto a nivel de sitio, no por idioma.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Page $page): void {
+            if (! $page->is_home) {
+                return;
+            }
+
+            $tenantId = $page->tenant_id ?? app(TenantManager::class)->getTenantId() ?? Filament::getTenant()?->id;
+
+            if (! $tenantId) {
+                return;
+            }
+
+            static::where('tenant_id', $tenantId)
+                ->when($page->exists, fn (Builder $query) => $query->where('id', '!=', $page->id))
+                ->where('is_home', true)
+                ->update(['is_home' => false]);
+        });
+
+        static::restoring(function (Page $page): void {
+            $tenantId = $page->tenant_id ?? app(TenantManager::class)->getTenantId() ?? Filament::getTenant()?->id;
+            $langIso = $page->lang_iso ?? 'es';
+
+            $slugCollisionExists = static::query()
+                ->where('tenant_id', $tenantId)
+                ->where('lang_iso', $langIso)
+                ->where('slug', $page->slug)
+                ->where('id', '!=', $page->id)
+                ->exists();
+
+            if ($slugCollisionExists) {
+                $page->slug = static::generateUniqueRestoredSlug($page);
+            }
+        });
+    }
+
+    /**
+     * Genera un slug único para una página que está siendo restaurada de la papelera
+     * si su slug original colisiona con un registro activo del mismo tenant.
+     */
+    public static function generateUniqueRestoredSlug(Page $page): string
+    {
+        $tenantId = $page->tenant_id ?? app(TenantManager::class)->getTenantId() ?? Filament::getTenant()?->id;
+        $langIso = $page->lang_iso ?? 'es';
+        $base = $page->slug.'-restaurado';
+        $candidate = $base;
+        $suffix = 2;
+
+        while (static::query()
+            ->where('tenant_id', $tenantId)
+            ->where('lang_iso', $langIso)
+            ->where('slug', $candidate)
+            ->where('id', '!=', $page->id)
+            ->exists()) {
+            $candidate = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $candidate;
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -122,11 +201,13 @@ class Page extends Model
 
     /**
      * Páginas elegibles como DESTINO de un link/navegación (menús, CTAs,
-     * bloques con "Destino: Página", etc.) — excluye `Header`/`Footer`:
-     * son partials compartidos sin URL pública propia (no se navega
-     * "a" un footer), confirmado en vivo por el Tech Lead con una
-     * captura real de "Footer principal" apareciendo como opción en
-     * "Página de destino" de un ítem de menú.
+     * bloques con "Destino: Página", etc.) — excluye `Footer`: es un
+     * partial compartido sin URL pública propia (no se navega "a" un
+     * footer), confirmado en vivo por el Tech Lead con una captura real
+     * de "Footer principal" apareciendo como opción en "Página de
+     * destino" de un ítem de menú. `Header` tenía el mismo tratamiento
+     * hasta que se descartó por completo como tipo de contenido
+     * (2026-09-11, ver ADR-053 — nunca tuvo un mecanismo real de consumo).
      *
      * 2026-09-02 — scope centralizado (no un filtro puntual por call
      * site) para que TODO selector de "página de destino" del proyecto
@@ -140,9 +221,6 @@ class Page extends Model
      */
     public function scopePubliclyLinkable(Builder $query): Builder
     {
-        return $query->whereNotIn('type', [
-            PageTypeEnum::Header->value,
-            PageTypeEnum::Footer->value,
-        ]);
+        return $query->where('type', '!=', PageTypeEnum::Footer->value);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Enums\ApiTokenPlatformEnum;
 use App\Enums\LanguageEnum;
 use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
@@ -120,6 +121,45 @@ class ApiAuthTest extends TestCase
         $response->assertJsonPath('errors.code', 'forbidden');
     }
 
+    /**
+     * 2026-09-12, pregunta del Tech Lead: "también debería validarse por
+     * tenant, si no imagínate que otro se conecte a tenant diferente" —
+     * este test combina ambos mecanismos para confirmar que uno no
+     * debilita al otro: un token REAL de `tenant-b`, con `platform=web` y
+     * un `allowed_origin` que matchea perfecto (pasaría
+     * `ValidateTokenOrigin` sin problema), sigue rechazado con 403 al
+     * pedir contenido de `tenant-a` — `ResolvesTenant::resolveTenant()`
+     * corre después, dentro del controller, y no le importa en absoluto
+     * qué origen declaró el request.
+     */
+    public function test_a_web_token_with_a_matching_origin_is_still_forbidden_for_a_different_tenant(): void
+    {
+        config(['stamless.security.strict_origin_check' => true]);
+
+        $tenantA = $this->makeTenantWithHomePage('tenant-a');
+        $tenantB = Tenant::create(['name' => 'Tenant B', 'slug' => 'tenant-b', 'is_active' => true]);
+
+        $userB = User::create([
+            'name' => 'Owner B',
+            'email' => 'owner@tenant-b.test',
+            'password' => 'password',
+            'tenant_id' => $tenantB->id,
+        ]);
+
+        $newToken = $userB->createToken('test-token', ['content:read']);
+        $newToken->accessToken->forceFill([
+            'platform' => ApiTokenPlatformEnum::Web->value,
+            'allowed_origin' => 'sitio-de-tenant-b.com',
+        ])->save();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$newToken->plainTextToken)
+            ->withHeader('Origin', 'https://sitio-de-tenant-b.com')
+            ->getJson('/v1/tenant-a/pages/home');
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('errors.code', 'forbidden');
+    }
+
     public function test_token_without_the_required_ability_is_forbidden(): void
     {
         $tenant = $this->makeTenantWithHomePage('tenant-a');
@@ -176,5 +216,49 @@ class ApiAuthTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$plainTextToken)
             ->getJson('/v1/tenant-a/pages/home')
             ->assertStatus(401);
+    }
+
+    /**
+     * 2026-09-12 (ADR-059): `App\Http\Middleware\ValidateTokenOrigin` corre
+     * en el grupo padre de `routes/api.php`, DESPUÉS de `auth:sanctum` —
+     * cubre TODAS las rutas `v1/{tenant_slug}` por igual, no solo
+     * `forms/submit` ("es importante a nivel de refer se pueda validar
+     * internamente como api", pedido del Tech Lead). Se confirma acá con
+     * un endpoint de `content:read` (`pages/{slug}`), usando un token real
+     * persistido (`Sanctum::actingAs()` de los tests de arriba no sirve
+     * para esto — ver comentario en `FormSubmissionApiTest::
+     * createRealToken()`).
+     */
+    public function test_content_read_endpoint_is_also_protected_by_token_origin_validation(): void
+    {
+        config(['stamless.security.strict_origin_check' => true]);
+
+        $tenant = $this->makeTenantWithHomePage('tenant-a');
+
+        $user = User::create([
+            'name' => 'Owner',
+            'email' => 'owner@tenant-a.test',
+            'password' => 'password',
+            'tenant_id' => $tenant->id,
+        ]);
+
+        $newToken = $user->createToken('test-token', ['content:read']);
+        $newToken->accessToken->forceFill([
+            'platform' => ApiTokenPlatformEnum::Web->value,
+            'allowed_origin' => 'cica360.com',
+        ])->save();
+
+        $mismatched = $this->withHeader('Authorization', 'Bearer '.$newToken->plainTextToken)
+            ->withHeader('Origin', 'https://un-sitio-distinto.com')
+            ->getJson('/v1/tenant-a/pages/home');
+
+        $mismatched->assertStatus(403);
+        $mismatched->assertJsonPath('errors.code', 'origin_not_allowed');
+
+        $matched = $this->withHeader('Authorization', 'Bearer '.$newToken->plainTextToken)
+            ->withHeader('Origin', 'https://cica360.com')
+            ->getJson('/v1/tenant-a/pages/home');
+
+        $matched->assertOk();
     }
 }

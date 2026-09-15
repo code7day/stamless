@@ -1,6 +1,8 @@
 <?php
 
 use App\Exceptions\Api\MissingRequiredFieldsException;
+use App\Http\Middleware\ResolveTenant;
+use App\Http\Middleware\ValidateTokenOrigin;
 use App\Support\Api\ErrorEnvelope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -11,6 +13,8 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -23,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->append(\App\Http\Middleware\ResolveTenant::class);
+        $middleware->append(ResolveTenant::class);
 
         // Rate limit básico para la API pública (ver RateLimiter::for('api', ...) en AppServiceProvider).
         $middleware->throttleApi();
@@ -32,8 +36,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // (Laravel 11+): hay que declararlos a mano para poder usar
         // `abilities:content:read` / `ability:...` en routes/api.php.
         $middleware->alias([
-            'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
-            'ability' => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
+            'abilities' => CheckAbilities::class,
+            'ability' => CheckForAnyAbility::class,
+
+            // ADR-059: protección de origen por TOKEN (platform web/app),
+            // no por tenant. Registrado acá por el mismo motivo que los dos
+            // de arriba — sin Http/Kernel.php no hay auto-discovery de
+            // alias.
+            'validate-origin' => ValidateTokenOrigin::class,
         ]);
 
         // Bug real detectado: `Illuminate\Foundation\Configuration\

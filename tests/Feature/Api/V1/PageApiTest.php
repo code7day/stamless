@@ -10,6 +10,7 @@ use App\Enums\PublishStatusEnum;
 use App\Models\Block;
 use App\Models\Media;
 use App\Models\Page;
+use App\Models\Service;
 use App\Models\Slider;
 use App\Models\Tenant;
 use App\Models\User;
@@ -256,16 +257,15 @@ class PageApiTest extends TestCase
 
     /**
      * Cierra el gap señalado en ADR-018: los ids anidados dentro de
-     * `content.items[]` (services_grid, en este caso `image_id` y
-     * `page_id`) también se resuelven a datos públicos, no solo los
+     * `content.items[]` (features, en este caso `image_id`) también se
+     * resuelven a datos públicos (objeto Media), no solo los
      * `links[]`/`hero.slider_id` de nivel bloque.
      */
-    public function test_page_response_resolves_nested_media_and_page_ids_inside_block_items(): void
+    public function test_page_response_resolves_nested_media_inside_block_items(): void
     {
         $tenant = $this->makeTenant('tenant-a');
         $this->actingAsTenant($tenant);
 
-        $servicios = $this->makePage($tenant, ['slug' => 'servicios', 'title' => 'Servicios']);
         $home = $this->makePage($tenant, ['slug' => 'home', 'title' => 'Home', 'is_home' => true]);
 
         $media = Media::create([
@@ -282,17 +282,14 @@ class PageApiTest extends TestCase
         Block::create([
             'tenant_id' => $tenant->id,
             'page_id' => $home->id,
-            'type' => BlockTypeEnum::ServicesGrid,
-            'title' => 'Servicios',
+            'type' => BlockTypeEnum::Features,
+            'title' => 'Características',
             'content' => [
                 'items' => [
                     [
-                        'title' => 'Seguros generales',
-                        'subtitle' => 'Cobertura a medida.',
+                        'title' => 'Cercanía',
+                        'subtitle' => 'Atención personalizada.',
                         'image_id' => $media->id,
-                        'page_id' => $servicios->id,
-                        'url' => null,
-                        'badge' => null,
                     ],
                 ],
             ],
@@ -302,11 +299,64 @@ class PageApiTest extends TestCase
         $response = $this->getJson('/v1/tenant-a/pages/home');
 
         $response->assertOk();
-        $response->assertJsonPath('data.blocks.0.content.items.0.page_slug', 'servicios');
-        $response->assertJsonPath('data.blocks.0.content.items.0.href', '/servicios');
         $response->assertJsonPath('data.blocks.0.content.items.0.image.uuid', $media->uuid);
         $response->assertJsonPath('data.blocks.0.content.items.0.image.alt_text', 'Icono de seguros');
-        $response->assertJsonMissingPath('data.blocks.0.content.items.0.page_id');
         $response->assertJsonMissingPath('data.blocks.0.content.items.0.image_id');
+    }
+
+    /**
+     * ADR-049: `services_grid` se resuelve en runtime contra la tabla
+     * `services` (mismo patrón que `testimonials`, ADR-033), ordenado por
+     * `sort_order` con links `/servicios/{slug}` ya generados.
+     */
+    public function test_page_response_resolves_services_grid_from_services_table(): void
+    {
+        $tenant = $this->makeTenant('tenant-a');
+        $this->actingAsTenant($tenant);
+
+        $home = $this->makePage($tenant, ['slug' => 'home', 'title' => 'Home', 'is_home' => true]);
+
+        $media = Media::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'icono-seguros',
+            'file_name' => 'icono-seguros.png',
+            'mime_type' => 'image/png',
+            'path' => 'icono-seguros.png',
+            'disk' => MediaDiskEnum::Public,
+            'size' => 1024,
+            'alt_text' => 'Icono de seguros',
+        ]);
+
+        Service::create([
+            'tenant_id' => $tenant->id,
+            'title' => 'Seguros generales',
+            'subtitle' => 'Cobertura a medida.',
+            'slug' => 'seguros-generales',
+            'status' => PublishStatusEnum::Published,
+            'image_id' => $media->id,
+            'sort_order' => 0,
+        ]);
+
+        Block::create([
+            'tenant_id' => $tenant->id,
+            'page_id' => $home->id,
+            'type' => BlockTypeEnum::ServicesGrid,
+            'title' => 'Servicios',
+            'content' => [
+                'limit' => null,
+                'order' => 'asc',
+            ],
+            'sort_order' => 0,
+        ]);
+
+        $response = $this->getJson('/v1/tenant-a/pages/home');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.blocks.0.content.items.0.slug', 'seguros-generales');
+        $response->assertJsonPath('data.blocks.0.content.items.0.href', '/servicios/seguros-generales');
+        $response->assertJsonPath('data.blocks.0.content.items.0.image.uuid', $media->uuid);
+        $response->assertJsonPath('data.blocks.0.content.items.0.image.alt_text', 'Icono de seguros');
+        $response->assertJsonMissingPath('data.blocks.0.content.limit');
+        $response->assertJsonMissingPath('data.blocks.0.content.order');
     }
 }

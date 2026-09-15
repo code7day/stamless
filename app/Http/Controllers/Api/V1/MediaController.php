@@ -10,9 +10,9 @@ class MediaController extends Controller
 {
     public function show(string $tenant_slug, string $uuid): JsonResponse
     {
-        $this->resolveTenant($tenant_slug);
+        $tenant = $this->resolveTenant($tenant_slug);
 
-        $media = Media::where('uuid', $uuid)->first();
+        $media = Media::where('tenant_id', $tenant->id)->where('uuid', $uuid)->first();
 
         if (! $media) {
             return $this->error('Media no encontrada.', 404, ['code' => 'not_found']);

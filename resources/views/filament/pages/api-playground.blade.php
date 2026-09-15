@@ -97,7 +97,7 @@
                 @if ($responseStatus === null && $responseError === null)
                     <div class="gnss-response-empty">
                         <x-heroicon-o-bolt class="gnss-icon-lg gnss-icon-muted" />
-                        <p>Elegí un ejemplo del costado, completá el token y apretá <strong>Send</strong> arriba a la derecha.</p>
+                        <p>Elegir un ejemplo del costado, completar el token y presionar <strong>Send</strong> arriba a la derecha.</p>
                     </div>
                 @endif
 

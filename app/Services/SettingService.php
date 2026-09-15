@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Setting;
-use App\Services\TenantManager;
 use Illuminate\Support\Facades\Cache;
 
 class SettingService
@@ -22,7 +21,7 @@ class SettingService
     {
         $tenantId = $this->tenantManager->getTenantId();
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             return $default;
         }
 
@@ -42,8 +41,8 @@ class SettingService
     {
         $tenantId = $this->tenantManager->getTenantId();
 
-        if (!$tenantId) {
-            throw new \Exception("Cannot set settings without an active tenant context.");
+        if (! $tenantId) {
+            throw new \Exception('Cannot set settings without an active tenant context.');
         }
 
         // Update or create within the tenant scope (automatically handled by HasTenant)

@@ -2,57 +2,85 @@
 
 namespace Database\Seeders;
 
+use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
+use App\Models\Page;
 use App\Models\Service;
 use App\Models\Tenant;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
 /**
- * Catálogo de Servicios de CICA360 (Cliente 0), 2026-08-31 — ver ADR
- * correspondiente en `docs/context/DECISIONS.md`.
+ * Catálogo de Servicios de CICA360 (Cliente 0), 2026-09-11 — **2da vuelta,
+ * reemplaza por completo el dataset de la 1ra vuelta** (2026-09-10, ver
+ * ADR-049): esa 1ra vuelta tenía 12 servicios de ejemplo (8 migrados desde
+ * `content.items` del bloque + 4 inventados a partir de rubros de
+ * `Cliente0TestimonialsSeeder`, con imágenes genéricas reutilizadas
+ * cíclicamente) — el Tech Lead entregó el catálogo REAL: 9 servicios con
+ * título/descripción exactos y una foto dedicada por cada uno, ya subida a
+ * `storage/app/public/media/` (ver `Cliente0MediaSeeder`, entradas
+ * `service_*`). Se descarta el dataset anterior completo, no se combinan.
  *
- * El Tech Lead compartió 2 capturas: la grilla del catálogo "Servicios"
- * (9 cards) y el detalle completo de una de ellas ("Seguros generales":
- * banner, intro, tabs "¿Qué ofrecemos?"/"Coberturas", "¿Por qué
- * elegirnos?", tip de ayuda). De las 9 cards de la grilla, solo **7 títulos
- * son distintos** — "Asesoría Comercial y Consultoría Estratégica" y
- * "Asesoría Contable y Financiera" aparecen duplicadas (misma card 2 veces,
- * mismo texto exacto) para rellenar una grilla de demo 3x3, no como 2
- * servicios reales adicionales — se sembraron primero los 7 servicios
- * únicos de la captura (ver ADR-034), sin crear contenido duplicado.
+ * "Seguro Financiero" (2do de la lista) hereda el contenido de ejemplo que
+ * en la 1ra vuelta vivía bajo "Seguros generales" — el Tech Lead aclaró que
+ * ese contenido ("pólizas patrimoniales... sin coberturas de más ni letra
+ * chica") en realidad correspondía a este título ("Seguro Financiero...
+ * cuidamos tu patrimonio en cada paso"), no al que tenía antes. El resto de
+ * los `intro` reutiliza/adapta el mismo tono de los rubros que ya existían
+ * cuando el tema coincide (contable/financiera, legal, bienes raíces,
+ * asesoría estratégica) y agrega 3 rubros nuevos que no existían en la 1ra
+ * vuelta (editorial, turismo, notarial) con intro propio, corto, extendiendo
+ * la descripción dada por el Tech Lead sin inventar detalles no verificables.
  *
- * Solo "Seguros generales" tenía contenido de detalle real y completo en
- * las capturas — se sembró TAL CUAL (texto verbatim de la captura, incluida
- * la mención al Estudio Jurídico Mosquera – Perticaro & Abogados y la
- * Patente N° 11 – SSN Argentina). Los otros 6 servicios de la captura no
- * tenían detalle visible más allá del título/subtítulo de su card — se
- * redactó contenido de ejemplo razonable en el mismo tono/estructura
- * (intro + "qué ofrecemos" + "coberturas"/incluye + "por qué elegirnos" +
- * tip), a revisar y reemplazar por el Tech Lead con la copy real cuando la
- * tenga.
+ * `countries`: "Asesoría Notarial" es el único con alcance explícito a 2
+ * países ("Escribanía ágil y segura en Uruguay y Argentina" — `UY`+`AR`,
+ * dicho textualmente en la descripción). El resto de rubros de alcance
+ * local queda en `UY` (ver testimonios: Montevideo, Punta del Este,
+ * Tacuarembó, Ciudad Vieja); "Asesoría Editorial Integral"/"Turismo y
+ * Asesoría Vacacional"/"Asesoramiento Legal Integral" ("toda la región")
+ * quedan sin país explícito (`[]`, "Regional/Global" per ADR-035).
  *
- * **2026-08-31, ampliación a 12** — pedido explícito del Tech Lead
- * ("generar 12 servicios"), mismo criterio ya usado para ampliar
- * Testimonios de 4 a 12: se agregaron 5 servicios más (Seguros de Vida y
- * Salud, Recursos Humanos y Gestión de Nómina, Comercio Exterior y
- * Aduanas, Seguros Empresariales y Riesgos Corporativos, Turismo y
- * Asistencia al Viajero) sin captura de mockup — contenido redactado desde
- * cero en el mismo tono/estructura, dentro del rubro real de CICA360
- * (seguros/jurídico/contable), también a revisar por el Tech Lead.
+ * `sort_order` = índice del array, en el mismo orden entregado por el Tech
+ * Lead (tabla Título/Descripción) — es el orden que usa el bloque
+ * `services_grid` con `content.order: asc` (ver `upsertServiciosPage()`).
  *
- * `countries` es una mejor-estimación (para los 7 originales, de las
- * banderas visibles en las capturas; para los 5 nuevos, una estimación
- * razonable según el tipo de servicio) — ajustar si no coincide con la
- * intención real.
+ * `content.intro`: igual que la 1ra vuelta, un párrafo corto por servicio,
+ * sin `offers`/`coverages`/`why_choose_us`/`tip` (opcionales, el Tech Lead
+ * los completa por servicio desde Studio cuando corresponda) — **excepto
+ * "Seguro Financiero"** (2026-09-14, 3ra vuelta): trae los 4 campos
+ * completos a partir de las capturas reales de CICA360 (7 `offers`, 15
+ * `coverages` — solo "Automotores" con el detalle real entregado, el resto
+ * con 3 a 10 sub-ítems de ejemplo por rubro para demostrar el acordeón con
+ * listas de distinto largo, más `why_choose_us`/`tip`). Sirve de servicio
+ * de referencia; el resto se sigue completando manualmente desde Studio.
  *
- * `image_id` queda `null` en los 12 — "en un momento genero las imágenes"
- * (el Tech Lead las va a subir después vía Studio), mismo criterio que el
- * resto del contenido de Cliente 0 sin media real todavía.
+ * Idempotente vía `firstOrCreate` por `[tenant_id, slug]` (2026-09-14,
+ * **4ta vuelta, FIX real**: antes `updateOrCreate` — bug reportado en vivo
+ * por el Tech Lead, "no veo el texto..." tras correr este seeder: pisaba
+ * SILENCIOSAMENTE `title`/`subtitle`/`countries`/`content` de un servicio
+ * YA EXISTENTE con los valores de este archivo cada vez que corría, sin
+ * importar que ya hubiera contenido real editado a mano en Studio —
+ * exactamente lo que le pasó a "Seguro Financiero": perdió su
+ * `subtitle`/`countries`/`content.intro` reales, reemplazados por valores
+ * de ejemplo viejos de acá. `firstOrCreate` solo CREA si el servicio no
+ * existe todavía; si ya existe, no lo toca — coherente con lo que el
+ * docblock de arriba ya decía sobre `offers`/`coverages`/etc. ("el Tech
+ * Lead los completa por servicio desde Studio cuando corresponda"), ahora
+ * también aplicado en el código para TODOS los campos, no solo esos 4).
+ * `subtitle`/`countries`/`content.intro` de "Seguro Financiero" en este
+ * archivo se restauraron a partir de las capturas reales de CICA360 que
+ * compartió el Tech Lead, para que reflejen lo que ya tenía cargado.
  *
- * Idempotente vía `updateOrCreate` por `[tenant_id, lang_iso, slug]`.
+ * Al final se podan los registros con slugs que ya NO están en este
+ * dataset (pensado originalmente para los 12 de la 1ra vuelta) — **ojo**:
+ * esto SIGUE corriendo sin importar `firstOrCreate` de arriba; si en algún
+ * momento se crea un servicio real en Studio con un slug que no está en
+ * este array de 9, este paso lo va a borrar. No se tocó en esta vuelta
+ * (el bug reportado era de sobreescritura, no de borrado) pero es un
+ * riesgo latente equivalente a tener presente.
  *
- * Requiere que `Cliente0Seeder` (tenant) haya corrido antes.
+ * Requiere que `Cliente0Seeder` (tenant) y `Cliente0MediaSeeder` (imágenes)
+ * hayan corrido antes.
  */
 class Cliente0ServicesSeeder extends Seeder
 {
@@ -64,402 +92,234 @@ class Cliente0ServicesSeeder extends Seeder
             return;
         }
 
+        // 2026-09-15: footer principal como contenido inicial (pedido del Tech Lead:
+        // "agregar en el seeder como parte del contenido inicial el footer principal").
+        $footerPage = Page::where('tenant_id', $tenant->id)
+            ->where('type', PageTypeEnum::Footer->value)
+            ->where('slug', 'footer-principal')
+            ->first();
+
         $services = [
             [
-                'title' => 'Seguros y fondos de inversión en EEUU',
-                'subtitle' => 'Seguros y Fondos de Retiro en el Sistema Americano',
-                'countries' => ['GLOBAL'],
-                'content' => [
-                    'intro' => 'Asesoramos a personas y familias de toda la región en la contratación de seguros de vida y fondos de inversión bajo el sistema financiero estadounidense, con compañías de primer nivel y respaldo internacional. Ideal para quienes buscan diversificar su patrimonio fuera de la volatilidad regional.',
-                    'offers' => [
-                        ['highlight' => 'Diversificación real', 'text' => 'de tu patrimonio en dólares, fuera del sistema financiero local.'],
-                        ['highlight' => 'Compañías de primer nivel,', 'text' => 'con calificación internacional y trayectoria comprobada.'],
-                        ['highlight' => 'Planificación de retiro', 'text' => 'con fondos de inversión a tu medida, según tu horizonte y perfil de riesgo.'],
-                        ['highlight' => 'Seguros de vida universal', 'text' => 'con componente de ahorro e inversión.'],
-                        ['highlight' => 'Acompañamiento en español,', 'text' => 'sin necesidad de residencia ni cuenta bancaria en Estados Unidos.'],
-                        ['highlight' => 'Revisión periódica', 'text' => 'de la cartera junto a tu asesor asignado.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Seguros de vida universal indexado (IUL)'],
-                        ['label' => 'Fondos de inversión y anualidades'],
-                        ['label' => 'Planes de retiro individuales'],
-                        ['label' => 'Seguros de vida a término (Term Life)'],
-                        ['label' => 'Educación financiera para hijos', 'intro' => 'Incluye:', 'items' => ['Planes de ahorro educativo', 'Fondos indexados a largo plazo']],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque combinamos el acceso al sistema financiero norteamericano con acompañamiento cercano en español, sin la letra chica que suele acompañar este tipo de productos.',
-                    ],
-                    'tip' => [
-                        'title' => 'Tu patrimonio, protegido más allá de las fronteras.',
-                        'text' => 'Te ayudamos a entender cada producto antes de firmar, en tu idioma y a tu ritmo.',
-                    ],
-                ],
+                'title' => 'Seguridad Financiera',
+                'subtitle' => 'Seguros y retiros con enfoque de protección.',
+                'intro' => 'Diseñamos seguros y planes de retiro pensados para proteger tu patrimonio y el de tu familia a largo plazo, con acompañamiento personalizado en cada etapa.',
+                'image_file' => 'cica360_media_service_seguridad_financiera.webp',
+                'countries' => ['UY'],
             ],
             [
-                'title' => 'Seguros generales',
+                'title' => 'Seguro Financiero',
+                // 2026-09-14, FIX real: `subtitle`/`intro`/`countries` de
+                // acá quedaron desactualizados respecto al contenido REAL
+                // que el Tech Lead ya tenía cargado en Studio (bug
+                // reportado en vivo: "no veo el texto..." tras correr este
+                // seeder, que con `updateOrCreate` pisó silenciosamente su
+                // subtítulo/banderas/intro reales con estos 3 valores
+                // viejos). Restaurados acá a partir de las capturas reales
+                // de CICA360 que el propio Tech Lead compartió (banner +
+                // tabs) — ver `firstOrCreate` más abajo en el loop, que
+                // evita que esto vuelva a pasar en el futuro.
                 'subtitle' => 'Protegemos tu patrimonio, simplificamos tu gestión.',
+                'intro' => 'En CICA ofrecemos coberturas generales con las mejores compañías de Argentina para que cada cliente cuente con las coberturas adecuadas, sin pagar de más. Nuestro objetivo es reducir costos fijos mensuales, mejorar las coberturas existentes y ofrecer soluciones integrales, claras y confiables para personas, profesionales y empresas.',
+                'image_file' => 'cica360_media_service_seguro_financiero.webp',
                 'countries' => ['AR', 'UY'],
-                'content' => [
-                    // Verbatim de la captura del Tech Lead — ver docblock de la clase.
-                    'intro' => 'En CICA ofrecemos coberturas generales con las mejores compañías de Argentina para que cada cliente cuente con las coberturas adecuadas, sin pagar de más. Nuestro objetivo es reducir costos fijos mensuales, mejorar las coberturas existentes y ofrecer soluciones integrales, claras y confiables para personas, profesionales y empresas.',
-                    'offers' => [
-                        ['highlight' => 'Optimización de costos', 'text' => 'en tus pólizas actuales.'],
-                        ['highlight' => 'Ampliación de coberturas', 'text' => 'según necesidades reales.'],
-                        ['highlight' => 'Selección estratégica de compañías:', 'text' => 'priorizamos solidez, atención y eficacia en siniestros.'],
-                        ['highlight' => 'Gestión legal ante siniestros y asesoría', 'text' => 'personalizada desde el inicio.'],
-                        ['highlight' => 'Contratos verificados jurídicamente,', 'text' => 'por el Estudio Jurídico Mosquera – Perticaro & Abogados.'],
-                        ['highlight' => 'Asesoramiento integral', 'text' => 'en un solo lugar para todos tus bienes asegurables.'],
-                        ['highlight' => 'Sin sobrecomisiones ni letra chica:', 'text' => 'somos agentes institorios, con respaldo jurídico y autorización oficial (Patente N° 11 – SSN Argentina).'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Hogar'],
-                        ['label' => 'Automotores', 'intro' => 'Cubrimos daños por:', 'items' => ['Robo o hurto (total o parcial)', 'Incendio', 'Daños materiales al vehículo', 'Reclamaciones de terceros']],
-                        ['label' => 'Vida colectivos'],
-                        ['label' => 'Comercio e Industria'],
-                        ['label' => 'ART (Riesgo de Trabajo)'],
-                        ['label' => 'Mala praxis'],
-                        ['label' => 'Transporte'],
-                        ['label' => 'Aeronavegación'],
-                        ['label' => 'Embarcaciones de placer'],
-                        ['label' => 'Riesgo agrícola'],
-                        ['label' => 'Seguro de incendios'],
-                        ['label' => 'Accidentes personales'],
-                        ['label' => 'Consorcios'],
-                        ['label' => 'Seguro de caución'],
-                        ['label' => 'Garantía propietaria (Uruguay)'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque integramos en un solo equipo lo comercial, lo técnico y lo jurídico. Trabajamos con compañías líderes en Argentina, Uruguay y la región, cuidamos cada paso y te acompañamos frente a cualquier eventualidad.',
-                    ],
-                    'tip' => [
-                        'title' => 'Soluciones reales, ajustadas a tu rubro, sin letra chica.',
-                        'text' => 'Velamos por tu tranquilidad y si ocurre un siniestro, no estás solo: te ayudamos con la denuncia y te respaldamos.',
-                    ],
+
+                // 2026-09-14, pedido del Tech Lead (capturas de "Seguros
+                // Financiero" en CICA360 real: banner + tabs "¿Qué
+                // ofrecemos?"/"Coberturas" + "¿Por qué elegirnos?" + tip):
+                // único servicio del dataset con `offers`/`coverages`/
+                // `why_choose_us`/`tip` completos — sirve como demo de
+                // referencia para que el Tech Lead vea el módulo funcionando
+                // de punta a punta en Studio y en el front antes de cargar
+                // el resto manualmente. El resto de servicios queda sin
+                // estos 4 campos a propósito (ver docblock de la clase).
+                'offers' => [
+                    ['highlight' => 'Optimización de costos', 'text' => 'en tus pólizas actuales.'],
+                    ['highlight' => 'Ampliación de coberturas', 'text' => 'según necesidades reales.'],
+                    ['highlight' => 'Selección estratégica de compañías:', 'text' => 'priorizamos solidez, atención y eficacia en siniestros.'],
+                    ['highlight' => 'Gestión legal ante siniestros y asesoría', 'text' => 'personalizada desde el inicio.'],
+                    ['highlight' => 'Contratos verificados jurídicamente,', 'text' => 'por el Estudio Jurídico Mosquera – Perticaro & Abogados.'],
+                    ['highlight' => 'Asesoramiento integral', 'text' => 'en un solo lugar para todos tus bienes asegurables.'],
+                    ['highlight' => 'Sin sobrecomisiones ni letra chica:', 'text' => 'somos agentes institorios, con respaldo jurídico y autorización oficial (Patente N° 11 – SSN Argentina).'],
+                ],
+
+                // Acordeón de "Coberturas" — 15 rubros. Solo "Automotores"
+                // viene con el detalle real entregado por el Tech Lead; el
+                // resto se completa con 3 a 10 sub-ítems de ejemplo (rubro
+                // por rubro, random en cantidad) puramente como demo para
+                // probar el acordeón con listas de distinto largo — el Tech
+                // Lead los reemplaza por el detalle real desde Studio.
+                'coverages' => [
+                    ['label' => 'Hogar', 'intro' => 'Cubrimos:', 'items' => ['Incendio y rayo', 'Robo con violencia', 'Rotura de cristales', 'Daños por agua', 'Responsabilidad civil del hogar', 'Daños eléctricos', 'Caída de rayos', 'Asistencia hogar 24 horas']],
+                    ['label' => 'Automotores', 'intro' => 'Cubrimos daños por:', 'items' => ['Robo o hurto (total o parcial)', 'Incendio', 'Daños materiales al vehículo', 'Reclamaciones de terceros']],
+                    ['label' => 'Vida colectivos', 'intro' => 'Incluye:', 'items' => ['Fallecimiento', 'Invalidez total y permanente', 'Renta por incapacidad']],
+                    ['label' => 'Comercio e Industria', 'intro' => 'Protege:', 'items' => ['Incendio y explosión', 'Robo de mercadería', 'Rotura de maquinaria', 'Pérdida de beneficios', 'Responsabilidad civil comercial', 'Cristales y carteles']],
+                    ['label' => 'ART (Riesgo de Trabajo)', 'intro' => 'Cubre:', 'items' => ['Accidentes de trabajo', 'Enfermedades profesionales', 'Prestaciones médicas', 'Indemnizaciones por incapacidad']],
+                    ['label' => 'Mala praxis', 'intro' => 'Ampara frente a:', 'items' => ['Reclamos por errores profesionales', 'Gastos de defensa legal', 'Indemnizaciones a terceros']],
+                    ['label' => 'Transporte', 'intro' => 'Cubrimos:', 'items' => ['Mercadería en tránsito terrestre', 'Transporte marítimo', 'Transporte aéreo', 'Robo durante el traslado', 'Daños por accidente']],
+                    ['label' => 'Aeronavegación', 'intro' => 'Incluye:', 'items' => ['Casco de la aeronave', 'Responsabilidad civil frente a terceros', 'Accidentes a la tripulación', 'Pérdida total o parcial']],
+                    ['label' => 'Embarcaciones de placer', 'intro' => 'Cubrimos:', 'items' => ['Casco y máquinas', 'Responsabilidad civil náutica', 'Robo total o parcial', 'Asistencia náutica', 'Accidentes a ocupantes']],
+                    ['label' => 'Riesgo agrícola', 'intro' => 'Protege ante:', 'items' => ['Granizo', 'Helada', 'Incendio de cultivos', 'Sequía', 'Exceso de lluvia']],
+                    ['label' => 'Seguro de incendios', 'intro' => 'Cubre:', 'items' => ['Incendio', 'Rayo', 'Explosión', 'Daños por humo']],
+                    ['label' => 'Accidentes personales', 'intro' => 'Cubre:', 'items' => ['Muerte accidental', 'Invalidez permanente', 'Gastos médicos y farmacéuticos', 'Asistencia al viajero']],
+                    ['label' => 'Consorcios', 'intro' => 'Incluye:', 'items' => ['Incendio del edificio', 'Responsabilidad civil del consorcio', 'Cristales de uso común', 'Ascensores', 'Robo en áreas comunes', 'Daños por agua en cañerías']],
+                    ['label' => 'Seguro de caución', 'intro' => 'Disponible para:', 'items' => ['Garantía de licitación', 'Garantía de cumplimiento de contrato', 'Garantía de alquiler', 'Garantía aduanera']],
+                    ['label' => 'Garantía propietaria (Uruguay)', 'intro' => 'Cubre:', 'items' => ['Falta de pago de alquiler', 'Daños a la propiedad', 'Gastos de desocupación judicial', 'Servicios impagos']],
+                ],
+
+                'why_choose_us' => [
+                    'title' => '¿Por qué elegirnos?',
+                    'text' => 'Porque integramos en un solo equipo lo comercial, lo técnico y lo jurídico. Trabajamos con compañías líderes en Argentina, Uruguay y la región, cuidamos cada paso y te acompañamos frente a cualquier eventualidad.',
+                ],
+
+                'tip' => [
+                    'title' => 'Soluciones reales, ajustadas a tu rubro, sin letra chica.',
+                    'text' => 'Velamos por tu tranquilidad y si ocurre un siniestro, no estás solo: te ayudamos con la denuncia y te respaldamos.',
                 ],
             ],
             [
-                'title' => 'Asesoría Comercial y Consultoría Estratégica',
-                'subtitle' => 'para Emprendedores y Pymes',
-                'countries' => ['UY', 'PY'],
-                'content' => [
-                    'intro' => 'Acompañamos a emprendedores y pequeñas y medianas empresas en la toma de decisiones estratégicas, desde la constitución del negocio hasta su expansión regional, con foco en resultados concretos y sostenibles.',
-                    'offers' => [
-                        ['highlight' => 'Diagnóstico comercial', 'text' => 'para identificar oportunidades de crecimiento reales.'],
-                        ['highlight' => 'Planificación estratégica', 'text' => 'a corto y mediano plazo, con objetivos medibles.'],
-                        ['highlight' => 'Acompañamiento en la constitución', 'text' => 'de sociedades y estructuras societarias.'],
-                        ['highlight' => 'Negociación de contratos comerciales', 'text' => 'con respaldo jurídico incluido.'],
-                        ['highlight' => 'Mentoría continua', 'text' => 'para founders y equipos de dirección.'],
-                        ['highlight' => 'Conexión con la red de contactos', 'text' => 'de CICA360 en la región.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Plan de negocio y modelo comercial'],
-                        ['label' => 'Estructuración societaria', 'intro' => 'Incluye:', 'items' => ['Constitución de sociedades', 'Pactos de socios', 'Reorganizaciones societarias']],
-                        ['label' => 'Expansión regional'],
-                        ['label' => 'Consultoría en pricing y rentabilidad'],
-                        ['label' => 'Due diligence comercial'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque entendemos la realidad de las pymes de la región: recursos acotados, decisiones urgentes y la necesidad de un socio, no solo un consultor.',
-                    ],
-                    'tip' => [
-                        'title' => 'Crecer con cabeza fría, sin perder velocidad.',
-                        'text' => 'Te acompañamos en cada decisión clave, con la misma cercanía de siempre.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Seguros Jurídicos',
-                'subtitle' => 'Protegemos tu patrimonio, simplificamos tu gestión',
-                'countries' => ['UY', 'AR', 'PY'],
-                'content' => [
-                    'intro' => 'Combinamos seguros y asesoría legal en un mismo servicio, para que cuentes con protección patrimonial y respaldo jurídico ante cualquier eventualidad, sin tener que coordinar entre distintos proveedores.',
-                    'offers' => [
-                        ['highlight' => 'Cobertura legal integral,', 'text' => 'con acceso directo a nuestro estudio jurídico asociado.'],
-                        ['highlight' => 'Defensa ante siniestros', 'text' => 'y reclamos de terceros.'],
-                        ['highlight' => 'Redacción y revisión de contratos', 'text' => 'antes de firmarlos, no después de un problema.'],
-                        ['highlight' => 'Asesoría en conflictos comerciales', 'text' => 'con estrategia clara desde el primer contacto.'],
-                        ['highlight' => 'Gestión de trámites', 'text' => 'ante organismos públicos y compañías aseguradoras.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Responsabilidad civil profesional'],
-                        ['label' => 'Protección jurídica patrimonial'],
-                        ['label' => 'Defensa penal', 'intro' => 'Cubrimos:', 'items' => ['Delitos culposos de tránsito', 'Defensa en accidentes laborales']],
-                        ['label' => 'Consultas legales ilimitadas'],
-                        ['label' => 'Mediación y arbitraje'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque el respaldo jurídico no llega después del problema, sino desde el primer día del contrato.',
-                    ],
-                    'tip' => [
-                        'title' => 'Sin sorpresas legales, sin letra chica.',
-                        'text' => 'Revisamos cada cláusula antes de que la firmes, no después de que te afecte.',
-                    ],
-                ],
+                'title' => 'Asesoría y Consultoría Estratégica',
+                'subtitle' => 'Impulso clave para emprendedores y PyMES.',
+                'intro' => 'Trabajamos junto a emprendedores y pymes en la estrategia de cada etapa: desde la puesta en marcha hasta la expansión a nuevos mercados.',
+                'image_file' => 'cica360_media_service_asesoria_y_consultoria_estrategica.webp',
+                'countries' => ['UY'],
             ],
             [
                 'title' => 'Asesoría Contable y Financiera',
-                'subtitle' => 'Profesionales contables certificados',
-                'countries' => ['UY', 'AR', 'EC'],
-                'content' => [
-                    'intro' => 'Ponemos a disposición un equipo de contadores y asesores financieros certificados para ordenar tus finanzas personales o las de tu empresa, con reportes claros y decisiones basadas en datos reales.',
-                    'offers' => [
-                        ['highlight' => 'Contadores certificados,', 'text' => 'con experiencia en normativa local y regional.'],
-                        ['highlight' => 'Reportes financieros claros,', 'text' => 'sin jerga innecesaria.'],
-                        ['highlight' => 'Planificación tributaria', 'text' => 'para optimizar la carga impositiva de forma legal.'],
-                        ['highlight' => 'Gestión de nómina y liquidaciones', 'text' => 'para empresas de cualquier tamaño.'],
-                        ['highlight' => 'Presupuestos y proyecciones', 'text' => 'para tomar decisiones con anticipación.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Contabilidad mensual y balances'],
-                        ['label' => 'Liquidación de impuestos'],
-                        ['label' => 'Auditoría interna', 'intro' => 'Incluye:', 'items' => ['Revisión de procesos contables', 'Detección de desvíos financieros']],
-                        ['label' => 'Planificación financiera personal'],
-                        ['label' => 'Asesoría para inversores extranjeros'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque cada número que te mostramos está respaldado por un profesional certificado, no por una planilla genérica.',
-                    ],
-                    'tip' => [
-                        'title' => 'Números claros, decisiones más simples.',
-                        'text' => 'Te explicamos cada reporte en un lenguaje que realmente entiendas.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Educación a Distancia',
-                'subtitle' => 'Seguros y programas para instituciones educativas',
+                'subtitle' => 'Gestión clara para empresas en crecimiento.',
+                'intro' => 'Ordenamos la contabilidad y las obligaciones tributarias de tu empresa, con reportes claros para tomar mejores decisiones financieras.',
+                'image_file' => 'cica360_media_service_asesoria_contable_y_financiera.webp',
                 'countries' => ['UY'],
-                'content' => [
-                    'intro' => 'Trabajamos junto a institutos y centros educativos que dictan formación a distancia, ofreciendo coberturas de seguros institucionales y asesoría para la gestión administrativa del centro.',
-                    'offers' => [
-                        ['highlight' => 'Seguros institucionales', 'text' => 'a medida de institutos y academias.'],
-                        ['highlight' => 'Cobertura de accidentes', 'text' => 'para alumnos y personal docente.'],
-                        ['highlight' => 'Asesoría administrativa', 'text' => 'para la gestión diaria del centro educativo.'],
-                        ['highlight' => 'Respaldo jurídico', 'text' => 'ante reclamos de alumnos o familias.'],
-                        ['highlight' => 'Acompañamiento en la transición', 'text' => 'hacia modelos de educación híbrida o 100% a distancia.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Seguro de responsabilidad civil institucional'],
-                        ['label' => 'Accidentes personales de alumnos'],
-                        ['label' => 'Seguro de infraestructura y equipamiento'],
-                        ['label' => 'Asesoría legal en contratos con docentes'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque conocemos las particularidades del sector educativo y armamos coberturas que realmente aplican a su realidad.',
-                    ],
-                    'tip' => [
-                        'title' => 'Tranquilidad para enseñar, sin distracciones administrativas.',
-                        'text' => 'Nos ocupamos de la parte legal y de seguros para que el centro se enfoque en educar.',
-                    ],
-                ],
             ],
             [
-                'title' => 'Bienes Raíces',
-                'subtitle' => 'Inversión inmobiliaria con respaldo integral',
+                'title' => 'Asesoría Editorial Integral',
+                'subtitle' => 'Edición, diseño y publicación de nivel profesional.',
+                'intro' => 'Acompañamos todo el proceso editorial de un libro o publicación, desde la edición y el diseño hasta la publicación final, con estándares profesionales.',
+                'image_file' => 'cica360_media_service_asesoria_editorial_integral.webp',
+                'countries' => [],
+            ],
+            [
+                'title' => 'Turismo y Asesoría Vacacional',
+                'subtitle' => 'Pasajes, hoteles y experiencias a tu medida.',
+                'intro' => 'Organizamos pasajes, hospedaje y experiencias de viaje a medida, con asesoría personalizada para que cada vacación salga como la planeaste.',
+                'image_file' => 'cica360_media_service_turismo_y_asesoria_vacacional.webp',
+                'countries' => [],
+            ],
+            [
+                'title' => 'Bienes Raíces e Inversión',
+                'subtitle' => 'Compra, venta y proyectos inmobiliarios seguros.',
+                'intro' => 'Acompañamos la compra, venta y gestión de propiedades como inversión, con todo el proceso guiado de punta a punta.',
+                'image_file' => 'cica360_media_service_bienes_raices_e_inversion.webp',
+                'countries' => ['UY'],
+            ],
+            [
+                'title' => 'Asesoramiento Legal Integral',
+                'subtitle' => 'Respaldo jurídico estratégico en toda la región.',
+                'intro' => 'Revisamos y redactamos contratos comerciales, y acompañamos negociaciones complejas para que cierres acuerdos sin sorpresas legales, con respaldo jurídico en toda la región.',
+                'image_file' => 'cica360_media_service_asesoramiento_legal_integral.webp',
+                'countries' => [],
+            ],
+            [
+                'title' => 'Asesoría Notarial',
+                'subtitle' => 'Escribanía ágil y segura en Uruguay y Argentina.',
+                'intro' => 'Trámites de escribanía ágiles y seguros, con gestión de firmas y documentación legal en Uruguay y Argentina.',
+                'image_file' => 'cica360_media_service_asesoria_notarial.webp',
                 'countries' => ['UY', 'AR'],
-                'content' => [
-                    'intro' => 'Acompañamos a inversores y compradores en cada etapa de una operación inmobiliaria, desde la búsqueda de la oportunidad hasta el cierre de la escritura, con respaldo jurídico y financiero en todo el proceso.',
-                    'offers' => [
-                        ['highlight' => 'Búsqueda de oportunidades', 'text' => 'de inversión ajustadas a tu perfil y presupuesto.'],
-                        ['highlight' => 'Due diligence legal', 'text' => 'de cada propiedad antes de avanzar.'],
-                        ['highlight' => 'Asesoría en financiamiento', 'text' => 'y estructuras de compra.'],
-                        ['highlight' => 'Gestión de escrituración', 'text' => 'de punta a punta, con estudio jurídico asociado.'],
-                        ['highlight' => 'Garantía propietaria', 'text' => 'para operaciones de alquiler sin depósito en efectivo.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Compra y venta de propiedades'],
-                        ['label' => 'Garantía propietaria (Uruguay)'],
-                        ['label' => 'Seguro de vivienda', 'intro' => 'Cubrimos:', 'items' => ['Incendio y daños estructurales', 'Robo o hurto', 'Responsabilidad civil del propietario']],
-                        ['label' => 'Asesoría en inversión inmobiliaria'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque acompañamos toda la operación con un mismo equipo: comercial, legal y de seguros, sin que tengas que coordinar entre varios proveedores.',
-                    ],
-                    'tip' => [
-                        'title' => 'Invertir en ladrillos, sin sorpresas de por medio.',
-                        'text' => 'Revisamos cada detalle legal antes de que pongas un peso.',
-                    ],
-                ],
-            ],
-
-            // 2026-08-31 — 5 servicios nuevos (8 a 12), pedido explícito del
-            // Tech Lead ("generar 12 servicios", mismo criterio que se usó
-            // para ampliar Testimonios de 4 a 12). No hay captura de mockup
-            // para estos — contenido redactado en el mismo tono/estructura
-            // que los 7 anteriores, dentro del rubro real de CICA360
-            // (seguros/jurídico/contable), a revisar y reemplazar por el
-            // Tech Lead con la copy real cuando la tenga.
-            [
-                'title' => 'Seguros de Vida y Salud',
-                'subtitle' => 'Protección para vos y tu familia',
-                'countries' => ['UY', 'AR'],
-                'content' => [
-                    'intro' => 'Diseñamos coberturas de vida y salud a medida de cada familia, comparando entre las principales compañías de la región para conseguir el mejor equilibrio entre cobertura real y costo mensual.',
-                    'offers' => [
-                        ['highlight' => 'Comparativa entre compañías,', 'text' => 'sin costo y sin compromiso, antes de contratar.'],
-                        ['highlight' => 'Cobertura de salud complementaria', 'text' => 'a mutualistas y sistemas públicos.'],
-                        ['highlight' => 'Seguros de vida con capital asegurado', 'text' => 'ajustado a tus responsabilidades familiares.'],
-                        ['highlight' => 'Gestión de siniestros y reembolsos', 'text' => 'para que no pierdas tiempo con trámites.'],
-                        ['highlight' => 'Revisión anual de la póliza,', 'text' => 'para que siempre pagues lo justo.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Seguro de vida individual y familiar'],
-                        ['label' => 'Salud complementaria', 'intro' => 'Incluye:', 'items' => ['Órdenes y tickets moderadores', 'Internación en sanatorios de primer nivel', 'Medicamentos de alto costo']],
-                        ['label' => 'Invalidez y enfermedades graves'],
-                        ['label' => 'Sepelio'],
-                        ['label' => 'Maternidad y pediatría'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque comparamos de forma objetiva entre compañías — no vendemos un solo producto, buscamos el que mejor se ajusta a tu situación real.',
-                    ],
-                    'tip' => [
-                        'title' => 'La salud de tu familia, sin pagar de más.',
-                        'text' => 'Te mostramos las opciones reales del mercado, en un lenguaje simple.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Recursos Humanos y Gestión de Nómina',
-                'subtitle' => 'Simplificá la gestión de tu equipo',
-                'countries' => ['UY', 'PY'],
-                'content' => [
-                    'intro' => 'Ofrecemos gestión integral de recursos humanos para pymes que necesitan profesionalizar su área de personal sin sumar una estructura interna grande — desde la liquidación de sueldos hasta la selección de talento.',
-                    'offers' => [
-                        ['highlight' => 'Liquidación de sueldos y jornales,', 'text' => 'con cumplimiento normativo al día.'],
-                        ['highlight' => 'Selección de personal', 'text' => 'con procesos ajustados a cada perfil buscado.'],
-                        ['highlight' => 'Diseño de políticas internas', 'text' => 'de RRHH, ausentismo y beneficios.'],
-                        ['highlight' => 'Gestión de altas, bajas y trámites', 'text' => 'ante los organismos correspondientes.'],
-                        ['highlight' => 'Asesoría en desvinculaciones', 'text' => 'con respaldo legal para minimizar riesgos.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Liquidación mensual de nómina'],
-                        ['label' => 'Reclutamiento y selección'],
-                        ['label' => 'Clima organizacional y capacitación'],
-                        ['label' => 'Auditoría de legajos', 'intro' => 'Revisamos:', 'items' => ['Contratos de trabajo', 'Documentación obligatoria', 'Riesgos laborales pendientes']],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque entendemos que el equipo es el activo más importante de una pyme — cuidamos los procesos de RRHH con el mismo rigor que un estudio jurídico.',
-                    ],
-                    'tip' => [
-                        'title' => 'Un equipo bien gestionado, un negocio más tranquilo.',
-                        'text' => 'Nos ocupamos de la gestión de personas para que vos te enfoques en crecer.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Comercio Exterior y Aduanas',
-                'subtitle' => 'Importá y exportá con respaldo integral',
-                'countries' => ['UY', 'AR', 'PY'],
-                'content' => [
-                    'intro' => 'Acompañamos a empresas que importan o exportan en la región, con asesoría aduanera, seguros de transporte internacional y gestión de la documentación necesaria para operar sin contratiempos.',
-                    'offers' => [
-                        ['highlight' => 'Asesoría aduanera', 'text' => 'para clasificación arancelaria y regímenes especiales.'],
-                        ['highlight' => 'Seguro de carga internacional,', 'text' => 'terrestre, marítimo y aéreo.'],
-                        ['highlight' => 'Gestión de documentación', 'text' => 'para despachantes y organismos de control.'],
-                        ['highlight' => 'Acompañamiento en negociaciones', 'text' => 'con proveedores y compradores extranjeros.'],
-                        ['highlight' => 'Cobertura ante siniestros de carga', 'text' => 'con gestión completa del reclamo.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Seguro de transporte de mercaderías'],
-                        ['label' => 'Responsabilidad civil del transportista'],
-                        ['label' => 'Asesoría en clasificación arancelaria'],
-                        ['label' => 'Gestión de siniestros de carga', 'intro' => 'Incluye:', 'items' => ['Robo o pérdida de mercadería', 'Daños por manipulación o transporte']],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque conocemos la operativa real del comercio exterior en la región, no solo la teoría — y eso se traduce en menos demoras y menos sorpresas.',
-                    ],
-                    'tip' => [
-                        'title' => 'Tu mercadería, cubierta en cada frontera.',
-                        'text' => 'Te acompañamos desde la cotización hasta que la carga llega a destino.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Seguros Empresariales y Riesgos Corporativos',
-                'subtitle' => 'Protección integral para tu empresa',
-                'countries' => ['UY', 'AR', 'EC'],
-                'content' => [
-                    'intro' => 'Diseñamos programas de seguros corporativos a medida de cada empresa, desde pymes hasta grupos con operación regional, con foco en identificar y cubrir los riesgos reales del negocio.',
-                    'offers' => [
-                        ['highlight' => 'Diagnóstico de riesgos', 'text' => 'específico para tu rubro y operación.'],
-                        ['highlight' => 'Programas de seguros multiramo,', 'text' => 'gestionados desde un solo punto de contacto.'],
-                        ['highlight' => 'Cobertura de directores y gerentes (D&O),', 'text' => 'ante reclamos por decisiones de gestión.'],
-                        ['highlight' => 'Seguro de responsabilidad civil empresarial,', 'text' => 'frente a terceros y clientes.'],
-                        ['highlight' => 'Gestión centralizada de siniestros', 'text' => 'para toda la operación de la empresa.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Todo riesgo operativo e industrial'],
-                        ['label' => 'Responsabilidad civil empresarial'],
-                        ['label' => 'Directores y gerentes (D&O)'],
-                        ['label' => 'Interrupción de negocio', 'intro' => 'Cubre:', 'items' => ['Pérdida de ingresos por siniestro', 'Costos fijos durante la interrupción']],
-                        ['label' => 'Fidelidad de empleados'],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque diseñamos el programa de seguros a partir de un diagnóstico real de tu negocio, no de una póliza estándar armada para cualquier empresa.',
-                    ],
-                    'tip' => [
-                        'title' => 'Tu empresa, protegida ante lo que realmente importa.',
-                        'text' => 'Revisamos anualmente el programa junto a vos, ajustándolo a cómo crece tu negocio.',
-                    ],
-                ],
-            ],
-            [
-                'title' => 'Turismo y Asistencia al Viajero',
-                'subtitle' => 'Viajá tranquilo, a cualquier destino',
-                'countries' => ['GLOBAL'],
-                'content' => [
-                    'intro' => 'Ofrecemos asistencia al viajero y seguros de turismo para viajes de placer, estudio o trabajo, con cobertura médica internacional y asistencia las 24 horas en cualquier parte del mundo.',
-                    'offers' => [
-                        ['highlight' => 'Cobertura médica internacional,', 'text' => 'con red de prestadores en los principales destinos.'],
-                        ['highlight' => 'Asistencia 24/7', 'text' => 'en español, ante cualquier emergencia en el viaje.'],
-                        ['highlight' => 'Cobertura de equipaje y documentación', 'text' => 'ante pérdida o robo.'],
-                        ['highlight' => 'Planes por viaje o anuales,', 'text' => 'según tu frecuencia de viaje.'],
-                        ['highlight' => 'Asesoría en visados y requisitos', 'text' => 'de entrada según destino.'],
-                    ],
-                    'coverages' => [
-                        ['label' => 'Asistencia médica y odontológica de urgencia'],
-                        ['label' => 'Cancelación e interrupción de viaje'],
-                        ['label' => 'Pérdida o demora de equipaje'],
-                        ['label' => 'Repatriación sanitaria', 'intro' => 'Incluye:', 'items' => ['Traslado a centro médico de referencia', 'Repatriación en caso de fallecimiento']],
-                    ],
-                    'why_choose_us' => [
-                        'title' => '¿Por qué elegirnos?',
-                        'text' => 'Porque te ayudamos a elegir el plan según tu destino y tipo de viaje real, no una cobertura genérica que no se ajusta a tu itinerario.',
-                    ],
-                    'tip' => [
-                        'title' => 'El mundo, sin preocupaciones de por medio.',
-                        'text' => 'Estamos disponibles antes, durante y después de tu viaje.',
-                    ],
-                ],
             ],
         ];
 
+        $slugs = [];
+
         foreach ($services as $index => $service) {
             $slug = Str::slug($service['title']);
+            $slugs[] = $slug;
 
-            Service::updateOrCreate(
-                ['tenant_id' => $tenant->id, 'lang_iso' => 'es', 'slug' => $slug],
+            // `offers`/`coverages`/`why_choose_us`/`tip` son opcionales en
+            // el array de arriba (2026-09-14) — solo "Seguro Financiero" los
+            // trae hoy. `array_intersect_key` los agrega a `content` nada
+            // más si están presentes, sin tocar el resto de servicios.
+            $content = array_merge(
+                ['intro' => $service['intro']],
+                array_intersect_key($service, array_flip(['offers', 'coverages', 'why_choose_us', 'tip']))
+            );
+
+            // FIX real (2026-09-14): antes `updateOrCreate` — pisaba
+            // `title`/`subtitle`/`countries`/`content`/etc. de un servicio
+            // YA EXISTENTE con los valores de ESTE array cada vez que el
+            // seeder corría, sin importar que el Tech Lead ya hubiese
+            // editado ese contenido en Studio. Bug real reportado en vivo:
+            // corrió el seeder después de que este archivo sumara
+            // `offers`/`coverages` a "Seguro Financiero", y perdió el
+            // `subtitle`/`countries`/`content.intro` reales que ya tenía
+            // cargados (quedaron pisados por los valores viejos que había
+            // acá). `firstOrCreate` busca solo por `[tenant_id, slug]`: si
+            // el servicio YA EXISTE, lo deja completamente intacto (no lo
+            // toca); solo lo crea —con estos valores de ejemplo— la
+            // PRIMERA vez, cuando todavía no existe. Mismo criterio que ya
+            // documenta el docblock de la clase ("el Tech Lead los
+            // completa por servicio desde Studio cuando corresponda") —
+            // ahora también aplicado en el código, no solo en el
+            // comentario.
+            $record = Service::firstOrCreate(
+                ['tenant_id' => $tenant->id, 'slug' => $slug],
                 [
+                    'lang_iso' => 'es',
                     'title' => $service['title'],
                     'subtitle' => $service['subtitle'],
                     'status' => PublishStatusEnum::Published->value,
-                    'countries' => $service['countries'],
-                    'content' => $service['content'],
-                    'sort_order' => $index,
                     'published_at' => now(),
+                    'image_id' => Cliente0MediaSeeder::mediaId($tenant, $service['image_file']),
+                    // 2026-09-14: `image_detail_id` (imagen secundaria,
+                    // pensada para el header del detalle) nuevo — como
+                    // contenido inicial se duplica la MISMA imagen que
+                    // `image_id` (mismo `image_file`, mismo Media, mismo
+                    // id) en los dos campos. No es una imagen panorámica
+                    // real todavía — el Tech Lead sube una propia por
+                    // servicio desde Studio cuando corresponda, mismo
+                    // criterio que el resto del contenido de este seeder.
+                    'image_detail_id' => Cliente0MediaSeeder::mediaId($tenant, $service['image_file']),
+                    'countries' => $service['countries'],
+                    'content' => $content,
+                    // 2026-09-14: `properties.show_decorative_detail` en
+                    // `true` explícito para las 9 filas de contenido inicial
+                    // — sin esto, `properties` queda `null` (nunca se seteó
+                    // acá) y el Toggle de Studio hidrata "apagado" para un
+                    // registro existente (el `->default(true)` de Filament
+                    // solo aplica al CREAR desde el form, no a una fila ya
+                    // sembrada), aunque el frontend YA trataba "ausente"
+                    // como "mostrar" (`!== false`) — mismatch confuso: el
+                    // admin veía el toggle apagado pero las banderas SÍ se
+                    // veían en el sitio. Con el valor explícito, Studio y el
+                    // sitio quedan alineados desde el primer render. NO se
+                    // agrega `header_type` acá (no fue pedido) — su default
+                    // 'normal' ya coincide entre Filament y el frontend sin
+                    // el mismo problema (un `Select` vacío no implica un
+                    // valor "activo" visualmente engañoso como sí pasa con
+                    // un `Toggle`).
+                    // 2026-09-15: footer principal como contenido inicial (pedido del Tech Lead).
+                    'properties' => [
+                        'show_decorative_detail' => true,
+                        'footer_page_id' => $footerPage?->id,
+                    ],
+                    'sort_order' => $index,
                 ]
             );
+
+            // 2026-09-15: si el servicio ya existía de corridas anteriores y no
+            // tiene asignado `footer_page_id`, se le asocia el footer principal
+            // pedido por el Tech Lead ("agregar en el seeder como parte del contenido
+            // inicial el footer principal").
+            if ($footerPage && empty($record->properties['footer_page_id'])) {
+                $props = $record->properties ?? [];
+                $props['footer_page_id'] = $footerPage->id;
+                $record->properties = $props;
+                $record->save();
+            }
         }
+
+        // Poda el dataset de la 1ra vuelta (12 servicios de ejemplo con
+        // otros slugs) — sin esto, quedarían huérfanos y visibles en el
+        // catálogo público junto a los 9 reales.
+        Service::where('tenant_id', $tenant->id)->whereNotIn('slug', $slugs)->delete();
     }
 }

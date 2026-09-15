@@ -1,20 +1,48 @@
 <!DOCTYPE html>
-<html lang="es" class="h-full bg-[#0B0C0E]">
+<html lang="es" class="h-full bg-[#1C1917]">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
     <title>Stamless</title>
     <meta name="description" content="Una fuente. Todos los sitios.">
-    
+    {{-- ADR-064: theme-color de la landing usa el primary de Studio
+         (ámbar) — es el panel al que apunta el producto que se está por
+         lanzar, no el de Platform (super-admin B2B, teal, sin superficie
+         pública propia todavía). --}}
+    <meta name="theme-color" content="#D97706">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400&family=IBM+Plex+Serif:wght@500&display=swap" rel="stylesheet">
-    
+
     <style>
+        /*
+         * ADR-064 — paleta de marca Stamless, subset usado en esta landing
+         * (sin Tailwind acá, es HTML+CSS a mano — ver docblock de
+         * `PanelCmsProvider::panel()` para el resto de la paleta y su
+         * aplicación en Studio/Platform). Deliberadamente NO se declara
+         * `--sl-platform-primary` (teal) acá: esta landing es 100% Studio
+         * (el producto que se está por lanzar), no tiene ningún link a
+         * Platform todavía.
+         */
+        :root {
+            --sl-primary: #D97706;
+            --sl-primary-hover: #B45309;
+            --sl-primary-tint: #F5A524;
+            --sl-ink: #171412;
+            --sl-paper: #FAF7F2;
+            --sl-muted: #8A8175;
+            --sl-dark: #1C1917;
+        }
+
         body {
             font-family: 'IBM Plex Sans', sans-serif;
-            background-color: #0B0C0E;
+            /* 2026-09-13, ADR-064: #0B0C0E -> var(--sl-dark) (#1C1917) —
+               mismo tono casi negro que ya usaba este teaser, alineado al
+               token oficial de "superficie oscura" en vez de un valor suelto
+               elegido antes de que existiera la paleta formal. */
+            background-color: var(--sl-dark);
             color: #F4F1EA;
             margin: 0;
             display: flex;
@@ -82,7 +110,11 @@
 
         .footer-right {
             text-transform: uppercase;
-            color: #C4A574;
+            /* 2026-09-13, ADR-064: #C4A574 (dorado suelto, elegido antes de
+               la paleta formal) -> var(--sl-primary-tint) (#F5A524) — mismo
+               espíritu de "acento cálido discreto" para un label, ahora con
+               el token oficial de highlight suave de la marca. */
+            color: var(--sl-primary-tint);
         }
 
         @keyframes genesis-in {

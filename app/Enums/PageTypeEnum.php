@@ -8,7 +8,6 @@ enum PageTypeEnum: string implements HasLabel
 {
     case Page = 'page';
     case Landing = 'landing';
-    case Header = 'header';
     case Footer = 'footer';
     case Legal = 'legal';
 
@@ -17,7 +16,6 @@ enum PageTypeEnum: string implements HasLabel
         return match ($this) {
             self::Page => 'Página',
             self::Landing => 'Landing Page',
-            self::Header => 'Cabecera (Header)',
             self::Footer => 'Pie de página (Footer)',
             self::Legal => 'Aviso Legal',
         };

@@ -3,8 +3,8 @@
 namespace App\Traits;
 
 use App\Models\Scopes\TenantScope;
-use App\Services\TenantManager;
 use App\Models\Tenant;
+use App\Services\TenantManager;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 trait HasTenant
@@ -14,7 +14,7 @@ trait HasTenant
      */
     public static function bootHasTenant(): void
     {
-        static::addGlobalScope(new TenantScope());
+        static::addGlobalScope(new TenantScope);
 
         static::creating(function ($model) {
             $tenantManager = app(TenantManager::class);

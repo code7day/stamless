@@ -162,5 +162,20 @@ class Cliente0HomeSlidesSeeder extends Seeder
                 $attributes
             );
         }
+
+        // Limpieza de convergencia (2026-09-11, reporte real del Tech Lead
+        // con captura: "en slider estas generando contenido inicial
+        // duplicado" — 4 slides en vez de 3, "El socio que necesitas"
+        // repetida). El `updateOrCreate` de arriba solo toca los 3
+        // `sort_order` definidos en `SLIDES` — nunca borra un slide que
+        // haya quedado de una versión anterior de este seeder (que en
+        // algún momento tuvo más de 3, o se corrió antes de que existiera
+        // este `updateOrCreate` por `sort_order`). Sin este paso, cada
+        // corrida de `db:seed` deja crecer huérfanos indefinidamente en
+        // vez de converger siempre a exactamente las 3 slides de `SLIDES`.
+        $slider->slides()
+            ->where('tenant_id', $tenant->id)
+            ->where('sort_order', '>=', count(self::SLIDES))
+            ->delete();
     }
 }

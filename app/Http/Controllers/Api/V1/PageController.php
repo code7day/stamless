@@ -50,6 +50,10 @@ class PageController extends Controller
 
         $this->attachResolvedLinks([$page, ...$page->blocks->all()]);
         $this->attachResolvedBlockContent($page->blocks);
+        // 2026-09-13: fallback de SEO/OG a nivel tenant (ver
+        // `ResolvesPublicLinks::attachResolvedSeoMeta()`) — cubre también
+        // páginas tipo Legal, que son un `Page` más (`PageTypeEnum::Legal`).
+        $this->attachResolvedSeoMeta([$page]);
 
         return $this->success(new PageResource($page));
     }

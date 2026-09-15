@@ -3,14 +3,18 @@
 namespace App\Filament\Resources;
 
 use App\Enums\SlideBackgroundTypeEnum;
+use App\Filament\Concerns\FormatsUsageBadge;
 use App\Filament\Resources\SliderResource\Pages;
 use App\Filament\Schemas\HeadingFieldset;
 use App\Filament\Schemas\LinkSchema;
 use App\Filament\Schemas\MediaUpload;
 use App\Filament\Schemas\PropertiesSchema;
 use App\Models\Slider;
+use App\Models\Tenant;
 use Filament\Actions;
+use Filament\Facades\Filament;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Grid;
@@ -26,17 +30,98 @@ use Illuminate\Support\Str;
 
 class SliderResource extends Resource
 {
+    use FormatsUsageBadge;
+
     protected static ?string $model = Slider::class;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-presentation-chart-bar';
 
-    protected static ?string $navigationLabel = 'Sliders (Carruseles)';
+    // 2026-09-13, pedido del Tech Lead: quitar la aclaración "(Carruseles)"
+    // del menú principal — "Sliders" solo, mismo criterio que `$pluralLabel`
+    // ya usaba.
+    protected static ?string $navigationLabel = 'Sliders';
 
     protected static ?string $pluralLabel = 'Sliders';
 
     protected static ?string $modelLabel = 'Slider';
 
     protected static ?string $slug = 'sliders';
+
+    /**
+     * Límite de sliders por plan (2026-09-11, pedido del Tech Lead: "para
+     * free con 2 sliders y para auspicio con 5 sliders"). Cuenta filas de
+     * `Slider` (el carrusel en sí), no `Slide` individuales.
+     */
+    public static function isSliderLimitReached(): bool
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return false;
+        }
+
+        $limit = $tenant->maxSliders();
+
+        if ($limit === null) {
+            return false;
+        }
+
+        return Slider::where('tenant_id', $tenant->id)->count() >= $limit;
+    }
+
+    public static function sliderLimitMessage(): string
+    {
+        $tenant = Filament::getTenant();
+        $limit = $tenant instanceof Tenant ? $tenant->maxSliders() : null;
+
+        return "El plan actual permite hasta {$limit} sliders. Para crear uno nuevo, eliminar primero alguno existente.";
+    }
+
+    /**
+     * 2026-09-13, pedido del Tech Lead: badge "usado/límite" en la opción
+     * de menú del sidebar (ver `FormatsUsageBadge`).
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::formatUsageBadge(Slider::where('tenant_id', $tenant->id)->count(), $tenant->maxSliders());
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return self::usageBadgeColor(Slider::where('tenant_id', $tenant->id)->count(), $tenant->maxSliders());
+    }
+
+    /**
+     * 2026-09-13 (ADR-061 addendum): mismo helper que Page/Post/Service
+     * para generar un slug único al duplicar ("titulo-copia",
+     * "titulo-copia-2", ...), scopeado por `lang_iso` (HasTenant ya
+     * scopea por tenant vía global scope).
+     */
+    private static function duplicateSlug(Slider $record): string
+    {
+        $base = $record->slug.'-copia';
+        $candidate = $base;
+        $suffix = 2;
+
+        while (Slider::where('tenant_id', $record->tenant_id)->where('slug', $candidate)->where('lang_iso', $record->lang_iso)->exists()) {
+            $candidate = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $candidate;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -64,7 +149,12 @@ class SliderResource extends Resource
                                     ->label('Slug')
                                     ->required()
                                     ->maxLength(255)
-                                    ->unique(ignoreRecord: true),
+                                    ->scopedUnique(
+                                        model: Slider::class,
+                                        column: 'slug',
+                                        ignoreRecord: true,
+                                        modifyQueryUsing: fn ($query) => $query->where('tenant_id', Filament::getTenant()?->id ?? auth()->user()?->tenant_id),
+                                    ),
 
                                 Forms\Components\Hidden::make('lang_iso')
                                     ->default('es'),
@@ -103,161 +193,161 @@ class SliderResource extends Resource
                     ->defaultItems(0)
                     ->columnSpanFull()
                     ->schema([
-                                Tabs::make('SlideTabs')
-                                    ->tabs([
-                                        Tabs\Tab::make('Contenido')
-                                            ->icon('heroicon-m-document-text')
+                        Tabs::make('SlideTabs')
+                            ->tabs([
+                                Tabs\Tab::make('Contenido')
+                                    ->icon('heroicon-m-document-text')
+                                    ->schema([
+                                        HeadingFieldset::make(),
+
+                                        Grid::make(2)
                                             ->schema([
-                                                HeadingFieldset::make(),
+                                                Forms\Components\Hidden::make('lang_iso')
+                                                    ->default('es'),
 
-                                                Grid::make(2)
-                                                    ->schema([
-                                                        Forms\Components\Hidden::make('lang_iso')
-                                                            ->default('es'),
-
-                                                        Forms\Components\Toggle::make('is_active')
-                                                            ->label('Activo')
-                                                            ->default(true)
-                                                            ->required(),
-                                                    ]),
+                                                Forms\Components\Toggle::make('is_active')
+                                                    ->label('Activo')
+                                                    ->default(true)
+                                                    ->required(),
                                             ]),
+                                    ]),
 
-                                        Tabs\Tab::make('Fondo')
-                                            ->icon('heroicon-m-photo')
+                                Tabs\Tab::make('Fondo')
+                                    ->icon('heroicon-m-photo')
+                                    ->schema([
+                                        Forms\Components\Select::make('background_type')
+                                            ->label('Tipo de fondo')
+                                            ->required()
+                                            ->options(SlideBackgroundTypeEnum::class)
+                                            ->default(SlideBackgroundTypeEnum::Image->value)
+                                            ->live(),
+
+                                        Grid::make(3)
+                                            ->visible(function (Get $get) {
+                                                $val = $get('background_type');
+
+                                                return ($val instanceof \BackedEnum ? $val->value : $val) === 'image';
+                                            })
                                             ->schema([
-                                                Forms\Components\Select::make('background_type')
-                                                    ->label('Tipo de fondo')
-                                                    ->required()
-                                                    ->options(SlideBackgroundTypeEnum::class)
-                                                    ->default(SlideBackgroundTypeEnum::Image->value)
-                                                    ->live(),
-
-                                                Grid::make(3)
-                                                    ->visible(function (Get $get) {
+                                                MediaUpload::make('image_desktop_id', 'Imagen Desktop')
+                                                    ->required(function (Get $get) {
                                                         $val = $get('background_type');
 
                                                         return ($val instanceof \BackedEnum ? $val->value : $val) === 'image';
-                                                    })
-                                                    ->schema([
-                                                        MediaUpload::make('image_desktop_id', 'Imagen Desktop')
-                                                            ->required(function (Get $get) {
-                                                                $val = $get('background_type');
+                                                    }),
 
-                                                                return ($val instanceof \BackedEnum ? $val->value : $val) === 'image';
-                                                            }),
+                                                MediaUpload::make('image_tablet_id', 'Imagen Tablet'),
 
-                                                        MediaUpload::make('image_tablet_id', 'Imagen Tablet'),
+                                                MediaUpload::make('image_mobile_id', 'Imagen Móvil'),
+                                            ]),
 
-                                                        MediaUpload::make('image_mobile_id', 'Imagen Móvil'),
-                                                    ]),
+                                        Grid::make(2)
+                                            ->visible(function (Get $get) {
+                                                $val = $get('background_type');
 
-                                                Grid::make(2)
-                                                    ->visible(function (Get $get) {
+                                                return ($val instanceof \BackedEnum ? $val->value : $val) === 'video';
+                                            })
+                                            ->schema([
+                                                MediaUpload::make('video_desktop_id', 'Video Desktop', 'video')
+                                                    ->required(function (Get $get) {
                                                         $val = $get('background_type');
 
                                                         return ($val instanceof \BackedEnum ? $val->value : $val) === 'video';
-                                                    })
-                                                    ->schema([
-                                                        MediaUpload::make('video_desktop_id', 'Video Desktop', 'video')
-                                                            ->required(function (Get $get) {
-                                                                $val = $get('background_type');
+                                                    }),
 
-                                                                return ($val instanceof \BackedEnum ? $val->value : $val) === 'video';
-                                                            }),
-
-                                                        MediaUpload::make('video_mobile_id', 'Video Móvil', 'video'),
-                                                    ]),
+                                                MediaUpload::make('video_mobile_id', 'Video Móvil', 'video'),
                                             ]),
+                                    ]),
 
-                                        Tabs\Tab::make('Enlaces')
-                                            ->icon('heroicon-m-link')
+                                Tabs\Tab::make('Enlaces')
+                                    ->icon('heroicon-m-link')
+                                    ->schema([
+                                        Grid::make(4)
                                             ->schema([
-                                                Grid::make(4)
-                                                    ->schema([
-                                                        // Columna Izquierda (span 2): video de presentación + CTA único.
-                                                        // Un solo CTA por slide (2026-08-30, a pedido del Tech Lead:
-                                                        // "solo tendrá un boton CTA no se necesita multiples enlaces")
-                                                        // — LinkSchema::makeSingle() en vez de LinkSchema::make()
-                                                        // (Repeater). `links` sigue siendo array en DB/API (un solo
-                                                        // elemento), no cambia el contrato público.
-                                                        Group::make([
-                                                            Grid::make(2)
-                                                                ->schema([
-                                                                    Forms\Components\Toggle::make('has_presentation_video')
-                                                                        ->label('Tiene video de presentación')
-                                                                        ->default(false)
-                                                                        ->inline(false)
-                                                                        ->live(),
+                                                // Columna Izquierda (span 2): video de presentación + CTA único.
+                                                // Un solo CTA por slide (2026-08-30, a pedido del Tech Lead:
+                                                // "solo tendrá un boton CTA no se necesita multiples enlaces")
+                                                // — LinkSchema::makeSingle() en vez de LinkSchema::make()
+                                                // (Repeater). `links` sigue siendo array en DB/API (un solo
+                                                // elemento), no cambia el contrato público.
+                                                Group::make([
+                                                    Grid::make(2)
+                                                        ->schema([
+                                                            Forms\Components\Toggle::make('has_presentation_video')
+                                                                ->label('Tiene video de presentación')
+                                                                ->default(false)
+                                                                ->inline(false)
+                                                                ->live(),
 
-                                                                    Forms\Components\TextInput::make('presentation_youtube_id')
-                                                                        ->label('YouTube Video ID')
-                                                                        ->maxLength(50)
-                                                                        ->visible(fn (Get $get) => $get('has_presentation_video') === true),
-                                                                ]),
+                                                            Forms\Components\TextInput::make('presentation_youtube_id')
+                                                                ->label('YouTube Video ID')
+                                                                ->maxLength(50)
+                                                                ->visible(fn (Get $get) => $get('has_presentation_video') === true),
+                                                        ]),
 
-                                                            Grid::make(2)
-                                                                ->schema($linkFields['main']),
-                                                        ])
-                                                            ->columnSpan(2),
+                                                    Grid::make(2)
+                                                        ->schema($linkFields['main']),
+                                                ])
+                                                    ->columnSpan(2),
 
-                                                        // Columna Derecha (span 2): propiedades del enlace (target de
-                                                        // apertura, alt SEO, clase CSS, id HTML) — antes anidadas
-                                                        // dentro de cada item del Repeater, ahora que es un único CTA
-                                                        // se sacan a su propio fieldset "Propiedades" en la columna
-                                                        // donde antes vivía "Posición y Contenido" (que se movió al
-                                                        // tab "Estilos", ver más abajo).
-                                                        Fieldset::make('Propiedades')
-                                                            ->schema($linkFields['properties'])
-                                                            ->columns(2)
-                                                            ->columnSpan(2),
-                                                    ]),
+                                                // Columna Derecha (span 2): propiedades del enlace (target de
+                                                // apertura, alt SEO, clase CSS, id HTML) — antes anidadas
+                                                // dentro de cada item del Repeater, ahora que es un único CTA
+                                                // se sacan a su propio fieldset "Propiedades" en la columna
+                                                // donde antes vivía "Posición y Contenido" (que se movió al
+                                                // tab "Estilos", ver más abajo).
+                                                Fieldset::make('Propiedades')
+                                                    ->schema($linkFields['properties'])
+                                                    ->columns(2)
+                                                    ->columnSpan(2),
                                             ]),
+                                    ]),
 
-                                        // "Posición y Contenido" (movida acá desde el tab "Enlaces",
-                                        // 2026-08-30) + "Decorador y Efectos" (renombrado) fusionados
-                                        // en un único tab "Estilos" — a pedido del Tech Lead.
-                                        Tabs\Tab::make('Estilos')
-                                            ->icon('heroicon-m-sparkles')
-                                            ->schema([
-                                                Fieldset::make('Posición y Contenido')
-                                                    ->schema(
-                                                        PropertiesSchema::makeComponents(['position_container', 'align_content'])
-                                                    )
-                                                    ->columns(2),
+                                // "Posición y Contenido" (movida acá desde el tab "Enlaces",
+                                // 2026-08-30) + "Decorador y Efectos" (renombrado) fusionados
+                                // en un único tab "Estilos" — a pedido del Tech Lead.
+                                Tabs\Tab::make('Estilos')
+                                    ->icon('heroicon-m-sparkles')
+                                    ->schema([
+                                        Fieldset::make('Posición y Contenido')
+                                            ->schema(
+                                                PropertiesSchema::makeComponents(['position_container', 'align_content'])
+                                            )
+                                            ->columns(2),
 
-                                                // `show_scroll_indicator` NO vive acá (corrección del mismo
-                                                // día, 2026-08-31): el Tech Lead aclaró que es una property
-                                                // del Slider en general, una sola vez para todas las slides
-                                                // ("sobrepuesta... para todos los slides detrás"), no algo
-                                                // que se prenda/apague por slide individual — ver el nuevo
-                                                // fieldset "Flecha de scroll" en la sección "General" arriba.
-                                                Fieldset::make('Decorador inferior')
-                                                    ->schema(
-                                                        PropertiesSchema::makeComponents([
-                                                            'decorator_bottom', 'decorator_bottom_color', 'decorator_bottom_opacity',
-                                                        ])
-                                                    )
-                                                    ->columns(3),
+                                        // `show_scroll_indicator` NO vive acá (corrección del mismo
+                                        // día, 2026-08-31): el Tech Lead aclaró que es una property
+                                        // del Slider en general, una sola vez para todas las slides
+                                        // ("sobrepuesta... para todos los slides detrás"), no algo
+                                        // que se prenda/apague por slide individual — ver el nuevo
+                                        // fieldset "Flecha de scroll" en la sección "General" arriba.
+                                        Fieldset::make('Decorador inferior')
+                                            ->schema(
+                                                PropertiesSchema::makeComponents([
+                                                    'decorator_bottom', 'decorator_bottom_color', 'decorator_bottom_opacity',
+                                                ])
+                                            )
+                                            ->columns(3),
 
-                                                Fieldset::make('Fondo del slide')
-                                                    ->schema(
-                                                        PropertiesSchema::makeComponents([
-                                                            'slide_background_color',
-                                                            'slide_background_blend_mode',
-                                                            'slide_background_brightness',
-                                                            'slide_background_opacity',
-                                                            'slide_background_filter_saturate',
-                                                            'slide_background_filter_grayscale',
-                                                            'slide_background_filter_sepia',
-                                                            'slide_background_filter_contrast',
-                                                            'slide_background_filter_hue_rotate',
-                                                            'slide_background_filter_blur',
-                                                        ])
-                                                    )
-                                                    ->columns(2),
-                                            ]),
-                                    ])
-                                    ->columnSpanFull(),
+                                        Fieldset::make('Fondo del slide')
+                                            ->schema(
+                                                PropertiesSchema::makeComponents([
+                                                    'slide_background_color',
+                                                    'slide_background_blend_mode',
+                                                    'slide_background_brightness',
+                                                    'slide_background_opacity',
+                                                    'slide_background_filter_saturate',
+                                                    'slide_background_filter_grayscale',
+                                                    'slide_background_filter_sepia',
+                                                    'slide_background_filter_contrast',
+                                                    'slide_background_filter_hue_rotate',
+                                                    'slide_background_filter_blur',
+                                                ])
+                                            )
+                                            ->columns(2),
+                                    ]),
+                            ])
+                            ->columnSpanFull(),
                     ]),
             ]);
     }
@@ -300,10 +390,58 @@ class SliderResource extends Resource
                     ->label('Activo'),
             ])
             ->actions([
-                Actions\EditAction::make()
-                    ->slideOver()
-                    ->modalWidth('5xl'),
-                Actions\DeleteAction::make(),
+                // 2026-09-13 (ADR-059, addendum): acciones de fila agrupadas
+                // en un menú desplegable (mismo patrón que `ApiTokens::
+                // table()`).
+                Actions\ActionGroup::make([
+                    Actions\EditAction::make()
+                        ->slideOver()
+                        ->modalWidth('5xl'),
+
+                    // Duplicar (2026-09-13, ADR-061 addendum): clona el
+                    // Slider (nuevo uuid + slug único, arranca inactivo) y
+                    // TODOS sus Slides hijos (cada uno con su propio uuid
+                    // nuevo, pero conservando sus FKs a Media tal cual —
+                    // reusar el mismo asset entre original y copia es
+                    // intencional, no hace falta duplicar archivos).
+                    Actions\ReplicateAction::make()
+                        ->label('Duplicar')
+                        // 2026-09-13 (ADR-061, addendum UX): modal propio en
+                        // vez del genérico "Replicar :label" de Filament.
+                        ->modalHeading(fn (Slider $record): string => "¿Duplicar el slider \"{$record->title}\"?")
+                        ->modalDescription('Se creará una copia con todos sus slides, guardada como inactiva para que puedas editarla antes de activarla.')
+                        ->modalSubmitActionLabel('Sí, duplicar')
+                        ->modalFooterActionsAlignment('center')
+                        ->excludeAttributes(['uuid', 'slug'])
+                        ->beforeReplicaSaved(function (Slider $record, Slider $replica): void {
+                            $replica->title = "{$record->title} (copia)";
+                            $replica->slug = self::duplicateSlug($record);
+                            $replica->is_active = false;
+                        })
+                        ->after(function (Slider $record, Actions\ReplicateAction $action): void {
+                            $replica = $action->getReplica();
+
+                            foreach ($record->slides as $slide) {
+                                $newSlide = $slide->replicate(['uuid']);
+                                $newSlide->slider_id = $replica->id;
+                                $newSlide->tenant_id = $replica->tenant_id;
+                                $newSlide->save();
+                            }
+                        })
+                        ->disabled(fn (): bool => self::isSliderLimitReached())
+                        ->tooltip(fn (): ?string => self::isSliderLimitReached() ? self::sliderLimitMessage() : null)
+                        ->before(function (Actions\ReplicateAction $action) {
+                            if (! self::isSliderLimitReached()) {
+                                return;
+                            }
+
+                            Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::sliderLimitMessage())->send();
+                            $action->halt();
+                        })
+                        ->successNotificationTitle('Slider duplicado'),
+
+                    Actions\DeleteAction::make(),
+                ]),
             ])
             ->bulkActions([
                 Actions\BulkActionGroup::make([
@@ -314,7 +452,17 @@ class SliderResource extends Resource
             ->emptyStateActions([
                 Actions\CreateAction::make()
                     ->slideOver()
-                    ->modalWidth('5xl'),
+                    ->modalWidth('5xl')
+                    ->disabled(fn (): bool => self::isSliderLimitReached())
+                    ->tooltip(fn (): ?string => self::isSliderLimitReached() ? self::sliderLimitMessage() : null)
+                    ->before(function (Actions\CreateAction $action) {
+                        if (! self::isSliderLimitReached()) {
+                            return;
+                        }
+
+                        Notification::make()->danger()->title('Límite del plan alcanzado')->body(self::sliderLimitMessage())->send();
+                        $action->halt();
+                    }),
             ]);
     }
 

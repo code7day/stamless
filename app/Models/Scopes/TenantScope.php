@@ -2,10 +2,10 @@
 
 namespace App\Models\Scopes;
 
+use App\Services\TenantManager;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
-use App\Services\TenantManager;
 
 class TenantScope implements Scope
 {
@@ -17,7 +17,7 @@ class TenantScope implements Scope
         $tenantManager = app(TenantManager::class);
 
         if ($tenantManager->hasTenant()) {
-            $builder->where($model->getTable() . '.tenant_id', $tenantManager->getTenantId());
+            $builder->where($model->getTable().'.tenant_id', $tenantManager->getTenantId());
         }
     }
 }

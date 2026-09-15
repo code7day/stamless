@@ -2,6 +2,7 @@
 
 namespace App\Filament\Schemas;
 
+use App\Filament\Resources\MediaResource;
 use App\Models\Media;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
@@ -23,7 +24,27 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
  */
 class MediaUpload
 {
-    public static function make(string $name, string $label, string $accept = 'image'): FileUpload
+    /**
+     * @param  string|null  $helperText  Texto de ayuda propio del campo (UX
+     *                                   puntual, ej. "para qué se usa esta
+     *                                   imagen"). 2026-09-14: parámetro
+     *                                   nuevo, opcional — a propósito NO se
+     *                                   encadena `->helperText()` después
+     *                                   de `make()` en el resource, porque
+     *                                   PISARÍA el closure de acá abajo que
+     *                                   ya usa ese mismo método para avisar
+     *                                   el límite de plan alcanzado
+     *                                   (`MediaResource::mediaLimitMessage()`).
+     *                                   Con el parámetro, ambos mensajes
+     *                                   conviven: el de límite SIEMPRE tiene
+     *                                   prioridad (bloqueante), el propio
+     *                                   del campo se muestra el resto del
+     *                                   tiempo. Sin pasar nada, el
+     *                                   comportamiento es idéntico al de
+     *                                   antes para los 7 call sites
+     *                                   existentes (ninguno lo usaba).
+     */
+    public static function make(string $name, string $label, string $accept = 'image', ?string $helperText = null): FileUpload
     {
         $upload = FileUpload::make($name)
             ->label($label)
@@ -58,7 +79,10 @@ class MediaUpload
                 return (string) $media->id;
             })
             ->getUploadedFileUsing(function (string $file): ?array {
-                $media = Media::find((int) $file);
+                $tenantId = Filament::getTenant()?->id ?? auth()->user()?->tenant_id;
+                $media = Media::query()
+                    ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
+                    ->find((int) $file);
 
                 if (! $media) {
                     return null;
@@ -71,17 +95,53 @@ class MediaUpload
                     'url' => self::previewUrl($media),
                 ];
             })
-            ->deleteUploadedFileUsing(function (string $file): void {
-                $media = Media::find((int) $file);
-
-                if (! $media) {
-                    return;
-                }
-
-                rescue(fn () => Storage::disk($media->disk?->value ?? 'public')->delete($media->path), report: false);
-
-                $media->delete();
-            });
+            // A propósito NO borra el archivo del disco ni la fila `Media`
+            // (2026-09-11, pedido del Tech Lead tras un borrado real:
+            // "mejor que no borre la original por que puede que lo esté
+            // usando otro componente o bloque, es mejor que genere una
+            // copia"). `media` es una tabla centralizada — el mismo id
+            // puede estar referenciado desde el `content` (jsonb) de
+            // muchos bloques distintos a la vez (heading, features,
+            // slides, etc.), sin un pivot ni FKs normales que permitan
+            // chequear barato "¿lo sigue usando algo más?" antes de
+            // decidir si borrar. Confirmado en vivo: al editar/recortar
+            // una imagen ya guardada (bug real de Filament, ver
+            // PROGRESS.md) o al simplemente quitarla de un campo, este
+            // callback SÍ se disparaba y borraba el archivo físico aunque
+            // esa misma imagen siguiera en uso en otro bloque/página —
+            // pérdida de datos real, no hipotética (un `Cliente0MediaSeeder`
+            // que apunta a un archivo puesto a mano en disco quedó roto
+            // así en esta misma sesión). "Quitar" un campo de imagen ahora
+            // solo desvincula la referencia de ESE campo (ya lo hace
+            // Filament al actualizar el estado del Builder) — el archivo y
+            // la fila `Media` quedan intactos en la Biblioteca de Medios,
+            // reutilizables desde cualquier otro bloque. El borrado real
+            // (cuando de verdad ya no se necesita) se hace a propósito
+            // desde `MediaResource::DeleteAction`, nunca como efecto
+            // secundario de editar un campo puntual.
+            ->deleteUploadedFileUsing(function (): void {})
+            // 2026-09-14, ADR-067: cada subida por ESTE campo crea una fila
+            // `Media` NUEVA (ver `saveUploadedFileUsing()` arriba — nunca
+            // reemplaza/borra una existente, por el mismo criterio de
+            // `deleteUploadedFileUsing()` de más arriba), así que cuenta
+            // para el mismo tope de `Tenant::maxMedia()` que ya hacía
+            // cumplir `MediaResource` en su propio botón "Crear". Hasta
+            // esta vuelta, ESTE campo (usado en Páginas/Posts/Servicios/
+            // Sliders/Testimonios) no lo chequeaba — era el único hueco por
+            // el que se podía seguir sumando archivos sin límite. Se
+            // reusa `MediaResource::isMediaLimitReached()`/
+            // `mediaLimitMessage()` tal cual (mismo mensaje, mismo umbral,
+            // sin duplicar la lógica) — nota honesta: `->disabled()`
+            // congela el campo COMPLETO, no solo "subir uno nuevo": si un
+            // Page/Service ya tenía una imagen cargada en este campo y el
+            // tenant llega al tope en OTRO lado, ese campo puntual también
+            // queda sin poder editarse/quitarse hasta bajar de tope —
+            // mismo nivel de granularidad que ya usa `MediaResource` para
+            // su propio botón "Crear" (no hay una forma nativa en Filament
+            // de deshabilitar solo "agregar" y dejar "quitar" habilitado
+            // en un `FileUpload`).
+            ->disabled(fn (): bool => MediaResource::isMediaLimitReached())
+            ->helperText(fn (): ?string => MediaResource::isMediaLimitReached() ? MediaResource::mediaLimitMessage() : $helperText);
 
         return match ($accept) {
             'video' => $upload

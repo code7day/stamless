@@ -27,7 +27,7 @@ enum HomepageNameEnum: string implements HasLabel
 
     public function getLabel(): string
     {
-        return match($this) {
+        return match ($this) {
             self::HOME => 'Home',
             self::PORTADA => 'Portada',
             self::INICIO => 'Inicio',
@@ -48,7 +48,7 @@ enum HomepageNameEnum: string implements HasLabel
     {
         return array_combine(
             array_column(self::cases(), 'value'),
-            array_map(fn($case) => $case->getLabel(), self::cases())
+            array_map(fn ($case) => $case->getLabel(), self::cases())
         );
     }
 
@@ -59,13 +59,13 @@ enum HomepageNameEnum: string implements HasLabel
 
     public static function labels(): array
     {
-        return array_map(fn($case) => $case->getLabel(), self::cases());
+        return array_map(fn ($case) => $case->getLabel(), self::cases());
     }
 
     public static function isHomepageLabel(string $value): bool
     {
         $labels = array_map('strtolower', self::labels());
+
         return in_array(strtolower(trim($value)), $labels, true);
     }
-
 }

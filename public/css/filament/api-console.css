@@ -1154,25 +1154,37 @@ html.dark .gnss-token-value {
  * Fix Modal SlideOver Footer & Overflow Elements (Z-Index / Sticky)
  * ───────────────────────────────────────────────────────────────── */
 
-.fi-modal-footer {
+/*
+ * 2026-09-15 (UX, reporte del Tech Lead): el footer sticky con z-index: 50
+ * y fondo sólido debe aplicar EXCLUSIVAMENTE a modales SlideOver (.fi-modal-slide-over).
+ * En modales centrados normales (ej. "Copiar bloque a otra página"), aplicar
+ * z-index: 50 y position: sticky hacía que la barra del footer con los botones
+ * "Copiar" / "Cancelar" se renderizara POR ENCIMA del dropdown del selector,
+ * tapando las opciones de la lista.
+ */
+.fi-modal.fi-modal-slide-over .fi-modal-footer,
+.fi-modal-slide-over .fi-modal-footer {
     position: sticky !important;
     bottom: 0 !important;
     z-index: 50 !important;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2) !important;
 }
 
-html.dark .fi-modal-footer {
+html.dark .fi-modal.fi-modal-slide-over .fi-modal-footer,
+html.dark .fi-modal-slide-over .fi-modal-footer {
     background-color: #18181b !important; /* zinc-900 / dark mode */
     border-top: 1px solid #27272a !important;
 }
 
-html:not(.dark) .fi-modal-footer {
+html:not(.dark) .fi-modal.fi-modal-slide-over .fi-modal-footer,
+html:not(.dark) .fi-modal-slide-over .fi-modal-footer {
     background-color: #ffffff !important;
     border-top: 1px solid #e5e7eb !important;
 }
 
-/* Modal content bottom padding so fields and builder controls scroll cleanly */
-.fi-modal-content {
+/* Modal content bottom padding so fields and builder controls scroll cleanly in slide-over */
+.fi-modal.fi-modal-slide-over .fi-modal-content,
+.fi-modal-slide-over .fi-modal-content {
     padding-bottom: 4rem !important;
 }
 
@@ -1181,6 +1193,15 @@ html:not(.dark) .fi-modal-footer {
 .fi-fo-slider,
 .fi-fo-builder-add-action {
     z-index: 10 !important;
+}
+
+/*
+ * 2026-09-15: los dropdowns de Select y paneles flotantes (.fi-dropdown-panel)
+ * deben renderizarse SIEMPRE por delante de footers, controles y encabezados
+ * de modales (que usan z-index hasta 50).
+ */
+.fi-dropdown-panel {
+    z-index: 100 !important;
 }
 
 /*

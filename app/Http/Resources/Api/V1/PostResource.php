@@ -27,7 +27,11 @@ class PostResource extends JsonResource
             'subtitle' => $this->subtitle,
             'excerpt' => $this->excerpt,
             'content' => $this->content,
-            'meta' => self::asObject($this->meta),
+            // `resolved_meta` (fallback de tenant + `og_image_*` resueltas a
+            // URL) lo setea `ResolvesPublicLinks::attachResolvedSeoMeta()` en
+            // el controller — ver su docblock. `?? $this->meta` es defensivo
+            // (nunca debería faltar viniendo de `PostController::show()`).
+            'meta' => self::asObject($this->resolved_meta ?? $this->meta),
             'links' => $this->resolved_links ?? [],
             'properties' => self::asObject($this->properties),
             'published_at' => $this->published_at?->toISOString(),

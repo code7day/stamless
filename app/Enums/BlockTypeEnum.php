@@ -19,6 +19,7 @@ enum BlockTypeEnum: string implements HasLabel
     case Testimonials = 'testimonials';
     case Logos = 'logos';
     case ServicesGrid = 'services_grid';
+    case TestimonialsGrid = 'testimonials_grid';
     case Footer = 'footer';
     case Colophon = 'colophon';
     case FooterBottom = 'footer_bottom';
@@ -39,6 +40,7 @@ enum BlockTypeEnum: string implements HasLabel
             self::Testimonials => 'Testimonios',
             self::Logos => 'Logos / Socios',
             self::ServicesGrid => 'Grid de Servicios',
+            self::TestimonialsGrid => 'Grid de Casos de Éxito',
             self::Footer => 'Footer',
             self::Colophon => 'Colophon (columnas del pie de página)',
             self::FooterBottom => 'Barra inferior (copyright)',

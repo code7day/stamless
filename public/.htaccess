@@ -23,3 +23,28 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# 2026-09-13, ver ADR-066 (frontend cica360, mismo audit de Lighthouse/
+# PageSpeed que motivó el tracking lazy-load): "Usa tiempos de
+# almacenamiento en caché eficientes" marcaba ~430 KiB de media servida sin
+# NINGÚN header de cache (`Media::url()` sirve directo desde el disco vía
+# el symlink `public/storage`, Apache lo devuelve como archivo estático
+# plano, sin pasar por ningún controller — este bloque por defecto de
+# Laravel nunca tuvo `mod_expires`/`mod_headers` para ese caso). 1 mes (no
+# 1 año, a diferencia del `1 year` que sí usa cica360 para SUS PROPIOS
+# assets con hash en el nombre): un archivo de `media` puede reemplazarse
+# IN-PLACE con el mismo nombre (ya pasó en esta misma sesión, ver
+# PROGRESS.md — las 2 imágenes OG de CICA360 se regeneraron sin cambiar de
+# filename), así que no hay cache-busting real por nombre — un TTL largo
+# arriesgaría que un visitante seguro viera la versión vieja por más
+# tiempo tras un reemplazo. 1 mes es el mismo valor que ya usa el
+# `.htaccess` de cica360 para el mismo tipo de asset reemplazable.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType video/mp4 "access plus 1 month"
+    ExpiresByType video/webm "access plus 1 month"
+</IfModule>

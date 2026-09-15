@@ -11,6 +11,1733 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-15 — Platform & Auth: Retiro de FilamentInfoWidget y corrección de nombre de Super Admin a "Eduardo Flores"
+- **Pedido del Tech Lead:** "genial, quitar widget filament" y "corrige el nombre del usuario: soy Eduardo Flores o Edu. Flores" con capturas del panel Platform.
+- **Implementación:**
+  1. En `app/Providers/Filament/PanelPlatformProvider.php`, se eliminó `FilamentInfoWidget::class` del registro de widgets e imports.
+  2. En `database/seeders/PlatformSeeder.php`, se actualizó el nombre del usuario `zedu77@gmail.com` a `Eduardo Flores`.
+  3. Se ejecutó `php artisan db:seed --class=PlatformSeeder` sincronizando el nombre en la base de datos PostgreSQL.
+- **Archivos:**
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `database/seeders/PlatformSeeder.php`
+- **Verificación:** Seeder ejecutado; Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Seguridad / Auth: Auto-registro público bloqueado y vinculación social exclusiva para usuarios pre-existentes
+- **Pedido del Tech Lead:** "no quiero register habilitado, por eso te pedi agregar como contenido inicial de stamless el usuario master".
+- **Causa y Solución:**
+  1. Con `registration(false)` como booleano estático, el paquete `filament-socialite` impedía que usuarios ya existentes en la tabla `users` (como el Master `zedu77@gmail.com`) vincularan por primera vez su cuenta en la tabla puente `socialite_users`.
+  2. Se configuró el closure `->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null)` en `PanelCmsProvider` y `PanelPlatformProvider`.
+  3. Esto mantiene el **registro público estrictamente cerrado** (si `$user === null`, cualquier intento de login por un correo no registrado es denegado de inmediato con `RegistrationNotEnabled`), mientras permite autenticarse a los usuarios creados previamente vía seeders o administración.
+- **Archivos:**
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Auth / OAuth: Soporte multi-dominio dinámico y modo stateless en Socialite para Studio y Platform
+- **Pedido del Tech Lead:** "desde platform me carga gmail oauth y luego redirecciona a studio login" con error de inicio de sesión.
+- **Causa raíz:**
+  1. Si `GOOGLE_REDIRECT_URL` en `.env` apuntaba al dominio absoluto fijo de Studio (`https://studio.stamless.host/oauth/callback/google`), Google devolvía siempre la autenticación a Studio independientemente de haberse originado en Platform.
+  2. Al llegar a Studio, la falta de coincidencia de cookie de sesión entre subdominios provocaba un `InvalidStateException` que rechazaba el login con "Error al iniciar sesión".
+- **Implementación:**
+  1. En `app/Providers/Filament/PanelCmsProvider.php` y `app/Providers/Filament/PanelPlatformProvider.php`, se activó `->stateless(true)` en todos los proveedores de `FilamentSocialitePlugin` para evitar fallos de estado entre dominios o políticas de cookies estrictas.
+  2. En `.env.example`, se estandarizaron las rutas de redirección OAuth a rutas relativas (`GOOGLE_REDIRECT_URL="/oauth/callback/google"`), permitiendo que Socialite resuelva dinámicamente al subdominio desde donde se inició el login (`platform.stamless.host` o `studio.stamless.host`).
+  3. Se documentó la necesidad de registrar ambas URIs en Google Cloud Console (`https://studio.stamless.host/oauth/callback/google` y `https://platform.stamless.host/oauth/callback/google`).
+- **Archivos:**
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `.env.example`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Auth / Seeder: Creación de usuario Super Admin Master (Nivel GOD) con zedu77@gmail.com
+- **Pedido del Tech Lead:** "en el seeder crear el usuario super usuario master, el general de generales, el mas perron de todos los usuarios, de nivel GOD, con el correo zedu77@gmail.com para poder autenticarme tambien con gmail".
+- **Implementación:**
+  1. En `database/seeders/PlatformSeeder.php`, se incorporó la creación/actualización idempotente del usuario `zedu77@gmail.com` con `name => 'Eduardo (Master GOD)'`, `is_super_admin => true`, `password => 'password123'`, `email_verified_at => now()`, `tenant_id => null`.
+  2. En `app/Models/User.php`, se añadió `'is_super_admin' => 'boolean'` a `casts()`, y se extendieron los métodos `getTenants(Panel $panel)` para devolver `Tenant::all()` y `canAccessTenant(Model $tenant)` para devolver `true` incondicionalmente cuando `is_super_admin === true`.
+  3. Se ejecutó `php artisan db:seed --class=PlatformSeeder` insertando y persistiendo el usuario en la base de datos PostgreSQL.
+  4. Gracias a `registration(false)` y la búsqueda por email en `FilamentSocialite`, el usuario puede iniciar sesión tanto con contraseña como directamente mediante el botón de **Google** (Gmail) en Platform y Studio.
+- **Archivos:**
+  - `database/seeders/PlatformSeeder.php`
+  - `app/Models/User.php`
+- **Verificación:** Seeder ejecutado con éxito; Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX): Altura acotada con scroll vertical en widget de "Uso del plan"
+- **Pedido del Tech Lead:** "este widget de uso del plan , limitar la altura para que scrollee los indicadores" con captura de los 8 items en vertical.
+- **Implementación:**
+  1. En `resources/views/filament/cms/widgets/plan-usage-widget.blade.php`, se asignó la clase `.fi-wi-plan-usage-list` con `max-h-[340px]`, `overflow-y-auto`, `overscroll-contain` y gap ajustado.
+  2. En `resources/css/filament/cms/theme.css`, se definió un scrollbar fino (`6px`), redondeado y adaptado para modo claro y oscuro (`scrollbar-color: rgba(...) transparent`).
+  3. Esto permite que el widget mantenga una altura armónica en el dashboard (alineada a ~340px) y asome el quinto indicador para invitar al scroll vertical continuo.
+  4. Se recompilaron los assets con `npm run build`.
+- **Archivos:**
+  - `resources/views/filament/cms/widgets/plan-usage-widget.blade.php`
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** `npm run build` exitoso; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX Mobile): Corrección de selectores en schema grid del widget StatsOverview
+- **Pedido del Tech Lead:** "nada se mantienen, y tienen espacio para ocupar" con captura de DevTools mostrando que el wrapper externo `div.fi-grid-col` estaba recibiendo el ancho del 76% en vez de ocupar el 100%.
+- **Causa raíz:** Los selectores CSS anteriores coincidían tanto con la grilla del esquema externo (`.fi-wi-stats-overview > .fi-grid`) como con la grilla interna de las tarjetas (`.fi-wi-stats-overview-stat`), encogiendo todo el contenedor de la sección a 355px (76%) y dejando un 24% de espacio vacío en negro a la derecha.
+- **Implementación:**
+  1. En `resources/css/filament/cms/theme.css`, se forzaron los contenedores de nivel superior (`.fi-wi-stats-overview`, `.fi-grid-col` que contiene el `Section`/`GridComponent`) a `width: 100% !important; max-width: 100% !important; display: block !important;`.
+  2. Se acotó el comportamiento horizontal (`display: flex; overflow-x: auto;`) y el dimensionamiento (`flex: 0 0 76%`) exclusivamente a la grilla interna y columnas directas de las tarjetas de métricas (`.fi-grid-col:has(> .fi-wi-stats-overview-stat)` y `.fi-sc-component > .fi-grid > .fi-grid-col`).
+  3. Se recompilaron los assets con `npm run build`.
+- **Archivos:**
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** `npm run build` exitoso; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Cambio de layout de Login en Platform a MediaPosition::Right
+- **Pedido del Tech Lead:** "cambia de login" con captura de `platform.stamless.host/login` en modo Cover (donde la tarjeta tapaba el logo Stamless del fondo).
+- **Implementación:**
+  1. En `app/Providers/Filament/PanelPlatformProvider.php`, se cambió `MediaPosition::Cover` y `blur(3)` por `MediaPosition::Right`.
+  2. Ahora Platform presenta un layout dividido limpio (formulario a la izquierda y portada Stamless a la derecha, complementando a Studio que tiene la portada a la izquierda) sin que la tarjeta tape ni desenfoque el isotipo de la marca.
+- **Archivos:**
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX Mobile): Carrusel de indicadores ocupando el 100% del ancho con sangrado fluido
+- **Pedido del Tech Lead:** "pero todo el container debe ocupar el 100% del ancho" con captura del Dashboard.
+- **Implementación:**
+  1. En `resources/css/filament/cms/theme.css`, se aplicó sangrado completo al carrusel móvil (`width: 100%; margin-inline: -1rem; padding-inline: 1rem;`).
+  2. Esto permite que el carrusel ocupe el 100% del ancho total del viewport de extremo a extremo, alineando la primera tarjeta al margen del dashboard y permitiendo que el 1/3 de la siguiente tarjeta se asome sin cortes artificiales hasta el borde derecho de la pantalla.
+- **Archivos:**
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX Mobile / Gestalt): Indicadores con ancho al 76% mostrando 1/3 de la siguiente tarjeta (Ley de Continuidad)
+- **Pedido del Tech Lead:** "el ancho de cada elemento o widget en mobile que tengan limite para que asi se muestre 1/3 del siguiente elemento y asi se aplique la ley de continuidad de gestalt" con captura adjunta.
+- **Implementación:**
+  1. En `resources/css/filament/cms/theme.css`, se configuró el ancho de cada tarjeta de estadística a `flex: 0 0 76%; min-width: 76%; max-width: 76%` en pantallas móviles (`< 768px`).
+  2. Esto permite que el elemento actual esté enfocado con claridad mientras que exactamente ~1/3 (24% restante del ancho) de la siguiente tarjeta asome por el borde derecho, aplicando la **Ley de Continuidad de Gestalt** para señalizar de forma natural la presencia de contenido interactivo deslizable.
+  3. Se ajustó el padding interno a `1.125rem 1.25rem` para aprovechar el espacio en mobile con total legibilidad.
+- **Archivos:**
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX Mobile): Indicadores full-width (100%) con scroll snap carrusel
+- **Pedido del Tech Lead:** "podria ser pero fullwidth" con captura del indicador en mobile.
+- **Implementación:**
+  1. En `resources/css/filament/cms/theme.css`, se actualizó el layout móvil (`< 768px`) para que cada tarjeta de estadística ocupe el 100% del ancho (`flex: 0 0 100%; min-width: 100%; max-width: 100%`) con `scroll-snap-align: start; scroll-snap-stop: always;`.
+  2. Al deslizar horizontalmente, la pantalla encaja de manera nítida y completa de tarjeta en tarjeta (tipo carrusel app-like), sin cortes intermedios de texto ni bordes truncados.
+- **Archivos:**
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard (UX Mobile): Indicadores con límite de ancho y scroll horizontal táctil con snap
+- **Pedido del Tech Lead:** "esto poner un limite y que los indicadores tengan scroll" con captura de las tarjetas apiladas en mobile.
+- **Implementación:**
+  1. En `resources/css/filament/cms/theme.css`, se incorporaron reglas de layout horizontal para `.fi-wi-stats-overview .fi-grid` en pantallas móviles (`< 768px`):
+     - `display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;`.
+     - Límite y ancho acotado por tarjeta de indicador (`min-width: 200px; max-width: 250px; flex: 0 0 68%; scroll-snap-align: start;`).
+     - Espaciado `gap: 0.75rem` y padding inferior para scrollbar fino táctil.
+  2. En desktop (`≥ 768px`), los 4 indicadores se mantienen en la cuadrícula estándar de 4 columnas.
+- **Archivos:**
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Dashboard / UX: `LeadsOverviewWidget` con 4 stats (Atendidos añadido) y layout responsivo de 2 columnas en mobile
+- **Pedido del Tech Lead:** "quiero en mobile en 2 columnas, y agregar un widget mas apra que sean 4 y puedan dividirse adecuadamente" con captura del Dashboard.
+- **Implementación:**
+  1. En `app/Filament/Widgets/LeadsOverviewWidget.php`, se definió `$columns = ['default' => 2, 'sm' => 2, 'md' => 4]`, logrando una cuadrícula 2x2 en mobile y 1x4 en desktop.
+  2. Se agregó la 4ta tarjeta de estadística **"Atendidos"** (`ContactStatusEnum::Closed`), con descripción `'Contactos resueltos'`, badge de color success cuando hay contactos resueltos e ícono `heroicon-m-check-badge`.
+  3. Los 4 KPIs quedan equilibrados:
+     - 1. **Leads nuevos** (`Sin atender todavía`)
+     - 2. **En proceso** (`Contactos en seguimiento`)
+     - 3. **Atendidos** (`Contactos resueltos`)
+     - 4. **Total de contactos** (`X en los últimos 7 días`)
+- **Archivos:**
+  - `app/Filament/Widgets/LeadsOverviewWidget.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Branding / Auth: Brand names con sufijo estilizado "Studio" (Ámbar) y "Platform" (Teal) en logins
+- **Pedido del Tech Lead:** "aqui deberia decir Stamless Studio arriba del login" + "y aqui Stamless Platform (Platform con el color de texto del theme para platform)" + "(Studio con el color de texto del theme para studio)".
+- **Implementación:**
+  1. En `app/Providers/Filament/PanelCmsProvider.php`, se ajustó `brandName` para mostrar siempre `Stamless <span class="fi-logo-suffix">Studio</span>` tanto en el login previo a autenticar como dentro del panel.
+  2. En `app/Providers/Filament/PanelPlatformProvider.php`, se configuró `brandName` con `Stamless <span class="fi-logo-suffix">Platform</span>`.
+  3. En `resources/css/filament/cms/theme.css`, la clase `.fi-logo-suffix` utiliza dinámicamente las variables `var(--primary-600)` (modo claro) y `var(--primary-400)` (modo oscuro):
+     - En **Studio**, "Studio" se tiñe automáticamente con el color primario Ámbar (`#D97706`).
+     - En **Platform**, "Platform" se tiñe automáticamente con el color primario Teal (`#0F766E`).
+- **Archivos:**
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Vinculación de `viteTheme` y restricciones explícitas de SVG para Platform panel
+- **Pedido del Tech Lead:** "en platform tambien tiene que estar alineado" con captura donde el SVG de Google se desbordaba.
+- **Implementación:**
+  1. En `app/Providers/Filament/PanelPlatformProvider.php`, se agregó `->viteTheme('resources/css/filament/cms/theme.css')`, habilitando el procesamiento completo de clases Tailwind custom en el panel de Plataforma.
+  2. En `resources/views/vendor/filament-socialite/components/buttons.blade.php`, se blindaron los elementos `<svg>` y `<x-filament::icon>` con atributos explícitos `width="16" height="16"` y estilos inline `style="width: 16px; height: 16px; min-width: 16px; max-width: 16px; flex-shrink: 0;"`, garantizando que bajo cualquier circunstancia o panel el ícono conserve exactamente su tamaño de 16x16px dentro del botón de 36px.
+- **Archivos:**
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `resources/views/vendor/filament-socialite/components/buttons.blade.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Separador split-line con fondo idéntico al contenedor y colores de proveedor con contraste en botones
+- **Pedido del Tech Lead:** "mantener el boton con el color del proveedor y el background de "O inicia sesion con" tiene que tener el mismo fondo del fondo del container" con captura adjunta.
+- **Implementación:**
+  1. En `resources/views/vendor/filament-socialite/components/buttons.blade.php`, se eliminó la carga externa del CSS bundle de `filament-socialite` (`x-load-css`) que forzaba reglas rígidas `@media (prefers-color-scheme:dark)` e inyectaba clases `bg-white` conflictivas.
+  2. El separador `"O inicia sesión con"` se rediseñó con una estructura flex split-line (`flex-grow border-t` a la izquierda, texto al centro y `flex-grow border-t` a la derecha), haciendo que el texto no requiera ningún color de fondo simulado y adopte de manera 100% natural e idéntica el fondo exacto del contenedor en modo claro, modo oscuro, blur o cualquier layout.
+  3. Los botones de proveedores ahora cuentan con adaptación completa de color y contraste: `bg-white dark:bg-gray-900`, bordes sutiles de marca en hover (`border-[#EA4335]/60`, `border-[#00A4EF]/60`, etc.), texto de alto contraste `text-gray-700 dark:text-gray-200` y sus íconos oficiales multicolores / de marca.
+- **Archivos:**
+  - `resources/views/vendor/filament-socialite/components/buttons.blade.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Branding / Auth: Generación de cover JPG 1280x1280 de Stamless para Login y vinculación en paneles
+- **Pedido del Tech Lead:** "Genera un JPG 1280x1280 para el cover del login de Stamless (public/images/auth/stamless-login-cover.jpg o el path que ya usa Login). Marca: Stamless (CMS headless multi-tenant para MUCHOS negocios, no solo CICA360). Fondo charcoal #1C1C1C. Wordmark Stamless en blanco, sans geométrica, grande, centrado. Sublinea cream: Una fuente. Todos los sitios. Detalle amber #D97706 (linea fina bajo el nombre). Composicion 1:1, mucho aire, look premium B2B. NO stock de personas, NO graficas en tablet, NO logo CICA360, NO watermark. Exportar exactamente 1280x1280. Si el login usa <img> o CSS background, apunta ese archivo y comprueba object-fit: cover. y lo guardas en storage/app/public/assets/ o donde corresponda".
+- **Implementación:**
+  1. Se generó el archivo JPG exactamente a 1280x1280 píxeles con supersampling 2x para máxima nitidez tipográfica y guardado con calidad 98.
+  2. Diseño: fondo charcoal `#1C1C1C` con sutil profundidad radial, wordmark "Stamless" centrado en blanco con tipografía geométrica bold sans, línea fina de acento en ámbar `#D97706`, y subtítulo "Una fuente. Todos los sitios." en crema `#F6F3EE`.
+  3. Guardado en:
+     - `public/images/auth/stamless-login-cover.jpg`
+     - `storage/app/public/assets/stamless-login-cover.jpg` (y symlink en `public/storage/assets/stamless-login-cover.jpg`)
+  4. En `PanelCmsProvider` (Studio) y `PanelPlatformProvider` (Platform), se actualizó la configuración de `AuthDesignerPlugin` para utilizar `asset('images/auth/stamless-login-cover.jpg')`.
+  5. Se comprobó `object-fit: cover` nativo en `.fi-auth-media` de `auth-designer.css`.
+- **Archivos:**
+  - `public/images/auth/stamless-login-cover.jpg`
+  - `storage/app/public/assets/stamless-login-cover.jpg`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Separador opaco (sin transparencia sobre la línea) y mayor separación vertical del botón Google
+- **Pedido del Tech Lead:** "que no sea transparente por que la linea horizontal esta encima y separar mas el boton de google de la linea" con captura adjunta.
+- **Implementación:**
+  1. En `resources/views/vendor/filament-socialite/components/buttons.blade.php`, se eliminó `background-color: inherit` que causaba que el fondo del texto fuera transparente y la línea horizontal quedara visible cruzando las letras. Se implementó estructura sólida de capa (`relative z-10 bg-white dark:bg-gray-950 px-3.5`) que cubre 100% la línea horizontal por debajo del texto en modo claro y modo oscuro.
+  2. Se aumentó la separación vertical del separador con `my-4` y se agregó margen superior `mt-3` al contenedor de los botones de login social (`gap-3 mt-3`), otorgando un respiro visual holgado y equilibrado con el botón de Google.
+  3. En `resources/css/filament/cms/theme.css`, se actualizó `@source '../../../../resources/views/**/*';` para garantizar el escaneo de todas las vistas bajo `resources/views/` (incluyendo `vendor/`).
+- **Archivos:**
+  - `resources/views/vendor/filament-socialite/components/buttons.blade.php`
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Calibración de espaciado (`gap-y-5`, `mt-6`) y fondo adaptativo en separador de Social Login
+- **Pedido del Tech Lead:** "aumentar el gap, y el fondo de "O inicia sesión con" que sea del mismo color de fondo".
+- **Implementación:**
+  1. En `resources/views/vendor/filament-socialite/components/buttons.blade.php`, se aumentó el margen superior a `mt-6` y el espaciado vertical a `gap-y-5` (y `gap-3` en el grid de botones).
+  2. El separador de "O inicia sesión con" ahora utiliza `style="background-color: var(--fi-bg, inherit);"` y clases `bg-white dark:bg-gray-950`, fundiéndose de manera idéntica y sin bordes residuales con el color de fondo exacto del panel en modo claro y modo oscuro.
+- **Archivos:**
+  - `resources/views/vendor/filament-socialite/components/buttons.blade.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — UI / Auth: Altura fija de 36px y colores sutiles por proveedor en Social Login + rediseño visual de Login
+- **Pedido del Tech Lead:** "mantener los colores sutilmente de los providers y cambiar login" + "mantener a la misma altura de 36px el boton".
+- **Implementación:**
+  1. Se calibró la altura de todos los botones de login social a exactamente 36px (`height: 36px`, `h-[36px] min-h-[36px] max-h-[36px]`) en `resources/views/vendor/filament-socialite/components/buttons.blade.php`, alineados con la altura estándar de los botones de acción de Filament.
+  2. Acentos y estilos de color sutiles por cada proveedor:
+     - Google: ícono oficial multicolor SVG y hover sutil rojizo (`#EA4335/5`).
+     - Microsoft: ícono oficial de 4 colores y hover azul suave (`#00A4EF/5`).
+     - LinkedIn: ícono `#0A66C2` y hover sutil corporativo.
+     - X: ícono en color texto nativo y hover suave neutral.
+     - Instagram: ícono `#E4405F` y hover degradado/rosa suave.
+     - Facebook: ícono `#1877F2` y hover azul sutil.
+  3. En `PanelCmsProvider` (Studio): `AuthDesignerPlugin` configurado con `mediaPosition(MediaPosition::Left)`, imagen destacada (`cica360_media_slide2.webp`) y selector de tema claro/oscuro (`themeToggle()`).
+  4. En `PanelPlatformProvider` (Platform): `AuthDesignerPlugin` con imagen de fondo completa `MediaPosition::Cover`, blur suave (3) y `themeToggle()`.
+- **Archivos:**
+  - `resources/views/vendor/filament-socialite/components/buttons.blade.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests completa: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Localización: Internacionalización al español (`es`) completa en autenticación y Socialite
+- **Pedido del Tech Lead:** "todo tiene que estar en español".
+- **Implementación:**
+  1. Se actualizó `config/app.php` estableciendo por defecto `'locale' => env('APP_LOCALE', 'es')`, `'fallback_locale' => env('APP_FALLBACK_LOCALE', 'es')` y `'faker_locale' => env('APP_FAKER_LOCALE', 'es_ES')`.
+  2. Se publicaron y tradujeron los archivos de idioma de `dutchcodingcompany/filament-socialite` en `lang/vendor/filament-socialite/es/auth.php` (traducción de "O inicia sesión con", mensajes de error de autenticación y avisos de registro deshabilitado).
+  3. Filament y Auth Designer renderizan todos sus formularios, campos, botones ("Acceder", "Recordarme", etc.) y notificaciones 100% en español.
+- **Archivos:**
+  - `config/app.php`
+  - `lang/vendor/filament-socialite/es/auth.php`
+  - `tests/Feature/Filament/SocialLoginRenderTest.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Seguridad / Auth: Desactivación de auto-registro social (`registration(false)`) y registro público en paneles
+- **Pedido del Tech Lead:** "por ahora no deberia permitir registrar con sociallogin, y en filament deberia estar desactivado el registro de usuarios de forma publica".
+- **Implementación:**
+  1. En `PanelCmsProvider` y `PanelPlatformProvider`, se configuró explícitamente `FilamentSocialitePlugin::make()->...->registration(false)`.
+  2. Con esta configuración, el Social Login solo permite autenticarse a usuarios que ya hayan sido dados de alta previamente en el sistema (por el administrador o en seeders). Si un usuario que no existe intenta ingresar con Google u otra red, se rechaza la autenticación sin crear registros en `users`.
+  3. Los paneles de Filament mantienen desactivado el registro público nativo (sin `->registration()`).
+- **Archivos:**
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 519 assertions**.
+
+## 2026-09-15 — Configuración & OAuth: Forzado automático de esquema HTTPS (`URL::forceScheme('https')`)
+- **Pedido del Tech Lead:** "deberia ser https" (con captura de `.env` configurado con `https://studio.stamless.host`, etc.).
+- **Implementación:**
+  1. En `AppServiceProvider::boot()`, se agregó la directiva `URL::forceScheme('https')` condicionada a cuando `APP_URL` o `APP_URL_STUDIO` utilicen `https://`.
+  2. Esto garantiza que cualquier generación de URLs en la aplicación, rutas relativas y el `redirect_uri` generado por Laravel Socialite para Google OAuth siempre utilicen el protocolo seguro `https://` (`https://studio.stamless.host/oauth/callback/google`).
+- **Archivos:**
+  - `app/Providers/AppServiceProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 519 assertions**.
+
+## 2026-09-15 — Autenticación: Soporte para 6 proveedores (Google, LinkedIn, X, Instagram, Facebook, Microsoft) con visibilidad condicional según credenciales en `.env`
+- **Pedido del Tech Lead:** "mantener: google, linkedin, X, instagram, facebook, microsoft como providers pero mientras no tenga los tokens en el .env mantener oculto".
+- **Implementación:**
+  1. Se configuraron los 6 proveedores en `config/services.php` (`google`, `linkedin-openid`, `twitter-oauth-2`, `instagram`, `facebook`, `microsoft`) y sus variables correspondientes en `.env.example`.
+  2. En `PanelCmsProvider` y `PanelPlatformProvider`, se registraron los 6 `Provider::make()` con sus respectivos íconos oficiales FontAwesome (`fab-google`, `fab-linkedin`, `fab-x-twitter`, `fab-instagram`, `fab-facebook`, `fab-microsoft`) y condición de visibilidad `->visible(fn (): bool => !empty(config('services.<provider>.client_id')) && !empty(config('services.<provider>.client_secret')))`.
+  3. Si no hay credenciales en `.env`, ningún botón ni separador se muestra; cuando se agregan claves para uno o varios proveedores, solo esos se muestran de forma limpia y estilizada.
+  4. Pruebas ampliadas en `tests/Feature/Filament/SocialLoginRenderTest.php` cubriendo renderizado oculto por defecto y visibilidad selectiva cuando se configuran credenciales.
+- **Archivos:**
+  - `config/services.php`
+  - `.env.example`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `tests/Feature/Filament/SocialLoginRenderTest.php`
+- **Verificación:** Pint limpio; suite completa: **108 tests, 519 assertions, 100% pasando**.
+
+## 2026-09-15 — Autenticación: Migración a `dutchcodingcompany/filament-socialite` y `owenvoke/blade-fontawesome`
+- **Pedido del Tech Lead:** "a lo mejor es mejor dutchcodingcompany/filament-socialite".
+- **Implementación:**
+  1. Se reemplazó el paquete anterior por `dutchcodingcompany/filament-socialite` (^3.2) y se incorporó `owenvoke/blade-fontawesome` (^3.3) para renderizado nativo de íconos oficiales (`fab-google`, `fab-linkedin`, `fab-microsoft`).
+  2. Se publicó y ejecutó la migración `create_socialite_users_table`.
+  3. Se configuraron los proveedores en `config/services.php` (Google, GitHub, LinkedIn OpenID, Microsoft).
+  4. Se integró `FilamentSocialitePlugin::make()->providers([...])->registration(true)` tanto en `PanelCmsProvider` (Studio) como en `PanelPlatformProvider` (Platform).
+  5. Se eliminó código obsoleto y se agregaron pruebas automatizadas de renderizado único en `tests/Feature/Filament/SocialLoginRenderTest.php`.
+- **Archivos:**
+  - `config/services.php`
+  - `database/migrations/2026_09_15_154507_create_socialite_users_table.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `tests/Feature/Filament/SocialLoginRenderTest.php`
+- **Verificación:** Pint limpio; suite de tests completa: **107 passed, 508 assertions**.
+
+## 2026-09-15 — Autenticación: Solución a duplicación de botones de Social Login mediante render hook con scope de panel
+- **Pedido del Tech Lead:** "esta duplicado los social" (con captura de la pantalla de login mostrando los botones de Google, LinkedIn y Microsoft repetidos).
+- **Causa Raíz:** El paquete `matondojk/filament-social-login` registra el render hook `panels::auth.login.form.after` de forma global (`scopes: null`) en `FilamentView`. Al tener dos paneles registrados en la aplicación (`PanelCmsProvider` para Studio y `PanelPlatformProvider` para Platform), la llamada a `register()` se ejecutaba dos veces sin scope, provocando que ambos hooks se acumularan y renderizaran en cualquier pantalla de login.
+- **Implementación:**
+  1. Se creó `App\Filament\Plugins\FilamentSocialLoginPlugin` implementando `Filament\Contracts\Plugin` con registro de render hook explícitamente acotado por scope de panel (`scopes: $panel->getId()`).
+  2. Se actualizaron `PanelCmsProvider` y `PanelPlatformProvider` para utilizar el plugin con scope propio, garantizando que cada panel renderice sus botones sociales exactamente una vez.
+- **Archivos:**
+  - `app/Filament/Plugins/FilamentSocialLoginPlugin.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **105 passed, 498 assertions**.
+
+## 2026-09-15 — Studio (UX): SlideOver con Section full-width (`columnSpanFull`) para usuarios, selector enriquecido de roles y acción dedicada de cambio de contraseña en tabla
+- **Pedido del Tech Lead:** "para crear usuarios al menos con dignidad aplicar mejor UX, y al editar que no permita cambiar contraseña desde ahi, si no desde el listado por si desea el admin tenant cambiar contraseña a sus sub usuarios" + "que se mantenga como overslide(), pero igual si no haces que sea el section fullwidth al body del modal estamos en problemas".
+- **Implementación:**
+  1. **UX de Creación y Edición de Usuarios (`UserResource.php` / `ManageUsers.php`):**
+     - Se mantuvo el modo `slideOver()` para crear y editar colaboradores, añadiendo `->columnSpanFull()` explícito a `Section::make('Datos del colaborador')` para que ocupe el 100% del ancho del cuerpo del slide-over en lugar de colapsar al 50%.
+     - `Section::make('Datos del colaborador')` con organización limpia: inputs con íconos de prefijo (`heroicon-m-user`, `heroicon-m-envelope`, `heroicon-m-lock-closed`).
+     - Selector de roles migrado a `Radio` enriquecido con descripciones claras por cada rol (`Admin`: control total de Studio, `Editor`: gestión y publicación de contenidos, `Author`: redacción de borradores).
+     - Contraseña con visibilidad y requerimiento acotado exclusivamente a la operación de creación (`visible(fn ($op) => $op === 'create')`).
+  2. **Acción Dedicada para Cambiar Contraseña desde el Listado:**
+     - Se eliminó el campo de contraseña del modal/slideOver de edición de usuario.
+     - Se incorporó la acción de registro `Action::make('changePassword')->slideOver()` en la tabla con ícono de llave (`heroicon-m-key`), color warning y ancho `md`.
+     - Formulario de cambio de contraseña con validación de confirmación (`same('password_confirmation')`), mínimo 8 caracteres y botón de visibilidad de clave (`revealable()`).
+  3. **Suite de Tests:**
+     - Actualizado `UserResourceTenantLimitTest.php` con tests para la acción `changePassword`, la edición segura de usuarios sin tocar contraseñas y límite de 3 usuarios para plan Auspicio.
+- **Archivos:**
+  - `app/Filament/Resources/UserResource.php`
+  - `app/Filament/Resources/UserResource/Pages/ManageUsers.php`
+  - `tests/Feature/Filament/UserResourceTenantLimitTest.php`
+- **Verificación:** Pint limpio; suite de tests al 100%: **105 passed, 498 assertions**.
+
+## 2026-09-15 — Spatie Roles & Permissions multi-tenant, Super Admin, Social Login, Auth Designer y Contadores de Caracteres en tiempo real
+- **Pedido del Tech Lead:** "veo que no tiene implementado los roles y permisos de spatie (spatie/laravel-permission) con la implementacion del super usuario propietario de todo el sistema y el tipo usuario admin propietario del tenant y que puede si no es free, crear usuarios para delegar roles y permisos, pero si creo que esta pendiente eso me confirmas, y la gestion opcional de usuarios por tenant, falta social login https://filamentphp.com/plugins/matondo-social-login y cambiar el aspecto al diseño de la pagina de login: https://filamentphp.com/plugins/caresome-auth-designer contadores en los textareas donde vale la pena tener limite: schmeits/filament-character-counter" + "solo actualizar que ya no es: manager.genesisly.host para la gestion del multitenant, cuentas, pagos, planes y CMS headless en general ahora es platform.stamless.com y El Admin del Tenant accede a Studio (console.genesisly.host), pero ahora es studio.stamless.com" + "sigue me mismo orden de lista, procede".
+- **Implementación:**
+  1. **Spatie Roles & Permissions multi-tenant:**
+     - Instalado `spatie/laravel-permission` (^8.3.0) con configuración `teams => true` y `team_foreign_key => 'tenant_id'`.
+     - Migración de base de datos de permisos y columnas `is_super_admin`, `provider`, `provider_id`, `avatar_url` en la tabla `users`.
+     - Modelo `User.php`: traits `HasRoles`, `HasTenants`, `HasAvatar`, fillables y helper `getFilamentAvatarUrl()`.
+     - `AppServiceProvider.php`: registrado `Gate::before(fn ($user, $ability) => $user->is_super_admin ? true : null)` para bypass global de Super Admin en toda la plataforma.
+     - `UserRoleEnum.php`: enum tipado para `Admin`, `Editor`, `Author` con labels y colores.
+     - `Tenant.php`: método `maxUsers(): ?int` según el plan (`free`/`freemium` = 1, `sponsorship` = 3, etc.).
+     - `PlanSeeder.php`: límites de `max_users` actualizados (Free=1, Auspicio=3).
+     - `Cliente0Seeder.php`: asignación automática del rol `Admin` en el contexto del tenant de CICA360 (`setPermissionsTeamId($tenant->id)`).
+  2. **Gestión de Usuarios en Studio (`UserResource.php` & `ManageUsers.php`):**
+     - Recurso de Filament para gestión de usuarios acotado estrictamente a `tenant_id === Filament::getTenant()->id`.
+     - Badges de límite de plan en el sidebar (`FormatsUsageBadge`), validación `isUserLimitReached()`, bloqueo en `CreateAction` con tooltip y notificación preventiva.
+     - Sincronización automática del rol seleccionado con Spatie teams al crear el usuario.
+     - `DeleteAction` con protección para impedir que el usuario autenticado se elimine a sí mismo.
+  3. **Social Login (`matondojk/filament-social-login`):**
+     - Instalado y publicado `config/filament-social-login.php`.
+     - Registrado `FilamentSocialLoginPlugin` en `PanelCmsProvider` (Studio) y `PanelPlatformProvider` (Platform).
+  4. **Auth Designer (`caresome/filament-auth-designer`):**
+     - Registrado `AuthDesignerPlugin` con `mediaPosition: Left` en Studio y `mediaPosition: Cover` en Platform para una experiencia visual refinada en login y registro.
+  5. **Contadores de Caracteres en tiempo real (`schmeits/filament-character-counter`):**
+     - Reemplazados `TextInput` y `Textarea` por `CharacterTextInput` y `CharacterTextarea` en:
+       - `PageResource.php`: Título SEO (60), Descripción SEO (160), Título OG (60), Descripción OG (160), Colophon descripción breve (120).
+       - `PostResource.php`: Extracto / Resumen (300), Título SEO (60), Descripción SEO (160), Título OG (60), Descripción OG (160).
+       - `ServiceResource.php`: Párrafo intro (300), Título SEO (60), Descripción SEO (160), Título OG (60), Descripción OG (160).
+       - `TestimonialResource.php`: Testimonio / Frase (300 / 500).
+  6. **Suite de Tests:**
+     - Creado `tests/Feature/Filament/UserResourceTenantLimitTest.php` (6 tests nuevos) cubriendo aislamiento multi-tenant en tabla, límite de plan Free (1 usuario), límite de plan Auspicio (2 usuarios), aislamiento de roles entre equipos/tenants Spatie, bypass global de Super Admin y protección de auto-eliminación.
+- **Archivos:**
+  - `composer.json` & `composer.lock`
+  - `config/permission.php`
+  - `config/filament-social-login.php`
+  - `database/migrations/2026_09_15_140010_create_permission_tables.php`
+  - `database/migrations/2026_09_15_140036_create_social_login_fields_on_users_table.php`
+  - `app/Models/User.php`
+  - `app/Models/Tenant.php`
+  - `app/Enums/UserRoleEnum.php`
+  - `app/Providers/AppServiceProvider.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `app/Filament/Resources/UserResource.php`
+  - `app/Filament/Resources/UserResource/Pages/ManageUsers.php`
+  - `app/Filament/Resources/PageResource.php`
+  - `app/Filament/Resources/PostResource.php`
+  - `app/Filament/Resources/ServiceResource.php`
+  - `app/Filament/Resources/TestimonialResource.php`
+  - `database/seeders/Cliente0Seeder.php`
+  - `tests/Feature/Filament/UserResourceTenantLimitTest.php`
+- **Verificación:** Laravel Pint aplicado en dirty files; suite de tests ejecutada al 100%: **103 passed, 477 assertions**.
+
+## 2026-09-15 — Blindaje integral de Scope Tenant: aislamiento en Studio y API v1, soft-deletes slug uniqueness con sufijo en restore e is_home por tenant
+- **Pedido del Tech Lead:** "como este stamless es un sistema B2C con tenant por cuenta o proyecto necesito todo sea independiente por tenant que un tenant no sepa del contenido que tienen el otro tenant, eso deberia estar resuelto, y a traves del api de igual forma con total medidas de seguridad para que cualquier cliente desde un origen puedan usar los endpoints seguros o privados, el Blindaje del Scope de Tenant debe de estar afinado para subira produccion" + "considerar dentro del plan los ajustes necesarios para que las tablas de contenidos (pages) cuando hablamos de slug unico no cuente con los softdeletes, solo unique a nivel de activos, y si restablecemos un softdelete que no permita con el mismo slug si no que agregue sufijos a ese slug" + "cuando se elige el is_home o si es pagina principal (home) hay una funcion que cambia el estado y desactiva el resto, solo uno debe ser home de los contenidos, pero es por tenant eso, que no desactive estado de otros contenidos de otros tenants".
+- **Implementación:**
+  1. `app/Models/Page.php`:
+     - El hook `saving()` para desactivar la página `is_home` previa se acotó estrictamente al tenant del modelo (`$tenantId = $page->tenant_id ?? app(TenantManager::class)->getTenantId() ?? Filament::getTenant()?->id;` + `static::where('tenant_id', $tenantId)->where('id', '!=', $page->id)->update(['is_home' => false])`), asegurando que Tenant A jamás altere o desactive el `is_home` de Tenant B.
+     - Hook `restoring()` automático: si al restaurar un registro papelereado ya existe otra página activa en ese tenant con el mismo slug, genera automáticamente un sufijo incremental (`-restaurado`, `-restaurado-2`, etc.) vía `generateUniqueRestoredSlug()`, evitando colisiones de integridad en la base de datos.
+  2. `app/Filament/Schemas/HeadingFieldset.php`:
+     - Reemplazo de `->unique(Page::class, 'slug')` por `->scopedUnique(model: $modelClass, column: 'slug', ignoreRecord: true, modifyQueryUsing: ...)` filtrado por `tenant_id` y `whereNull('deleted_at')`. `validSlug()` ahora evalúa aislamiento multi-tenant y exclusión de soft-deleted.
+  3. `app/Filament/Resources/*`:
+     - `PostResource.php`, `ServiceResource.php`, `SliderResource.php`, `MenuResource.php`: `duplicateSlug()` explícitamente acotado con `->where('tenant_id', $record->tenant_id)`.
+     - Validaciones de slug cambiadas de `unique` plano a `scopedUnique` con `tenant_id`.
+     - Replicación y creación de items hijos (`SliderResource::ReplicateAction`, `MenuResource::duplicateMenuItemsRecursive`, `TestimonialResource::beforeReplicaSaved`, `syncMenuTree`) con asignación explícita de `tenant_id`.
+     - `PageResource.php`, `LinkSchema.php`, `MenuTreeBuilder.php`, `MediaUpload.php`: selectores de `parent_id`, `slider_id`, `form_id`, `menu_id`, `target_page_id`, `page_id`, `post_id`, `service_id` y preview de `Media` 100% acotados al `tenant_id` actual.
+  4. `app/Filament/Pages/ApiTokens.php`:
+     - Verificación de autorización en la acción `revoke`: `abort_unless($record->tokenable_type === User::class && $record->tokenable_id === auth()->id(), 403);`.
+  5. `app/Http/Controllers/Api/V1/*`:
+     - `MediaController.php` y `FormSubmissionController.php` reforzados con comprobación explícita `where('tenant_id', $tenant->id)` (defensa en profundidad).
+  6. `tests/Feature/TenantIsolationTest.php`:
+     - Suite completa de 12 tests con 51 aserciones cubriendo: aislamiento de scopes, asignación automática de tenant, middleware por header/parámetro, UUIDs, settings por tenant, `is_home` independiente entre tenants, soft-deletes slug coexistence, restauración automática con sufijos incrementales anti-colisión, coexistencia de slugs idénticos entre diferentes tenants, y seguridad/bloqueo de accesos cruzados de tokens o recursos en la API v1.
+- **Archivos modificados:**
+  - `app/Models/Page.php`
+  - `app/Filament/Schemas/HeadingFieldset.php`
+  - `app/Filament/Resources/PostResource.php`
+  - `app/Filament/Resources/ServiceResource.php`
+  - `app/Filament/Resources/SliderResource.php`
+  - `app/Filament/Resources/MenuResource.php`
+  - `app/Filament/Resources/TestimonialResource.php`
+  - `app/Filament/Resources/PageResource.php`
+  - `app/Filament/Schemas/LinkSchema.php`
+  - `app/Filament/Forms/Components/MenuTreeBuilder.php`
+  - `app/Filament/Schemas/MediaUpload.php`
+  - `app/Filament/Pages/ApiTokens.php`
+  - `app/Http/Controllers/Api/V1/MediaController.php`
+  - `app/Http/Controllers/Api/V1/FormSubmissionController.php`
+  - `tests/Feature/TenantIsolationTest.php`
+- **Verificación:** Laravel Pint limpio (`fixed 8 files`), suite completa ejecutada: `97 passed, 450 assertions` (100% en verde).
+
+## 2026-09-15 — Studio (UX): opciones agrupadas por tipo de contenido en modal "Copiar a otro contenido", label "Contenido destino" y blindaje de scope tenant
+- **Pedido del Tech Lead:** "agrupar las opciones por tipo de contenido" + "que sea 'contenido destino' el label por que se esta entendiendo que como footer no es pagina por eso no se lista, por eso es mejor cambiar de termino para que se entienda mejor, la descripcion 'Sólo se listan contenidos  que aceptan este tipo de bloque'" + "no olvidar el scope tenant".
+- **Implementación:**
+  1. En `app/Filament/Resources/PageResource.php`, la acción pasa a llamarse "Copiar a otro contenido" (`modalHeading: 'Copiar bloque a otro contenido'`), el campo `target_page_id` pasa a label `'Contenido destino'` y helperText `'Sólo se listan contenidos que aceptan este tipo de bloque.'`.
+  2. En `PageResource::getTargetPageOptionsForBlock(?Page $currentRecord, ?string $blockName): array`, se blindó la consulta con aislamiento estricto por tenant (`$tenantId = $currentRecord?->tenant_id ?? Filament::getTenant()?->id;` + `->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))`), asegurando que jamás se listen contenidos de otros tenants.
+  3. En la ejecución del callback de `action()`, se verificó la existencia del registro destino restringido estrictamente al tenant actual antes de insertar los bloques.
+  4. En `PageResource.php` (bloque `footer`) y en `PropertiesSchema.php` (campo `footer_page_id`), se aseguró también el scope por `tenant_id` en las queries de opciones de footer.
+  5. En `tests/Feature/Filament/PageCopyToPageGroupedTest.php`, se añadió `test_target_page_options_strictly_respects_tenant_scope` verificando aislamiento multi-tenant cruzado entre dos tenants independientes.
+- **Archivos:**
+  - `app/Filament/Resources/PageResource.php`
+  - `app/Filament/Schemas/PropertiesSchema.php`
+  - `tests/Feature/Filament/PageCopyToPageGroupedTest.php`
+- **Verificación:** Pint pasado (`vendor/bin/pint --dirty --format agent`), 90 tests pasando (`90 passed, 418 assertions`).
+
+## 2026-09-15 — Studio (UX): fix de z-index y footer sticky en modales — el dropdown del selector ya no queda detrás del footer
+- **Pedido del Tech Lead:** "al intentar hacer copia de un registro en paginas resource , el dropdown del select esta detras del footer del modal cuando debe estar detras" con captura `media_1789450094780.png` mostrando los botones "Copiar" / "Cancelar" del footer cortando y tapando las opciones del dropdown de "Página destino".
+- **Causa raíz:**
+  1. En `public/css/filament/api-console.css`, la regla de footer sticky introducida el 2026-09-02 usaba `.fi-modal-footer` genérico sin acotar a `.fi-modal-slide-over`, forzando `position: sticky !important; bottom: 0 !important; z-index: 50 !important;` y fondo sólido (`#18181b` in dark mode) en TODOS los modales del panel, incluidos los modales centrados de acción como "Copiar bloque a otra página".
+  2. Los paneles flotantes de dropdown (`.fi-dropdown-panel`, usados por `Select` y menús) tienen `z-index: 20` por defecto en Filament. Al quedar por debajo de `z-index: 50`, el footer del modal se dibujaba por encima del listado de opciones desplegadas.
+  3. `.fi-modal-content` tenía `padding-bottom: 4rem !important` global forzado para slide-overs, dejando un espacio innecesario en modales estándar.
+- **Fix:**
+  1. `public/css/filament/api-console.css`:
+     - Se acotó el footer sticky (`position: sticky`, `z-index: 50`, fondos y `box-shadow`) y el `padding-bottom: 4rem` de `.fi-modal-content` exclusivamente a `.fi-modal.fi-modal-slide-over` / `.fi-modal-slide-over`.
+     - Se añadió `.fi-dropdown-panel { z-index: 100 !important; }` para asegurar que cualquier dropdown de `Select` o menú flotante flote siempre por encima de footers, controles o barras fijas.
+  2. `resources/css/filament/cms/theme.css`: se replicó la regla `.fi-dropdown-panel { z-index: 100 !important; }`.
+- **Archivos:**
+  - `public/css/filament/api-console.css`
+  - `resources/css/filament/cms/theme.css`
+- **Verificación:** PHPUnit 86/86 pasando (`86 passed, 395 assertions`), cache-busting automático por `filemtime()` en `PanelCmsProvider`.
+
+## 2026-09-15 — Backend & Studio: selector de footer dinámico en Servicios (`properties.footer_page_id`), resolución en API y seeder inicial
+- **Pedido del Tech Lead:** "en el admin, en la seccion de servicios deberia tener en su configuracion un propertie para elegir un selector de los footer que deseo que tenga, eso ayudará a poder devolver el footer elegido en el api de detalle de servicio, nos falta footer dinamico elegido en studio" + "agregar en el seeder como parte del contenido inicial el footer principal".
+- **Implementación en Studio & Core:**
+  1. `app/Filament/Schemas/PropertiesSchema.php`: componente `'footer_page_id'` (Select) para elegir entre registros de `Page` con `type = PageTypeEnum::Footer` del tenant, con helperText y placeholder 'Sin footer'.
+  2. `app/Filament/Resources/ServiceResource.php`: sección "Pie de página (Footer)" en la pestaña "Configuración" de servicios usando `PropertiesSchema::make(['footer_page_id'])`.
+  3. `app/Http/Concerns/ResolvesPublicLinks.php`: método `resolveFooterPage(?int $footerPageId)` que carga el Page tipo Footer por id (aislado por `TenantScope`), adjunta links resueltos y resuelve el contenido de los bloques hijos con anti-recursión (`resolveFooterBlocks: false`), retornando `['slug' => ..., 'blocks' => [...]]` con la misma estructura que `content.footer_page` de los bloques de página.
+  4. `app/Http/Controllers/Api/V1/ServiceController.php`: en `show()`, resuelve el footer asignado en `$service->resolved_footer`.
+  5. `app/Http/Resources/Api/V1/ServiceResource.php`: expone `'footer' => $this->resolved_footer ?? null` en la respuesta de detalle.
+  6. `database/seeders/Cliente0ServicesSeeder.php`: busca `footer-principal` y asigna `properties.footer_page_id` en la creación de servicios y retroalimenta servicios existentes si está vacío.
+  7. `database/seeders/DatabaseSeeder.php`: ejecuta `Cliente0ContentSeeder` antes que `Cliente0ServicesSeeder` para garantizar que `footer-principal` exista al sembrar los servicios.
+  8. `tests/Feature/Api/V1/ServiceApiTest.php`: tests de aislamiento multi-tenant y resolución dinámica de footer en el endpoint de detalle de servicios (4 tests, 16 aserciones, pasando).
+  9. `docs/api/v1.md` y `docs/api/openapi.v1.yaml`: documentación actualizada del endpoint `GET /services/{slug}` con el nuevo campo `footer`.
+- **Archivos:**
+  - `app/Filament/Schemas/PropertiesSchema.php`
+  - `app/Filament/Resources/ServiceResource.php`
+  - `app/Http/Concerns/ResolvesPublicLinks.php`
+  - `app/Http/Controllers/Api/V1/ServiceController.php`
+  - `app/Http/Resources/Api/V1/ServiceResource.php`
+  - `database/seeders/Cliente0ServicesSeeder.php`
+  - `database/seeders/DatabaseSeeder.php`
+  - `tests/Feature/Api/V1/ServiceApiTest.php`
+  - `docs/api/v1.md`
+  - `docs/api/openapi.v1.yaml`
+- **Verificación:** Laravel Pint limpio (`passed`), PHPUnit 86/86 pasando (`86 passed, 395 assertions`), seeder ejecutado con éxito en DB local vinculando el footer principal en todos los servicios.
+
+## 2026-09-14 — Frontend: ancho máximo limitado a 1024px y textos en `cicagray-900` en "¿Por qué elegirnos?" y "Soluciones"
+- **Pedido del Tech Lead:** "que su maximo de esos. dos partes sean con ancho limitado a 1024px" + captura de Figma (`media_1789448418252.png`) mostrando la caja seleccionada con `1024 x 160 adaptar` + "los textos es de cicagray-900".
+- **Causa raíz:**
+  1. Anteriormente se había configurado `max-w-3xl` (768px) en cada sección, lo que resultaba más angosto que la spec de diseño de Figma (1024px).
+  2. Los párrafos descriptivos usaban `text-cicagray-600` (`#5D5D5D`) en lugar de `text-cicagray-900` (`#3D3D3D`).
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Contenedor de ambas secciones actualizado a `max-w-[1024px]`.
+     - Tarjeta "¿Por qué elegirnos?": `section` configurada con `w-full max-w-[1024px]`. Texto interior expandido a `max-w-4xl` para fluir holgadamente en 2 líneas exactamente como en Figma, y texto en `text-cicagray-900` (`[&_p]:text-cicagray-900`).
+     - Bloque "Soluciones...": `section` configurada con `max-w-[1024px] w-full`. Descripción interior ajustada con `max-w-3xl` y color `text-cicagray-900`.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: rediseño de "¿Por qué elegirnos?" y bloque "Soluciones" con foco-idea y flecha dorada
+- **Pedido del Tech Lead:** "a continuacion por que elegirnos y el otro bloque soluciones, se necesita corregir acabado o estilos" + SVG del ícono light (foco-idea) y captura de expectativa Figma (`media_1789447536638.png`).
+- **Causa raíz:**
+  1. El bloque `why_choose_us` carecía de estilos de tarjeta: no tenía fondo `bg-cicaindigo-100` (`#E8E4ED`), esquinas redondeadas `rounded-2xl`, ni alineación centrada.
+  2. El bloque `tip` ("Soluciones reales...") utilizaba un `<aside>` con borde gris (`border border-gray-200 bg-gray-50`) en lugar de estar integrado limpiamente sin marco sobre el fondo blanco, con el ícono de foco-idea a la izquierda del título, subtítulo centrado y la flecha dorada `ph:caret-down` animada inferior.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Tarjeta "¿Por qué elegirnos?": `section` con `max-w-3xl rounded-2xl bg-cicaindigo-100 px-6 py-8 sm:px-10 md:py-10 text-center`, título `text-xl sm:text-2xl md:text-3xl font-bold text-cicaindigo-500 mb-3 md:mb-4`, texto `.prose` centrado con `text-sm md:text-base leading-relaxed text-cicagray-600 font-light [&_strong]:font-semibold [&_strong]:text-cicaindigo-500`.
+     - Bloque "Soluciones...": se eliminó la caja `<aside>`, implementando cabecera centrada con el SVG del foco-idea (con su contorno de lámpara complementario exacto para reflejar la expectativa) en `text-cicaindigo-500 size-6 sm:size-7`, título `text-base sm:text-lg md:text-xl font-bold text-cicaindigo-500`, descripción centrada en `text-sm md:text-base text-cicagray-600 font-normal`, y flecha `ph:caret-down` dorada (`text-cicagold-500 animate-bounce size-6`) con separación balanceada hacia el footer.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: ampliación de padding horizontal de tabs a `3md:px-10` y `2xl:px-14`
+- **Pedido del Tech Lead:** "a partir de 3md: (1024px) los tabs aumentar a px-10, a partir de 2xl: px-14 en adelante".
+- **Causa raíz:** En pantallas grandes (>=960/1024px y >=1440px), el ancho horizontal `px-8` (32px) resultaba algo estrecho frente a la escala de la tarjeta y el viewport.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se actualizó el padding horizontal de ambos botones de tabs (`¿Qué ofrecemos?` y `Coberturas`) con `px-8 3md:px-10 2xl:px-14`.
+     - Conserva `px-8` (32px) en mobile/tablet, aumenta a `px-10` (40px) desde `3md:` (960/1024px) y a `px-14` (56px) desde `2xl:` (1440px+).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: agregado de sombra `shadow-sm` en tarjetas del acordeón de "Coberturas"
+- **Pedido del Tech Lead:** "falta el shadow md o sm, la segunda captura es la espectativa" (con capturas comparativas mostrando la ausencia de sombra frente a la expectativa con elevación).
+- **Causa raíz:** Las tarjetas `<details>` carecían de clase de elevación/sombra, viéndose planas sobre el contenedor `bg-cicagray-50`.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se agregó `shadow-sm` a cada `<details name="coverage-accordion" class="... shadow-sm ...">`, aportando el drop shadow sutil de 1px de offset y 3px de blur que coincide con la expectativa tanto en estado cerrado como abierto.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: reducción de tamaño de texto en ítems del acordeón (default y activo) en mobile
+- **Pedido del Tech Lead:** "noto muy grande los textos active y default , reducir un poco" + "en mobile" (con captura de mobile mostrando los ítems del acordeón con tamaño de texto 16px).
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el título de cada ítem del acordeón (`coverage.label`) dentro del `<summary>` carecía de clase de tamaño y heredaba `text-base` (16px), luciendo sobredimensionado en pantallas móviles en comparación con las viñetas y contenidos interiores (que ya usan `text-sm` / 14px).
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se agregó `text-sm md:text-base` al `<span>` del título del ítem (`{coverage.label}`), reduciendo a 14px en mobile (`text-sm`) tanto en estado default como en active (`group-open:`), y manteniendo 16px en desktop (`md:text-base`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: calibración pixel-perfect del acordeón de "Coberturas" (colores default/activo, fondo blanco y decorador dot SVG)
+- **Pedido del Tech Lead:** "la realidad esta en la primera captura y la segunda captura tiene la espectativa, si queremos pixel perfect necesitamos los mismos detalles de color default y activo de cada item acordeon y su subcontenido con fondo blanco y si hay viñetas con el decorador de dot: [...] fondo de contenido es cicagray-50, fondo del item accordeon default es cicaindigo-50 y al hover cicaindigo-100 y active cicaindigo-200 y texto de los items de acordeon en active es: cicaindigo-500".
+- **Causa raíz:**
+  1. El contenedor general de tabs usaba `bg-cicaindigo-50` (`#F5F2F7`) en vez de `bg-cicagray-50` (`#F6F6F6`), lo que eliminaba el contraste natural con las tarjetas cerradas del acordeón.
+  2. Cada `<details>` del acordeón usaba `bg-white` plano tanto cerrado como abierto, sin diferenciar el estado activo del default.
+  3. No se contemplaba la interacción `hover:bg-cicaindigo-100` ni el cambio de color de texto a `cicaindigo-500` en activo.
+  4. El icono de checkmark (`ph:check-circle-fill`) se mantenía siempre en dorado (`text-cicagold-500`), sin pasar a índigo (`text-cicaindigo-400`) al abrirse el ítem.
+  5. La lista de subcoberturas usaba viñetas nativas de HTML (`list-disc`), en vez del SVG decorativo oficial de doble círculo proporcionado por el Tech Lead.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - El contenedor de contenido de tabs pasa a `bg-cicagray-50` (`#F6F6F6`), coincidiendo 1:1 con el mockup `SERVICE-DETAIL-INCLUDE-TAB.jpg` y la captura de expectativa.
+     - Cada `<details>` se configuró con `overflow-hidden rounded-xl bg-cicaindigo-50` y espaciado vertical `gap-2.5` (10px exactos).
+     - `<summary>` aplica `bg-cicaindigo-50 hover:bg-cicaindigo-100` en estado default (cerrado) y `group-open:bg-cicaindigo-200 group-open:hover:bg-cicaindigo-200` (`#C6BCD4`) en estado activo (abierto).
+     - Texto del ítem con `text-cicagray-700` por defecto y `group-open:text-cicaindigo-500 group-open:font-semibold` en activo.
+     - El icono `ph:check-circle-fill` alterna dinámicamente de dorado a índigo con `text-cicagold-500 group-open:text-cicaindigo-400`.
+     - El chevron `ph:caret-down` se estandarizó en `text-cicaindigo-400` con `group-open:rotate-180`.
+     - El subcontenido interior tiene fondo blanco puro (`bg-white`), padding alineado con el texto del título (`px-4 pt-5 pb-8 pl-12 sm:px-6 sm:pl-14`) y rounded inferior automático por el `overflow-hidden` del padre.
+     - Las viñetas de `coverage.items` reemplazan el `list-disc` nativo por el elemento SVG `width="16" height="16"` con doble círculo y `fill="#A298B8"`, alineadas con `gap-2.5 sm:gap-3` y `mt-1`.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y limpio (`0 errors`).
+
+## 2026-09-14 — Frontend: reducción de tamaño de texto en viñetas de "¿Qué ofrecemos?" en mobile
+- **Pedido del Tech Lead:** "en mobile no necesita los textos de las viñetas, un poquito reducir?" (con captura de mobile mostrando el listado de ofertas con saltos de línea y tamaño grande).
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el texto de las viñetas carecía de clase de tamaño y heredaba `text-base` (16px), luciendo sobredimensionado y provocando quiebres excesivos de línea en pantallas móviles.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se aplicó `text-sm md:text-base leading-relaxed` al párrafo de cada viñeta, reduciendo a 14px en mobile (`text-sm`) con interlineado holgado, y conservando 16px en desktop (`md:text-base`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: escala de padding en Y del contenedor de tabs (40px mobile / 60px tablet / 80px desktop)
+- **Pedido del Tech Lead:** "el padding de los contenidos de los tabs tiene que tener padding en Y en mobile que sea py-10 (40px) y desde tablet que sea 60px y de desktop 3md: (1024px) a mas que sea 80px".
+- **Causa raíz:** El contenedor de contenido (`rounded-2xl`) utilizaba `p-6 md:p-10` (24px mobile / 40px tablet+desktop), dejando una separación vertical insuficiente en pantallas medianas y grandes en comparación con el resto de los bloques de la página.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se actualizó el padding del card a `px-6 md:px-10 py-10 md:py-[60px] 3md:py-20`, otorgando 40px en mobile (`py-10`), 60px desde tablet (`md:py-[60px]`) y 80px en desktop desde 960/1024px en adelante (`3md:py-20`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: ajuste de padding horizontal de tabs a px-8 (32px)
+- **Pedido del Tech Lead:** "bajamos a px-8".
+- **Causa raíz:** Tras evaluar `px-9` (36px) y `px-6` (24px), se calibró el padding horizontal simétrico en `px-8` (32px / 2rem) para un equilibrio ideal de ancho de pestaña tanto en desktop como en mobile.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se actualizó el padding horizontal de ambos botones (`¿Qué ofrecemos?` y `Coberturas`) a `px-8` (`inline-flex h-10 cursor-pointer items-center justify-center rounded-t-full px-8 text-sm md:text-[0.95rem]`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: reubicación de línea horizontal a border-top del contenedor y ajustes responsivos de tabs
+- **Pedido del Tech Lead:** "la linea horizontal que tiene actualmente, no deberia ser del div de tabs, si no el border top del contenedor de contenido, asi mantendra la espectativa con los bordes curvos a los extremos, en mobile si mantener el padding x de los tabs en px-6 y ls textos un poquito menos de tamaño" (con captura de DevTools sobre la barra de tabs).
+- **Causa raíz:** La línea divisoria estaba colocada como `border-b-2` en el `div` de la fila de tabs, generando una línea recta plana que cortaba las esquinas curvas `rounded-2xl` del contenedor inferior. Además, en pantallas móviles el padding `px-9` resultaba demasiado ancho y el tamaño de texto requería optimizarse.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se eliminó `border-b-2 border-cicaindigo-400` del `div` contenedor de los tabs.
+     - Se agregó `border-t-2 border-cicaindigo-400` al contenedor de contenido (`rounded-2xl`), haciendo que la línea horizontal pertenezca al card y siga la curvatura natural de las esquinas en ambos extremos.
+     - Se configuró padding horizontal responsivo: `px-6` en mobile y `md:px-9` en desktop (`px-6 md:px-9`).
+     - Se ajustó el tamaño de texto responsivo: `text-sm` en mobile y `md:text-[0.95rem]` en desktop (`text-sm md:text-[0.95rem]`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: ampliación de padding horizontal de tabs a px-9 (36px)
+- **Pedido del Tech Lead:** "a cada tab cambiar el padding x de px-7 a px-9".
+- **Causa raíz:** Las pestañas tenían `px-7` (28px de padding horizontal), quedando algo compactas para el radio completo superior de las píldoras de 40px de altura.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se actualizó el padding horizontal de ambos botones (`¿Qué ofrecemos?` y `Coberturas`) de `px-7` a `px-9` (36px / 2.25rem), logrando mayor holgura y proporción con la curvatura de las esquinas.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: migración de tabs, acordeón e intro de detalle de servicio a Tailwind CSS 100% nativo
+- **Pedido del Tech Lead:** "que raro que no se use tailwindcss".
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, las pestañas (`.tab-row`, `.tab-trigger`), los acordeones (`.coverage-item`, `.coverage-chevron`) y el intro (`.richtext-body`) se habían implementado con reglas CSS tradicionales en el bloque `<style>`, cuando Tailwind v4 soporta de forma nativa variantes `aria-selected:`, `group-open:`, `rounded-t-full` y selectores arbitrarios hijos.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Tabs migrados a clases utilitarias de Tailwind: `inline-flex h-10 cursor-pointer items-center justify-center rounded-t-full px-7 text-[0.95rem] font-semibold transition-colors duration-150 bg-cicaindigo-50 text-cicaindigo-400 hover:bg-cicaindigo-100 aria-selected:bg-cicaindigo-400 aria-selected:text-white aria-selected:hover:bg-cicaindigo-400`.
+     - Contenedor de fila de tabs migrado a `flex justify-center border-b-2 border-cicaindigo-400`.
+     - Acordeón de coberturas migrado a `group`, `[&::-webkit-details-marker]:hidden` y `group-open:rotate-180 transition-transform duration-150`.
+     - Intro rich text migrado a utilidades Tailwind `prose [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_strong]:text-gray-800 [&_b]:font-bold [&_b]:text-gray-800`.
+     - Se removieron todas las reglas CSS personalizadas correspondientes del bloque `<style>`, conservando únicamente la escala dinámica del hero basada en custom properties por breakpoint.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: tabs de detalle de servicio con altura de 40px y esquinas superiores redondeadas al 100%
+- **Pedido del Tech Lead:** "los tabs tiene esquinas redondeadas al 100% esquinas superiores y de altura tiene 40px" (con recorte de Figma de la barra de tabs "¿Qué ofrecemos? / Coberturas").
+- **Causa raíz:** `.tab-trigger` en `cica360/src/pages/servicios/[slug].astro` usaba un radio fijo de `1rem` (16px) y `padding-block: 1rem` al estar activo vs. `0.75rem` inactivo, lo que hacía variar la altura de las pestañas (~56px activo / ~44px inactivo) en vez de mantener los 40px exactos y simétricos del diseño oficial con radio superior completo.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Altura fija de 40px (`height: 40px`) con `display: inline-flex`, centrado vertical/horizontal y `padding-inline: 1.75rem` en `.tab-trigger`.
+     - Esquinas superiores redondeadas al 100% (`border-radius: 9999px 9999px 0 0`), generando curvas suaves tipo semicírculo/pill en la parte superior y base plana sobre la línea.
+     - Remoción de `padding-block: 1rem` en `[aria-selected='true']`, garantizando que tanto la pestaña activa como la inactiva conserven idéntica altura de 40px sin saltos de maquetación al alternar.
+     - Contenedor del panel inferior actualizado a `rounded-2xl` simétrico en todas sus esquinas, alineado con la vista de tabs centrados.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: ajuste de padding inferior a 40px en sección intro de detalle de servicio
+- **Pedido del Tech Lead:** "reducir a 40 padding bottom" (con captura de DevTools sobre el contenedor con `pb-10 md:pb-[60px]`).
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el contenedor de la introducción mantenía `pb-[60px]` en desktop, dejando un espacio inferior asimétrico respecto a los 40px superiores antes de los tabs.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se ajustó el contenedor a `py-8 md:py-10` (`px-4 sm:px-6 py-8 md:py-10`), estableciendo un padding inferior simétrico de 40px (`md:py-10`) en desktop y 32px (`py-8`) en mobile.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** TypeScript check ejecutado y verificado.
+
+## 2026-09-14 — Frontend: reducción de degradado superior en header de detalle de servicio (55% altura y fade al 20%)
+- **Pedido del Tech Lead:** "reducir pero del header de detalle" (en respuesta a la consulta sobre si la capa se reducía a 60% y comenzaba a desvanecerse antes).
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el degradado cubría el 70% superior del banner con 35% de color sólido, sumado a un 25% de oscurecimiento general, lo que restaba luminosidad y calidez a la fotografía del hero.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se redujo la altura del degradado de `h-[70%]` a `h-[55%]`.
+     - Se adelantó el inicio del desvanecimiento a transparente del 35% al 20% (`linear-gradient(to bottom, #2D2C4D 0%, #2D2C4D 20%, color-mix(in srgb, #2D2C4D 0%, transparent) 100%)`).
+     - Se ajustó la opacidad general a `0.85` y la capa base a `bg-cicaindigo-950/20`, asegurando que la parte central e inferior del header muestre la fotografía mucho más clara y nítida, manteniendo a la vez el contraste necesario detrás del navbar fijo (60px).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360.
+
+## 2026-09-14 — Plataforma / Base de datos: incorporación del plan Auspicio en seeders y vinculación de suscripción de CICA360
+- **Pedido del Tech Lead:** "algo que acabo de darme cuenta, en el seeder con el contenido base en stamless para el cliente0 que es cica360, deberia existir el plan Auspicio y con todo lo que se definio, espero que no esté hardcodeado o en enums, todo tiene que estar en tabla, deberia ser lo msmo que free, pero con un poco mas de recursos" / "tiene que estar en el seeder para poder desplegar como contenido inicial del gestor y del cliente0" (con capturas de las tablas `plans`, `tenants`, `tenant_modules`, `plan_module`, `plan_features` en el gestor de base de datos).
+- **Causa raíz:** `PlanSeeder` únicamente sembraba el registro `free` en `plans` y sus características en `plan_features`. En consecuencia, la tabla `plan_module` solo contenía filas para `plan_id = 1` y `Cliente0Seeder::upsertSubscription()` asignaba forzosamente `slug: 'free'` a la suscripción de CICA360 a pesar de que el tenant tenía `plan = 'sponsorship'`.
+- **Fix:**
+  1. `database/seeders/PlanSeeder.php`:
+     - Se añadió la definición y siembra del plan `Auspicio` (`slug: 'sponsorship'`) en la tabla `plans` (`name: 'Auspicio'`, `max_users: 2`, `max_pages: 30`, `max_posts: 20`, `max_storage_mb: 1000`, `is_free: true`, `is_active: true`, `sort_order: 1`).
+     - Se registraron en `plan_features` todas las características y límites detallados tanto para `free` como para `sponsorship` (`max_users`, `max_pages`, `max_posts`, `max_services`, `max_testimonials`, `max_sliders`, `max_media`, `max_storage_mb`, `max_menus`, `max_menu_items`, `max_api_tokens`, `modules_vertical`, `custom_copyright`, `brand_personalization`).
+  2. `database/seeders/ModuleSeeder.php`:
+     - Sincronización de todos los módulos core (`pages`, `posts`, `media`, `menus`, `settings`, `sliders`, `contacts`) en la tabla pivote `plan_module` tanto para `free` como para `sponsorship`.
+  3. `database/seeders/Cliente0Seeder.php`:
+     - `upsertSubscription()` resuelve dinámicamente el plan por `$tenant->plan` (`sponsorship`), asociando la fila de la tabla `subscriptions` al id correspondiente del plan Auspicio.
+  4. `app/Models/Tenant.php`:
+     - Helpers `currentSubscription(): ?Subscription` y `planModel(): ?Plan` agregados para consultar el modelo de plan y suscripción en base de datos.
+  5. `tests/Feature/PlanSeederTest.php`:
+     - Suite con 3 pruebas que validan: existencia de ambos planes en `plans`, poblado completo de `plan_features`, asociación de módulos core en `plan_module` para ambos planes, y suscripción correcta de CICA360 al plan Auspicio.
+- **Archivos:** `database/seeders/PlanSeeder.php`, `database/seeders/ModuleSeeder.php`, `database/seeders/Cliente0Seeder.php`, `app/Models/Tenant.php`, `tests/Feature/PlanSeederTest.php`.
+- **Verificación:** `php artisan test --compact tests/Feature/PlanSeederTest.php` (3 passed, 16 assertions). Pint ejecutado y verificado.
+
+## 2026-09-14 — Frontend: reducción de padding en sección intro de detalle de servicio (40px arriba / 60px abajo y reducción en X)
+- **Pedido del Tech Lead:** "reducir el padding en X aprovechando que es una plantilla statica aislada al componente standar, reducir el padding de 80px a 40px arriba y 60px abajo" (con captura de DevTools sobre `div.mx-auto.max-w-[1280px].px-4.sm:px-6.lg:px-8.py-12.lg:py-20`).
+- **Causa raíz:** La sección introductoria había heredado la escala fija del componente estándar `RichText.astro` (`py-12 lg:py-20` = 80px arriba y abajo, y `lg:px-8` = 32px en los laterales), dejando una separación vertical excesiva respecto a la ola del header y hacia los tabs.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se ajustó el padding vertical del contenedor a `pt-8 md:pt-10 pb-10 md:pb-[60px]`: 40px superior (`md:pt-10`) y 60px inferior (`md:pb-[60px]`), tal como fue solicitado.
+     - Se redujo el padding en X eliminando el escalón `lg:px-8` (32px), dejándolo en `px-4 sm:px-6` (16px/24px) para mayor fluidez horizontal.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360.
+
+## 2026-09-14 — Frontend: gradiente superior y centrado del titular en header de detalle de servicio
+- **Pedido del Tech Lead:** "en el heading del detalle la capa con gradiente es en la parte superior y el titular en medio (considerando la altura de navbar 60px que se sobrepone y eso deberia considerarse para definir el punto medio descontando esos 60px como se manejó el heading block) como está la espectativa (segunda captura)".
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el gradiente estaba posicionado abajo (`bottom-0 bg-gradient-to-t`) oscureciendo la base de la imagen en vez de la parte superior, y el contenedor del texto usaba `justify-end` con un padding inferior grande (`pb-12 md:pb-14`), empujando el titular y subtítulo contra la onda blanca.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Se reemplazó el gradiente inferior por el gradiente superior idéntico a `Heading.astro`: capa `top-0 h-[70%]` con `linear-gradient(to bottom, #2D2C4D 0%, #2D2C4D 35%, color-mix(in srgb, #2D2C4D 0%, transparent) 100%)` al 90% de opacidad. Esto garantiza contraste detrás del navbar fijo (60px) y legibilidad sobre el titular, dejando el tercio inferior de la fotografía despejado y luminoso sobre la onda blanca.
+     - Se reemplazó `justify-end` por `justify-center` con compensación del navbar superior (`pt-[52px] 3md:pt-[60px] pb-0`), situando el bloque de texto en el punto medio geométrico del área visible debajo del navbar (mismo criterio de compensación implementado en `Heading.astro`).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360.
+
+## 2026-09-14 — Frontend: incremento de altura de header de detalle de servicio (52vh/46vh/38vh/52vh, piso 250px)
+- **Pedido del Tech Lead:** "nada falta un poco más aumentar el porcentaje vh".
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Escala `vh` incrementada por breakpoint manteniendo piso de 250px:
+       - Base (<540px): `52vh`, piso `250px`.
+       - `sm` (>=540px): `46vh`, piso `250px`.
+       - `md` (>=768px): `38vh`, piso `250px`.
+       - `lg` (>=1080px): `52vh`, piso `250px`.
+       - En 1366 x 660px, la altura pasa a ~343px (52vh de 660px), otorgando mayor protagonismo fotográfico al hero sin comprimir las cabezas de las personas con el navbar.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360 (sin errores).
+- **Verificación:** `tsc --noEmit` en cica360 (sin errores).
+
+## 2026-09-14 — Frontend: ajuste de altura del header en detalle de servicio (inspirado en Heading.astro +20% / piso 220px)
+- **Pedido del Tech Lead:** "corregir o ajustar el header del detalle, cuando esta en 1366 x 660px, vemos que la altura es muy grande, podria ser 50px menos?, inpirate en el componente Heading que ya tiene todos los breakpoints definidos importantes a considerar y a eso aumentar 50px o en porcentaje proporcionalmente tipo un 20% adicional a cada altura definida., pero que no sea menor altura de 220px".
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, `HEADER_HEIGHT_LG` tenía `vh: 50` y un piso fijo de `floorPx: 480`. En viewports de altura reducida como 1366 x 660px, el piso de 480px obligaba al header a ocupar el 73% de la altura total de la pantalla.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Escala de altura rediseñada a partir de los breakpoints de `Heading.astro` (`34vh` / `30vh` / `25vh` / `34vh`) con un +20% proporcional y un piso estricto de 220px (`floorPx: 220`):
+       - Base (<540px): `41vh` (34 * 1.2), piso `220px`.
+       - `sm` (>=540px): `36vh` (30 * 1.2), piso `220px`.
+       - `md` (>=768px): `30vh` (25 * 1.2), piso `220px`.
+       - `lg` (>=1080px): `41vh` (34 * 1.2), piso `220px`.
+       - En 1366 x 660px, la altura pasa de 480px a ~271px (reducción de 209px), coincidiendo exactamente con la franja de `Heading + 20%` (269px) / `Heading + 50px` (274px).
+     - Agregada media query `@media (min-width: 540px)` en el `<style>` para soportar el escalón `sm`.
+     - Ajuste de paddings internos del header a `pt-16 pb-12 md:pb-14` para dar un respiro visual equilibrado tanto a 270px como al piso de 220px, sin colisionar con el navbar (60px) ni con la onda (wave).
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360 (sin errores).
+
+## 2026-09-14 — Frontend: alineación del párrafo introductorio de detalle de servicio con RichText.astro
+- **Pedido del Tech Lead:** "mira como fue elaborado el componente para el tipo de bloque de texto enriquecido (captura 1), luego cuando entras a lo que se tiene en detalle de servicio esta mal, y necesito alinear lo mismo que se configuró tamaños y espaciados por cada breakpoints, deberia tener en detalle, por que es como si fuera el bloque de texto enriquecido que ahora estará en esta plantilla".
+- **Causa raíz:** En `cica360/src/pages/servicios/[slug].astro`, el bloque introductorio (`content.intro`) utilizaba un contenedor genérico con `max-w-3xl` (768px), `text-cicagray-700`, `text-lg leading-relaxed` y `py-12 md:py-16`, forzando el texto en 5 líneas angostas en vez de respetar la escala granular de `RichText.astro` (que en Sobre CICA envuelve en 3 líneas amplias).
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`:
+     - Contenedor exterior: `max-w-[1280px] px-4 sm:px-6 lg:px-8 py-12 lg:py-20` (alineado a `RichText.astro` en modo `boxed` y `padding_y: lg`).
+     - Contenedor interior: `max-w-[960px] 3xl:max-w-[1100px] mx-auto flex flex-col gap-6 text-center items-center`.
+     - Tipografía responsiva: `richtext-body prose w-full max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base`, soportando HTML o texto plano.
+     - Scroll indicator: integrado al stack flex con `mt-3` y `Icon name="ph:caret-down"` animado.
+     - Estilos CSS: agregadas las reglas de espaciado para párrafos `.richtext-body :global(p)` (`margin-bottom: 0.75em`, `:last-child: 0`) y contraste de negritas `.richtext-body :global(strong), :global(b)` (`font-weight: 700`, `color: var(--color-gray-800)`).
+     - Se eliminó el `-mt-10` artificial de la sección de tabs, permitiendo que la separación inferior hacia las tabs respete el ritmo visual del design system.
+     - Header: tipografía de título (`text-[2rem] leading-tight font-black sm:text-[2.5rem] md:text-4xl lg:text-5xl`) y subtítulo (`text-base leading-snug font-light opacity-90 sm:text-lg sm:leading-normal`) alineada con `Heading.astro`.
+- **Archivos:** `cica360/src/pages/servicios/[slug].astro`.
+- **Verificación:** `tsc --noEmit` en cica360 (sin errores de tipos).
+
+## 2026-09-14 — Corrección: desacople del decorador wave y las banderas flotantes en detalle de Service
+- **Pedido del Tech Lead:** "en el admin stamless, tengo un propertie que tiene un check Mostrar detalle decorativo, al estar activo debe permitir mostrar el decorativo del header que son las banderitas y si no lo oculta, eso ya esta implementado pero resulta que se condicionó con todo el decorador wave del header, solo deberia ser las banderitas y no el decorador".
+- **Causa raíz:** `[slug].astro` envolvía el SVG de la curva (`WAVE_PATH`) y las banderas dentro de un único bloque `{showDecorative && (...)}`. Si el toggle estaba apagado, la curva inferior desaparecía por completo dejando el corte recto contra la sección blanca.
+- **Fix:**
+  1. `cica360/src/pages/servicios/[slug].astro`: Se desacopló el SVG del decorador wave (ahora es permanente, siempre presente como transición hacia el cuerpo blanco) de las banderas (`service.countries`), las cuales quedan exclusivamente sujetas a `{showDecorative && service.countries.length > 0 && (...)}`. Además, se reforzó el overlay del hero con un tinte uniforme `bg-cicaindigo-950/35` y jerarquía tipográfica `tracking-tight` / `lg:text-[42px]` alineada con el mockup.
+  2. `genesis/app/Filament/Schemas/PropertiesSchema.php`: Se actualizó el `helperText` de `show_decorative_detail` para aclarar que el toggle controla exclusivamente las banderas flotantes ("Banderas de país flotando sobre la curva del header. Desactivar para ocultar las banderas.").
+- **Archivos:** `app/Filament/Schemas/PropertiesSchema.php` (genesis), `src/pages/servicios/[slug].astro` (cica360).
+- **Verificación:** `vendor/bin/pint --dirty --format agent` (código 0), `tsc --noEmit` en cica360 (sin errores).
+
+## 2026-09-14 — `Service` gana una 2da imagen opcional (`image_detail_id`) para el header del detalle
+- **Pedido del Tech Lead:** "necesitamos agregar en admin al editar un servicio que no solo tenga una imagen si no dos, una normal como la que ya tiene y otra nueva mas panoramica como para el detalle, aplicar Ux para explicar el uso que le puedan dar de forma general los usuarios. y en el seeder duplicas la misma imagen en los dos atributos... en la website, usar la principal... para el header del detalle" si no hay secundaria. El docblock original de `create_services_table` (2026-08-31) ya dejaba esto anotado como decisión reversible ("separar en 2 campos queda para cuando el Tech Lead decida que catálogo y detalle necesitan crops distintos") — es ese momento.
+- **Migración** `2026_09_14_160000_add_image_detail_to_services_table.php`: `image_detail_id`, `foreignId` nullable, FK a `media`, `nullOnDelete()` — mismo patrón que `image_id`. `image_id` NO se renombra (sigue siendo "la Principal"), cero migración de datos para servicios existentes.
+- **`Service.php`:** `image_detail_id` sumado a `$fillable`; nueva relación `imageDetail(): BelongsTo`. El fallback "si `imageDetail` es null, usar `image`" NO vive en el modelo — es responsabilidad del frontend consumidor (mismo criterio que la cadena de `ogImage` en `cica360/[slug].astro`).
+- **UX en Console (`ServiceResource.php`):** nueva `Section::make('Imágenes del servicio')` con `description()` explicando la relación entre ambas ("La Principal se usa como miniatura en el catálogo... La Secundaria es opcional y se usa en el header del detalle — subí ahí un formato más panorámico/apaisado... Si no cargás una Secundaria, el header del detalle usa la Principal"), más un `helperText` corto por campo (2 niveles de detalle, no 2 explicaciones distintas). `countries` se saca del `Grid::make(2)` que compartía con la imagen vieja y pasa a campo suelto `->columnSpanFull()`.
+- **`MediaUpload.php` (helper compartido, 7 call sites):** gana un 4to parámetro opcional `?string $helperText = null`. Necesario porque el closure de `->helperText()` ya existente (aviso de límite de plan alcanzado) se hubiera PISADO por completo si el resource simplemente encadenaba `->helperText('mi texto')` después de `MediaUpload::make(...)` — con el parámetro, el closure combina los dos: el aviso de límite tiene prioridad (bloqueante), el texto propio del campo se muestra el resto del tiempo. Sin pasar el 4to argumento, comportamiento idéntico al de antes en los 6 call sites que no lo usan.
+- **API pública:** `image_detail` nuevo en `Http\Resources\Api\V1\ServiceResource` (detalle, `GET /services/{slug}`) — a propósito NO se agregó a `ServiceSummaryResource` (catálogo, `GET /services`): el catálogo siempre usa `image`, nunca la secundaria. `ServiceController::show()` ahora hace `->with(['image', 'imageDetail'])` (antes solo `image`); `index()` sin cambios.
+- **Seeder:** `Cliente0ServicesSeeder` — `image_detail_id` nuevo en el `firstOrCreate(...)`, mismo `image_file` que `image_id` (la MISMA imagen duplicada en los dos campos, tal como se pidió) — no es una imagen panorámica real todavía, el Tech Lead sube una propia por servicio desde Studio cuando corresponda.
+- **Corrección tras confirmación visual del Tech Lead (misma vuelta):** el copy inicial de la `Section`/`helperText` usaba voseo rioplatense ("subí ahí...", "si no cargás..."), violando ADR-051 (español neutro para TODO copy de Console/Studio — el voseo es exclusivo del contenido de marca de CICA360, y esto es un campo de Console que ve cualquier tenant). Corregido a español neutro/infinitivo, y de paso se sacó una redundancia real: el `helperText` de cada campo repetía el fallback ("si no cargás una Secundaria, se usa la Principal") que la `description()` de la Section YA explica — ahora cada nivel dice algo distinto, no lo mismo 2 veces. Texto final: `description()` = "La imagen principal es la miniatura del catálogo. La secundaria es opcional, pensada para el header del detalle — si no se carga, el header usa la principal."; `helperText` de cada campo = solo el dato puntual de ESE campo ("Miniatura del catálogo de Servicios." / "Formato panorámico recomendado para el header del detalle."). Auditado de paso el resto del copy agregado por este agente en la sesión: encontrado y corregido 1 caso más de voseo, preexistente de la vuelta del header de detalle — `PropertiesSchema.php`, `helperText` de `show_decorative_detail` ("Desactivá" → "Desactivar").
+- **2da corrección (captura de Studio mostrando el Toggle "apagado"):** el Tech Lead confirmó el comportamiento esperado ("si está desactivado el mostrar detalle decorativo entonces no mostrar las banderitas") — YA estaba bien implementado del lado del frontend (`showDecorative` en `[slug].astro` envuelve wave Y banderas en el mismo `{showDecorative && (...)}`, sin cambios necesarios ahí). La causa real de la confusión: el seeder nunca sembraba `properties` (quedaba `null` en las 9 filas), así que el `Toggle` de Studio hidrataba "apagado" al editar un servicio ya existente (el `->default(true)` de Filament solo aplica al CREAR desde el form, no a una fila ya sembrada) — mientras el frontend YA trataba "ausente" como "mostrar" (`!== false`). Mismatch puramente visual en Studio, las banderas SÍ se veían bien en el sitio. Fix: `Cliente0ServicesSeeder` ahora siembra `'properties' => ['show_decorative_detail' => true]` explícito en las 9 filas — Studio y el sitio quedan alineados desde el primer render. `header_type` NO se agregó (no fue pedido, y un `Select` vacío no genera el mismo engaño visual que un `Toggle` "apagado").
+- **Archivos:** `database/migrations/2026_09_14_160000_add_image_detail_to_services_table.php` (nuevo), `app/Models/Service.php`, `app/Filament/Schemas/MediaUpload.php`, `app/Filament/Resources/ServiceResource.php`, `app/Filament/Schemas/PropertiesSchema.php`, `app/Http/Resources/Api/V1/ServiceResource.php`, `app/Http/Controllers/Api/V1/ServiceController.php`, `database/seeders/Cliente0ServicesSeeder.php`, `docs/api/v1.md`, `docs/api/openapi.v1.yaml`.
+- **Cross-repo (cica360):** `src/lib/types.ts` (`Service.image_detail: Media | null`, ausente en `ServiceSummary`), `src/pages/servicios/[slug].astro` (`const headerImage = service.image_detail ?? service.image`, usado en el `<img>` de fondo del header). Ver PROGRESS.md de cica360.
+- **Verificación:** sin runtime de PHP en este sandbox — balance de `{}()[]` confirmado por script en los 7 archivos PHP tocados (el único desbalance de paréntesis detectado en `ServiceResource.php` es PREEXISTENTE, confirmado comparando contra `git show HEAD:...` antes de este cambio, no introducido acá). **Falta correr la migración** (`php artisan migrate`) y re-sembrar (`php artisan db:seed --class=Cliente0ServicesSeeder`) en un entorno real — sin la migración, `image_detail_id` no existe todavía en la tabla `services` real.
+- **Siguiente:** el Tech Lead corre la migración + reseed, y confirma en Studio que la Sección "Imágenes del servicio" se ve clara (2 campos, su UX explicada) y que el header del detalle en cica360 usa la imagen correcta según haya o no Secundaria cargada.
+
+## 2026-09-14 — FIX real: `Cliente0ServicesSeeder` sobreescribía contenido real de Studio (`updateOrCreate` → `firstOrCreate`)
+- **Reportado en vivo por el Tech Lead:** "no veo el texto..." (faltaba el párrafo introductorio real de "Seguro Financiero" en el detalle público). Confirmó que corrió `Cliente0ServicesSeeder` después de que este agente le sumara `offers`/`coverages` al archivo (misma sesión, entrada de arriba).
+- **Causa raíz:** el seeder usaba `Service::updateOrCreate(['tenant_id', 'slug'], [...])` — esto UPDATEA incondicionalmente `title`/`subtitle`/`countries`/`content`/`image_id`/`sort_order` de la fila existente con los valores hardcodeados del array `$services`, cada vez que el seeder corre. "Seguro Financiero" ya tenía contenido real cargado a mano en Studio (`subtitle`: "Protegemos tu patrimonio, simplificamos tu gestión.", `countries`: Argentina+Uruguay, `content.intro`: "En CICA ofrecemos coberturas generales...") que DIVERGÍA de los valores viejos que tenía el archivo del seeder (de la "2da vuelta", 2026-09-11) — correr el seeder pisó ese contenido real sin avisar.
+- **Fix:**
+  1. `Service::updateOrCreate(...)` → `Service::firstOrCreate(...)` — busca solo por `[tenant_id, slug]`; si el servicio YA existe, lo deja intacto (no lo toca); solo aplica los valores del array la PRIMERA vez, cuando el servicio todavía no existe. Aplica a los 9 servicios del dataset, no solo a "Seguro Financiero".
+  2. `subtitle`/`countries`/`content.intro` de "Seguro Financiero" en el archivo se restauraron a los valores reales (a partir de las mismas capturas de CICA360 que motivaron la entrada de `offers`/`coverages`), para que el archivo quede como referencia fiel — aunque de acá en más `firstOrCreate` no lo va a volver a tocar en un servicio ya existente.
+- **Lo que NO se tocó (riesgo latente, documentado en el docblock de la clase):** el paso de poda al final (`Service::where(...)->whereNotIn('slug', $slugs)->delete()`) sigue corriendo sin importar `firstOrCreate` — si en Studio se crea un servicio real con un slug fuera de esta lista de 9, este paso lo BORRARÍA. No es el bug reportado hoy (que era de sobreescritura, no de borrado), pero es un riesgo equivalente que el Tech Lead debería tener presente antes de volver a correr este seeder.
+- **Archivos:** `database/seeders/Cliente0ServicesSeeder.php`.
+- **Pendiente — acción inmediata del Tech Lead:** `firstOrCreate` NO repara la fila que YA está mal en la base ahora mismo (solo previene el problema a futuro) — hay que corregir "Seguro Financiero" a mano una sola vez, directo en Studio (`subtitle`, país AR+UY, `content.intro`) o vía `tinker` (ver mensaje de chat de este agente con el comando exacto).
+- **Verificación:** balance revisado a mano (sin runtime PHP en este sandbox).
+
+## 2026-09-14 — `Service`: nuevo header de detalle (properties `header_type`/`show_decorative_detail`)
+- **Pedido del Tech Lead:** capturas reales del detalle de "Seguros Financiero" en CICA360, spec detallada: "primero el header es mas alto a la mitad de altura (50vh), con esa misma capa en gradiente a la 50% de altura del header, el decorador wave y las banderas flotantes sobre ese lado del wave, la properties son importantes para los cambios de tamaño del header podrian ser de Tipo header: Normal | Destacado... otra property podria ser un check Mostrar detalle decorativo... luego se muestra el parrafo introductorio que tiene el mismo aspecto del componente de texto enriquecido con su flechita de scroll... y a continuacion tiene tabs en el detalle, que se sobreponen al anterior tipo -mt-10... usar los mismos iconos y viñetas fijas".
+- **Alcance del lado genesis (backend):** solo 2 decisiones quedaron como `properties` configurables desde Console, el resto del look (imagen, degradado, wave, banderas, tabs) es fijo y vive en el frontend:
+  - `properties.header_type`: `normal` (default) | `destacado` — `PropertiesSchema.php`, nuevo `Select`.
+  - `properties.show_decorative_detail`: booleano, default `true` — apaga wave + banderas flotantes como conjunto único (no un flag por elemento).
+  - `ServiceResource.php`: nueva sección "Header del detalle" (colapsada) en el tab "SEO / Enlaces", con esos 2 campos a 2 columnas.
+  - No hizo falta tocar `ServiceController`/`ServiceResource` (API): `properties` ya se expone completo (`self::asObject($this->properties)`), sin cambios de contrato.
+- **Archivos:** `app/Filament/Schemas/PropertiesSchema.php`, `app/Filament/Resources/ServiceResource.php`.
+- **Cross-repo (cica360):** la parte pesada de este pedido (header full-bleed con gradiente/wave/banderas, párrafo intro estilo RichText, tabs "¿Qué ofrecemos?"/"Coberturas" superpuestas `-mt-10`) se implementó en `src/pages/servicios/[slug].astro` — ver `PROGRESS.md` de cica360 para el detalle completo, incluye la escala de altura por breakpoint diseñada para esta vuelta (sin precedente previo en el sitio) y la verificación real con el compilador de Astro + `tsc` (disponibles en el sandbox de este agente, a diferencia de PHP).
+- **Verificación:** balance de llaves/paréntesis revisado a mano (sin runtime PHP). Pendiente que el Tech Lead confirme visualmente el campo "Header del detalle" en Studio y pruebe "Destacado"/"Mostrar detalle decorativo" contra el resultado real en CICA360.
+- **Siguiente:** revisión visual fina en un entorno real de los valores exactos de la escala de altura (ver nota en `[slug].astro`) — quedaron como criterio propio razonado, no una spec pixel-perfect del Tech Lead.
+
+## 2026-09-14 — `services.content.why_choose_us.text`: `Textarea` → `RichEditor` (WYSIWYG)
+- **Pedido del Tech Lead:** capturas del form de Console vs. el render real en CICA360 ("Porque **integramos en un solo equipo**..." con negrita a mitad de frase) — "creo que el texto de por que elegirnos debe ser wysywyg... tal vez no sea necesario las properties [color de fondo, redondez] a ese nivel pero el soporte de richeditor creo que si". Alcance acotado a un solo campo, a propósito: no se agregan `properties` de estilo a nivel de sección.
+- **Qué se hizo:**
+  - `ServiceResource.php` (Filament): `content.why_choose_us.text` ahora es `Forms\Components\RichEditor` (antes `Textarea`). Como `Service::$casts()['content'] = 'array'` (jsonb), Filament 5 lo persiste como documento TipTap/JSON — mismo comportamiento ya conocido de `content.body` en los bloques `rich_text`/`split`/`legal_notice` de `PageResource.php`.
+  - `ResolvesPublicLinks::renderRichContent()` pasó de `private` a `protected` — un método `private` de un trait no es heredable por una clase que lo consume vía su padre (`ServiceController extends Controller`, y es `Controller` quien hace `use ResolvesPublicLinks`), así que hacía falta ampliar la visibilidad para poder reusarlo fuera del trait. Comportamiento sin cambios (blindado: un `string` plano pasa tal cual, sin reprocesar).
+  - `ServiceController::show()`: convierte `content.why_choose_us.text` de JSON TipTap a HTML sanitizado antes de responder — mismo mecanismo ya usado para `content.body` de bloques, evitando el bug ya conocido de `[object Object]` en el front.
+  - `docs/api/v1.md` + `docs/api/openapi.v1.yaml`: de paso se corrigió una inexactitud **preexistente** (no introducida en esta vuelta) — `why_choose_us`/`tip` estaban documentados como strings sueltos, cuando en realidad siempre fueron objetos `{ title, text }` (ver `ServiceResource.php` desde que se creó el módulo). Se agregó la nota de la excepción de `why_choose_us.text` como HTML.
+- **Archivos (genesis):** `app/Filament/Resources/ServiceResource.php`, `app/Http/Controllers/Api/V1/ServiceController.php`, `app/Http/Concerns/ResolvesPublicLinks.php`, `docs/api/v1.md`, `docs/api/openapi.v1.yaml`.
+- **Cross-repo (cica360):** `src/pages/servicios/[slug].astro` (ese `<p>{content.why_choose_us.text}</p>` interpolado escapaba el HTML — se cambió a `set:html` con clases `prose`, mismo patrón que `content.body` en `RichText.astro`/`Split.astro` y `post.content` en `blog/[slug].astro`), `src/lib/types.ts` (doc comment en `ServiceContent.why_choose_us`), `docs/context/api/stamless-api-v1.md`. Ver `PROGRESS.md` de cica360 para el detalle de ese lado.
+- **Verificación:** balance de llaves/paréntesis revisado a mano (sin runtime PHP en el sandbox de este agente). Pendiente que el Tech Lead confirme visualmente en Console que el RichEditor guarda/recupera bien el contenido ya existente de "Seguro Financiero" (texto plano legado — `renderRichContent()` lo deja pasar tal cual, no debería romper) y que el front de CICA360 renderiza la negrita correctamente tras el build.
+- **Siguiente:** el Tech Lead mencionó que la documentación general del API "no sé si... está actualizada con todo lo último que se implementó" (`/api-documentation` en Studio, fuente `docs/api/v1.md`) — quedó pendiente, a retomar en otra sesión, una auditoría completa (no solo este campo puntual).
+
+## 2026-09-14 — `Cliente0ServicesSeeder`: contenido completo de demo para "Seguro Financiero"
+- **Pedido del Tech Lead:** capturas reales del detalle de "Seguros Financiero" en CICA360 (banner, tabs "¿Qué ofrecemos?"/"Coberturas", "¿Por qué elegirnos?", tip) + "generar el seeder... la información completa para Seguro financiero... en el tab coberturas cada item del acordeón podrías rellenar con 3 a 10 sub items de forma aleatoria como demo para ver el funcionamiento de todo el acordeón". Aviso mid-turn ("nos olvidamos del detalle de los servicios") aclaró que el registro base (`title`/`subtitle`/`countries`/`content.intro`, con foto propia en `Cliente0MediaSeeder`) ya existía en el seeder de la 2da vuelta — faltaba solo completar los 4 campos opcionales de `content`.
+- **Qué se hizo:** `Cliente0ServicesSeeder.php` — solo la entrada "Seguro Financiero" (no se tocó ningún otro de los 9 servicios) ahora trae:
+  - `content.offers`: los 7 puntos reales de la captura (`highlight`+`text`).
+  - `content.coverages`: 15 rubros del acordeón. "Automotores" con el detalle real entregado (4 ítems); el resto (Hogar, Vida colectivos, Comercio e Industria, ART, Mala praxis, Transporte, Aeronavegación, Embarcaciones de placer, Riesgo agrícola, Seguro de incendios, Accidentes personales, Consorcios, Seguro de caución, Garantía propietaria) con 3 a 8 sub-ítems inventados como demo, variando la cantidad a propósito para probar el acordeón con listas de distinto largo.
+  - `content.why_choose_us` y `content.tip`: texto real de la captura.
+  - El loop del seeder ahora arma `content` con `array_merge()` + `array_intersect_key()` sobre 4 keys opcionales (`offers`/`coverages`/`why_choose_us`/`tip`) — si un servicio no las trae (los otros 8, a propósito), `content` queda igual que antes (solo `intro`).
+- **Archivos:** `database/seeders/Cliente0ServicesSeeder.php` (docblock de clase actualizado con la nota de esta 3ra vuelta parcial).
+- **Verificación:** balance de llaves/paréntesis revisado a mano línea por línea (sin runtime PHP en el sandbox de este agente) — estructura OK. **Pendiente que el Tech Lead corra** `php artisan db:seed --class=Cliente0ServicesSeeder` en un entorno real (es idempotente vía `updateOrCreate`, no duplica ni rompe el resto del catálogo) y confirme visualmente que el acordeón de "Coberturas" y la lista de "¿Qué ofrecemos?" rinden bien en Studio y en el front de CICA360.
+- **Siguiente:** el resto de los 8 servicios queda sin `offers`/`coverages`/`why_choose_us`/`tip` a propósito — el Tech Lead los completa manualmente desde Studio cuando tenga el contenido real de cada rubro.
+
+## 2026-09-14 — ADR-067: `MediaResource` oculto para Free/Freemium/Auspicio
+- **Pedido del Tech Lead:** "creo que multimedia lo ocultaremos para free y aspicios, que quede el limite de alguna forma avisar pero no tendran acceso, por que actualmente si yo adjunto un archivo en contenido o servicios, no hay forma de reutilizar una foto, poder cambiarla con alguno de la galeria, solo hay opciona a editarla y a eliminarla". Cambio de modelo freemium → nuevo ADR obligatorio (regla de `CLAUDE.md`). Antes de tocar código se confirmaron con el Tech Lead 3 puntos ambiguos vía preguntas: (1) bloqueo real (nav + URL directa, no solo ocultar el nav), (2) el aviso del límite vive SOLO en el widget de uso del Dashboard (no un candado en el nav), (3) cerrar también el hueco de `MediaUpload` (subida inline), que hasta ahora no chequeaba el límite.
+- **Qué se hizo:**
+  - `Tenant::canAccessMediaLibrary(): bool` — nuevo gate (`! isFreeTier()`), método propio en vez de reusar `isFreeTier()` directo en `MediaResource` (mismo criterio ya documentado en `canPersonalizeStudioBrand()`).
+  - `MediaResource::canAccess()` — override que combina `parent::canAccess()` (autorización estándar de Filament) con `canAccessMediaLibrary()`. Filament usa este único método tanto para ocultar el ítem del nav (`HasNavigation`) como para el `abort_unless(..., 403)` al entrar por URL directa a cualquier página del resource — bloqueo real con un solo cambio.
+  - `MediaResource::mediaLimitMessage()` bifurcado: quien YA no tiene acceso a la biblioteca ve "mejorá de plan" en vez de "eliminar primero alguno existente" (instrucción que ya no puede seguir).
+  - `App\Filament\Schemas\MediaUpload::make()` (el campo de subida inline de Páginas/Posts/Servicios/Sliders/Testimonios) ahora también hace cumplir el límite — `->disabled()`/`->helperText()` reusando `MediaResource::isMediaLimitReached()`/`mediaLimitMessage()`, sin duplicar lógica. Cierra un hueco real: antes de esta vuelta, este campo NO chequeaba el límite en absoluto.
+  - `PlanUsageWidget::getRows()`: la fila "Multimedia" pasa `url: null` cuando el tenant no tiene acceso (en vez de apuntar a una página que le daría 403). `plan-usage-widget.blade.php` renderiza esa fila como `<div>` informativo (sin `href` ni hover) en vez de `<a>` cuando `url` es `null` — queda como el ÚNICO lugar donde Free/Freemium/Auspicio sigue viendo su conteo/tope.
+- **Trade-off aceptado, documentado explícitamente en el ADR, NO resuelto acá:** un tenant afectado que llega a su tope ya no tiene ningún camino de autoservicio para borrar archivos viejos y liberar cupo (antes podía entrar a `MediaResource` y borrar algo) — su única salida es mejorar de plan. Motivo de fondo de toda la decisión, también documentado: `MediaUpload` no tiene forma de REUTILIZAR un archivo ya subido desde otro campo, solo subir nuevo o editar/quitar el actual — construir ese selector queda pendiente para una vuelta futura.
+- **Archivos:** `app/Models/Tenant.php`, `app/Filament/Resources/MediaResource.php`, `app/Filament/Schemas/MediaUpload.php`, `app/Filament/Widgets/PlanUsageWidget.php`, `resources/views/filament/cms/widgets/plan-usage-widget.blade.php`. ADR-067 en `DECISIONS.md`.
+- **Verificación:** balance de `(){}[]` OK en los 4 archivos PHP (script Python — nota: `Tenant.php` dio un falso positivo por el `//` dentro del string `'https://'` en `publicUrl()`, método preexistente sin relación; revisado a mano línea por línea, 16/16 bloques `/** */` correctamente emparejados). Balance de tags Blade OK (`@if`/`@else`/`@endif` 1/1/1). Sin runtime PHP en este sandbox — pendiente que el Tech Lead confirme visualmente: (a) el ítem "Multimedia" ya no aparece en el nav para un tenant Free/Auspicio, (b) una URL directa a `/media` da 403 para ese mismo tenant, (c) la fila "Multimedia" del widget de Escritorio ya no es clickeable para ese tenant, (d) un campo de imagen en Páginas/Servicios se deshabilita al llegar al tope de medios.
+- **Siguiente:** evaluar si vale la pena construir un selector "elegir de la Biblioteca" dentro de `MediaUpload` — la mejora que, de resolverse, haría sentido reevaluar esta restricción de plan.
+
+## 2026-09-13 — MediaResource: vista de galería con `contentGrid()` nativo de Filament
+- **Pedido del Tech Lead:** "no me convence un simple listado CRUD, cuando debería ser una galería más visual, más UX" — trajo 4 plugins de la comunidad Filament como propuesta (UniFileManager, Ardavan File Explorer, mwguerra/filemanager, marcomessa/filament-file-manager).
+- **Investigación:** los 4 plugins fueron descartados tras revisar su documentación oficial — cada uno propone su PROPIO inventario de archivos (tabla propia de metadata, o directamente exigen migrar a Spatie Media Library), ninguno lee/escribe sobre la tabla `media` de este proyecto. Adoptar cualquiera hubiera significado mantener 2 sistemas de media en paralelo, o replatear cada FK `media_id` que ya usan Páginas/Posts/Servicios/Slides y el fallback SEO/OG de ADR-065 — un cambio de arquitectura, no de UI. Riesgos adicionales encontrados: 3 de los 4 son proyectos muy chicos/nuevos (3-12 estrellas en GitHub, alguno con el primer commit hace días), y el más simple (marcomessa) deja S3/R2 — el disco que ya usamos, ADR-004 — como función de pago (PRO).
+- **Qué se hizo:** en cambio, `MediaResource::table()` pasa a usar `Table::contentGrid()` (100% nativo de Filament, sin dependencias nuevas) — el índice ahora renderiza tarjetas (1 a 5 columnas según viewport) con preview grande (`ImageColumn` a 160px de alto, antes solo la primera columna de una fila angosta) en vez de una tabla de filas. Mismo modelo `Media`, mismo multi-tenancy, mismas relaciones/FKs — ningún dato ni endpoint cambia, solo la presentación del índice. Paginación por página baja de 50 a 24 (más prolijo contra una grilla de 2-5 columnas). El resto queda intacto: límite de plan (`isMediaLimitReached()`), badge de uso en el sidebar, filtro por disco, acciones agrupadas (Editar/Eliminar), bulk delete.
+- **Archivos:** `app/Filament/Resources/MediaResource.php`.
+- **Verificación:** balance de `(){}[]` OK (script Python). Sin runtime PHP en este sandbox — no se pudo abrir el panel para confirmar visualmente el layout de tarjetas ni que `contentGrid()`/`ImageColumn::height()` rindan como se espera en Filament 5.x (API confirmada por búsqueda en la documentación oficial de Filament, no ejecutada localmente).
+- **Siguiente:** el Tech Lead corre `php artisan filament:assets` (por las dudas, aunque `contentGrid()` es puramente PHP/Blade, sin JS/CSS nuevo) y confirma visualmente el grid en `/admin/{tenant}/media`.
+- **2da vuelta (mismo día, fix real con captura: "se ve horrible... mejor más pequeño... al editar es peor falta UX, fullwidth al body del modal"):** confirmado el bug — la 1ra vuelta armó `contentGrid()` pero dejó las 3 columnas (imagen/nombre/tamaño) sueltas; sin agruparlas, Filament las sigue acomodando en fila horizontal DENTRO de cada celda de la grilla (el comportamiento por defecto de cualquier tabla), no apiladas como una tarjeta — de ahí la fila angosta gigante que mostró la captura en vez de una foto con texto debajo. Fix: las 3 columnas se envuelven en `Tables\Columns\Layout\Stack::make([...])`, el componente de Filament para apilar columnas verticalmente dentro de una celda de `contentGrid()` (no existe un "modo card" separado — es `contentGrid()` + `Stack` juntos, y la 1ra vuelta se quedó a mitad de camino). Miniatura baja de 160 a 120px y gana `->square()` (antes solo `height()` sin forzar proporción — con imágenes panorámicas tipo 1200×630 quedaban angostas y elongadas). Grid pasa de `default:1/sm:2/md:3/lg:4/xl:5` a `default:2/sm:3/md:4/lg:5/xl:6` (tarjetas más chicas, más por pantalla). Modal de Editar/Crear (`modalWidth`) sube de `md` a `2xl` — el preview del `FileUpload` con una imagen real cargada quedaba cortado/superpuesto en la caja angosta.
+- **Archivos:** `app/Filament/Resources/MediaResource.php` (mismo archivo, 2da pasada).
+- **Verificación:** balance de `(){}[]` OK. Sigue sin poder confirmarse visualmente en este sandbox (sin runtime PHP) — el patrón `contentGrid()` + `Stack` es el documentado oficialmente por Filament para layouts de tarjetas, pero no se pudo levantar el panel para verlo renderizado.
+- **3ra vuelta (mismo día, la galería YA funcionaba — captura confirmó el `Stack` andando — pero pidió pulido: "fullwidth el container de filament y las imágenes que se vean más estéticos como los nombres, de 4 columnas tal vez"):**
+  - `ManageMedia::getMaxContentWidth()` nuevo (override de `Filament\Support\Enums\Width::Full`, solo en esta página — el resto del Studio sigue con el ancho estándar de Filament).
+  - Grilla: de `default:2/sm:3/md:4/lg:5/xl:6` a `default:1/sm:2/md:3/lg:4/xl:4` — tope de 4 desde `lg`, tarjetas más grandes y prolijas en vez de apretadas.
+  - Estética: mime type y tamaño ya no son 2 badges apilados sueltos — se funden en la MISMA línea (`flex gap-1.5`) dentro del `description()` del nombre, con el nombre real del archivo arriba en gris chico. Nombre centrado (`alignCenter()`), padding parejo alrededor (`px-3 pt-2.5 pb-3`, antes solo la imagen tenía su propio padding). Imagen sube de 120 a 190px de alto (con el container fullwidth y tope de 4 columnas, cada tarjeta tiene más aire).
+  - **Bug real encontrado y corregido:** la captura mostraba "de 1 a 5 de 38 resultados" pese a que la 1ra vuelta ya había puesto `defaultPaginationPageOption(24)` — causa: 24 nunca estuvo en la lista de opciones del selector "por página" (`paginationPageOptions()`, nunca declarada explícitamente, Filament usa un set default propio que no incluye 24) — al no matchear, Filament cae a la PRIMERA opción de su set default (5). Se agrega `->paginationPageOptions([12, 24, 48])` explícito junto al default.
+- **Archivos:** `app/Filament/Resources/MediaResource.php`, `app/Filament/Resources/MediaResource/Pages/ManageMedia.php`.
+- **Verificación:** balance de `(){}[]` OK en ambos archivos. Confirmado por búsqueda en la documentación/changelog oficial de Filament que el enum se llama `Width` (no `MaxWidth`) desde Filament 4 en adelante — coincide con el Filament 5 de este proyecto.
+- **4ta vuelta (mismo día, 4 pedidos puntuales más: "paginación de 50 y las imágenes centradas, además el botón de acciones a la derecha superior flotante y listar por default los últimos modificados pero que se pueda filtrar por fecha de creación también"):**
+  - Paginación: `paginationPageOptions([12, 24, 50, 100])` + `defaultPaginationPageOption(50)` (antes 24 — mismo bug de fondo de la vuelta pasada, el valor default tiene que estar en el set de opciones o Filament lo ignora en silencio).
+  - Imágenes: `object-center` explícito + `mx-auto` en el `<img>` (antes confiaba en el default del navegador).
+  - Orden por defecto: `->defaultSort('updated_at', 'desc')` — antes no tenía ningún sort explícito, caía al orden implícito de la PK/insert.
+  - Filtro nuevo: `Filter::make('created_at')` con 2 `DatePicker` (`created_from`/`created_until`), patrón oficial de Filament para rangos de fecha — a propósito sobre `created_at`, NO sobre `updated_at` (son 2 preguntas distintas: cuándo se subió vs. cuándo se modificó por última vez).
+  - Botón de acciones flotante: `ActionGroup` gana `->extraAttributes(['class' => 'absolute top-2 right-2 z-10 rounded-full bg-white/90 shadow-md backdrop-blur-sm dark:bg-gray-900/80'])`. **Incertidumbre real, no solo limitación de sandbox:** posicionar acciones así dentro de `contentGrid()` es un punto flojo documentado de la propia comunidad de Filament (reportes de resultados inconsistentes según versión/contexto de posicionamiento del ancestro) — no hay garantía de que el `position: absolute` encuentre el `position: relative` correcto sin verlo renderizado. Marcado explícitamente para revisión visual.
+- **Archivos:** `app/Filament/Resources/MediaResource.php` (import nuevo: `Illuminate\Database\Eloquent\Builder`).
+- **Verificación:** balance de `(){}[]` OK. Confirmado que el resto de los resources del proyecto (`ApiTokens`, `PageResource`, `ServiceResource`, etc.) usan `->actions()` (no `->recordActions()`) — se descartó renombrar el método en este archivo para no romper la convención ya establecida en el proyecto, pese a que la documentación de un plugin de terceros mencionaba ese rename como parte de "Filament 5" (no se pudo confirmar si aplica a la versión exacta instalada acá, y el resto del código ya funciona con `->actions()`).
+- **Siguiente:** el Tech Lead confirma visualmente, en particular el botón flotante (el punto más incierto de los 4).
+- **5ta vuelta (mismo día, fix real con captura): el botón "⋮" flotante SÍ quedó bien posicionado (confirma que el `absolute` de la vuelta anterior encontró un ancestro razonable), pero su dropdown ("Editar"/"Borrar") abría en la esquina inferior-izquierda de la PANTALLA en vez de al lado del botón.** Diagnóstico correcto del Tech Lead: "te faltó por stack el relative". Causa real: el botón de acciones es `position: absolute`, pero nada en el camino tenía `position: relative` — su contenedor de posicionamiento terminaba siendo el `<body>`, y el cálculo de posición del dropdown (que depende del ancestro posicionado más cercano) se rompía. Fix: `Stack::make([...])->extraAttributes(['class' => 'relative'])` — el Stack es el wrapper visual de cada tarjeta individual dentro de `contentGrid()`, el lugar correcto para anclar tanto el botón como su dropdown a ESA tarjeta puntual.
+- **Archivos:** `app/Filament/Resources/MediaResource.php` (mismo archivo, 5ta pasada).
+- **Verificación:** balance de `(){}[]` OK.
+- **6ta vuelta (2026-09-14, ajuste puntual con captura: "mucho gap entre el título y nombre del archivo"):** el `<div>` del `description()` de la columna "Nombre" llevaba `mt-1` propio, ENCIMA del espacio que Filament ya agrega por defecto entre el texto principal de una `TextColumn` y su `description()` — la suma de ambos dejaba un salto visual de más entre "un feliz sabado- tono E" (negrita) y "un feliz sabado- tono E.jpg" (gris chico, debajo). Fix: `mt-1` → `-mt-1` para compensar ese espacio duplicado (se probó `mt-0` primero pero seguía dejando más aire del esperado). El `gap-1.5` interno entre el nombre de archivo y los badges de mime/tamaño no se tocó, no era parte del reclamo.
+- **Archivos:** `app/Filament/Resources/MediaResource.php` (mismo archivo, 6ta pasada).
+- **Verificación:** balance de `(){}[]` OK.
+- **7ma vuelta (2026-09-14, `form()` — 2 pedidos, con capturas):**
+  - "en cada preview del upload hay un ícono para editar la foto... en multimedia no lo tiene al editar": el resto de los Resources (Páginas, Posts, Sliders) arman su `FileUpload` vía `App\Filament\Schemas\MediaUpload::make()`, que sí encadena `->imageEditor()` — el de `MediaResource::form()` se arma a mano y nunca lo tuvo. Se agrega `->imageEditor()` al `FileUpload::make('path')`. A propósito SIN `->image()`: ese método restringe los tipos de archivo aceptados solo a imágenes, y este campo es la Biblioteca de Medios completa (acepta también video/otros — no hay `acceptedFileTypes()` explícito, el `mime_type` real se detecta recién al subir) — `->image()` hubiera roto la carga de video. Confirmado en el código fuente del paquete (`vendor/filament/forms/src/Components/FileUpload.php`) que `imageEditor()` e `image()` son 2 flags independientes, no hace falta el segundo para que funcione el primero.
+  - "falta ajustar el UX de ese formulario que se ve muy compacto cuando tiene espacio en el body del modal": 1er intento — `Section::make()->schema([Grid::make(['md'=>2])->schema([FileUpload, Group::make([name, alt_text])])])`. 2 problemas reales, ambos reportados por el Tech Lead:
+    1. **Crash en producción:** `Class "App\Filament\Resources\Grid" not found` (`livewire/update`, 500) — el `use Filament\Schemas\Components\Grid;` se agregó al archivo, pero PHP resolvió `Grid::make()` contra el namespace local `App\Filament\Resources` igual. No se pudo reproducir la causa exacta en este sandbox (sin runtime PHP para aislar si fue caché de Composer/OPcache del lado del Tech Lead u otro problema); irrelevante para el fix final porque se elimina el uso de `Grid` por completo (ver abajo).
+    2. **Ancho real, con captura + inspector del navegador:** aun sin el crash, la `Section` seguía sin ocupar el ancho real del modal (`slideOver`, `modalWidth('2xl')`) — quedaba angosta con espacio vacío a la derecha. **Mismo bug de fondo YA documentado y resuelto una vez en este proyecto** (`TestimonialResource::form()`, 2026-08-31, ver comentario ahí): grids de Filament anidados (`Section` → `Grid`/`Group` → campos) pueden colapsar a un ancho "shrink-to-fit" en vez de estirarse al 100% del contenedor — se repitió el mismo error en `MediaResource` en vez de reusar la solución ya probada.
+  - **Fix final (2do intento, mismo patrón ya probado en `TestimonialResource`):** se aplana todo — `FileUpload`, `name`, `alt_text` y los 4 `Hidden` son hijos DIRECTOS de la única `Section`, que usa su PROPIO `->columns(2)` (sin `Grid` ni `Group` intermedios); cada campo controla su posición con `->columnSpan(1)` (archivo, nombre) o `->columnSpanFull()` (alt text, ocupa la fila completa debajo). `->extraAttributes(['class' => 'w-full'])` + `->columnSpanFull()` en la `Section` misma — cinturón y tirantes contra el mismo colapso de ancho. Ya no quedan referencias a `Grid`/`Group` en el archivo (imports retirados).
+- **Archivos:** `app/Filament/Resources/MediaResource.php`.
+- **Verificación:** balance de `(){}[]` OK. Confirmado por grep que no queda ningún `Grid::make`/`Group::make` en el archivo (solo `Actions\ActionGroup`/`Actions\BulkActionGroup`, sin relación). Sin runtime PHP en este sandbox — pendiente que el Tech Lead recargue en el servidor real para confirmar que el crash no se repite y que la Section ahora sí ocupa el ancho del modal.
+- **8va vuelta (2026-09-14, `table()`, con captura: "aplicar truncate o no-wrap a los nombres de archivos, pero mostrar siempre la extensión"):** el `file_name` real se renderizaba en 1 línea sin ningún límite de ancho — dentro del `flex-col items-center` del `description()`, que en el eje horizontal encoge cada hijo a su contenido en vez de estirarlo al 100% de la tarjeta, un nombre largo se salía de los bordes y se montaba visualmente sobre la tarjeta de al lado (confirmado en la captura). Un `truncate` de Tailwind puro no alcanzaba: recorta con "…" al FINAL del texto, así que en nombres largos se hubiera comido justo la extensión — lo opuesto de lo pedido. Fix: nuevo helper `MediaResource::splitFileName()` separa `file_name` en `[base, extensión]`; se renderizan en 2 `<span>` dentro de una fila `flex w-full` (el `w-full` rompe el "encoger al contenido" que imponía el `items-center` del padre) — la base lleva `truncate` + `min-w-0` (un hijo flex necesita `min-w-0` explícito para poder encogerse por debajo de su ancho de contenido; sin eso `truncate` no tiene ningún efecto dentro de un flex container), la extensión lleva `shrink-0` y nunca se recorta, sin importar el ancho real de la tarjeta.
+- **Archivos:** `app/Filament/Resources/MediaResource.php` (helper nuevo `splitFileName()`, mismo archivo).
+- **Verificación:** balance de `(){}[]` OK. Sin runtime PHP en este sandbox para `php -l` — pendiente confirmación visual del Tech Lead.
+- **9na vuelta (2026-09-14, `contentGrid()` — pedido explícito de breakpoints): "en tablet 1 columna, a partir de 1024px 3 columnas, a partir de 1536px 4 columnas, a partir de 1920px 5 columnas".** `1024` y `1536` son, literalmente, los breakpoints `lg` y `2xl` de Tailwind — se usan tal cual (`contentGrid(['default' => 1, 'lg' => 3, '2xl' => 4, ...])`), sin declarar `sm`/`md` (así "tablet", ~768-1024px, se queda en el `default` de 1 columna). `1920` NO es un breakpoint nativo de Tailwind ni de `contentGrid()` — los de fábrica de Filament llegan hasta `2xl` = 1536px (confirmado en `vendor/filament/support/resources/css/components/grid.css`, que trae `sm`/`md`/`lg`/`xl`/`2xl` ya compilados, más variantes de container query `@3xs`.`@7xl` que dependen del ancho del contenedor, NO del viewport — no sirven para este pedido). Se define una clave custom `uw` ("ultra-wide", `contentGrid(['uw' => 5])`) — Filament la procesa con el MISMO mecanismo genérico que cualquier otra clave (clase `uw:fi-grid-cols` + variable CSS `--cols-uw`, ver `ComponentAttributeBag::grid()`), pero al no ser un breakpoint real no existe ningún `@media` que la dispare — se agrega a mano en `resources/css/filament/cms/theme.css` (el theme propio del panel Studio, ya existente desde el fix de `MenuTreeBuilder`), apuntando a la MISMA variable CSS que ya trae el elemento (sin duplicar el número de columnas en 2 lugares).
+- **Archivos:** `app/Filament/Resources/MediaResource.php`, `resources/css/filament/cms/theme.css`.
+- **Verificación:** balance de `(){}[]` OK (PHP) y de `{}` OK (CSS, script Python). Requiere `npm run build` para que el CSS nuevo tome efecto (mismo requisito que el resto del theme del panel). Sin runtime para confirmar visualmente en este sandbox.
+- **10ma vuelta (mismo día): "forzar a partir de 620px debería ser 2 columnas y de 1024px sigue normal lo que ya se configuró".** 620px tampoco es un breakpoint nativo de Tailwind (el más cercano, `sm`, es 640px — pedido explícito de 620) — mismo tratamiento que `uw`: nueva clave custom `w620` (`contentGrid(['default' => 1, 'w620' => 2, 'lg' => 3, '2xl' => 4, 'uw' => 5])`) + su `@media (min-width: 620px)` a mano en `theme.css`. De 620 a 1024px la grilla queda en 2 columnas; de 1024 en adelante sigue exactamente como ya estaba (sin tocar `lg`/`2xl`/`uw`).
+- **Archivos:** `app/Filament/Resources/MediaResource.php`, `resources/css/filament/cms/theme.css` (mismos archivos, 10ma pasada).
+- **Verificación:** balance de `(){}[]` OK (PHP) y de `{}` OK (CSS). Requiere `npm run build`.
+- **11va vuelta (mismo día, BUG real encontrado en vivo, captura a 1920px mostrando la grilla estancada en 2 columnas en vez de 5).** Causa raíz: la regla de `w620` usaba `min-width: 620px` SIN techo (`max-width`) — sigue siendo verdadera en CUALQUIER viewport más ancho, así que a 1920px compite con `lg`/`2xl`/`uw` por la misma propiedad (`grid-template-columns`) con la MISMA especificidad CSS (mismo patrón de selector que usa Filament para sus propios breakpoints). A especificidad igual gana la ÚLTIMA regla del CSS compilado, no la de mayor `min-width` — y `w620` había quedado escrita DESPUÉS de `uw` en el archivo, así que le ganaba a `lg`, `2xl` Y `uw` en cualquier viewport ≥ 620px, de ahí las 2 columnas fijas hasta en 1920px. Fix: acotar `w620` con `max-width: 1023.98px` (`@media (min-width: 620px) and (max-width: 1023.98px)`) — así esta regla solo puede ganar dentro de su rango real (620-1023px), nunca compite con `lg`/`2xl`/`uw` fuera de él, sin importar el orden en que estén escritas las reglas en el archivo (deja de depender del orden del CSS para ser correcta).
+- **Archivos:** `resources/css/filament/cms/theme.css` (mismo archivo, 11va pasada). Sin cambios en `MediaResource.php` — el bug era 100% CSS.
+- **Verificación:** balance de `{}` OK. Requiere `npm run build`. Sin runtime para confirmar visualmente en este sandbox — pendiente que el Tech Lead confirme 2 columnas entre 620-1023px, 3 desde 1024, 4 desde 1536, y (el punto reportado) 5 columnas reales a 1920px.
+- **12va vuelta (mismo día): "a partir de 1080px que sea de 3" (en vez de 1024).** 1080 tampoco es un breakpoint nativo de Tailwind — se reemplaza la clave `lg` (nativa, 1024px) por una clave custom `w1080`, mismo tratamiento que `w620`/`uw` (rango acotado con `max-width`, mismo criterio de la vuelta anterior para no repetir el bug de la 11va). `w620` extiende su techo de `1023.98px` a `1079.98px` (justo antes de que arranque `w1080`); `w1080` cubre `1080px` a `1535.98px` (justo antes de `2xl`). `contentGrid()` final: `default:1, w620:2, w1080:3, 2xl:4, uw:5`.
+- **Archivos:** `app/Filament/Resources/MediaResource.php`, `resources/css/filament/cms/theme.css` (mismos archivos, 12va pasada).
+- **Verificación:** balance de `(){}[]` OK (PHP) y de `{}` OK (CSS). Requiere `npm run build`. Sin runtime para confirmar visualmente en este sandbox.
+
+## 2026-09-14 — MediaResource: `loading="lazy"` en la galería (perf) + diagnóstico de error de consola ajeno a la app
+- **Reporte del Tech Lead:** captura de DevTools con `Uncaught (in promise) Error: Could not establish connection. Receiving end does not exist.` (fuente `media:1`) + "hay un lag que se está presentando en la interfaz".
+- **Diagnóstico del error de consola:** es la firma clásica de una EXTENSIÓN del navegador (Chrome), no de este código — ocurre cuando una extensión intenta `chrome.runtime.sendMessage` hacia su propio background script y ese script no está escuchando (extensión recargada, actualizada, o su content script no llegó a inyectarse a tiempo). No es un error de Livewire/Alpine/Filament ni de ningún JS propio de este proyecto — el "media:1" como origen es compatible con un content script de una extensión inyectado sobre la página, no con ningún archivo de este repo (no hay ningún `media.js` ni similar en el proyecto). Para confirmarlo: recargar la misma página en una ventana de incógnito con las extensiones desactivadas — si el error desaparece ahí, es 100% la extensión, no la app.
+- **Causa real del lag (independiente del error de consola):** con la paginación por defecto de 50 tarjetas (4ta vuelta, antes en este mismo historial) y sin `loading="lazy"` en el `<img>` de cada tarjeta, el navegador pedía las 50 imágenes reales de una sola vez al cargar la página, aunque la mayoría no esté ni cerca del viewport todavía. Fix: `loading="lazy"` (atributo nativo del navegador, sin JS ni librería nueva) en `extraImgAttributes()` del `ImageColumn` — difiere la descarga de cada imagen hasta que su tarjeta esté por entrar en pantalla.
+- **Archivos:** `app/Filament/Resources/MediaResource.php`.
+- **Verificación:** balance de `(){}[]` OK. Sin runtime PHP en este sandbox — pendiente que el Tech Lead confirme si el lag mejora, y que descarte el error de consola probando en incógnito sin extensiones.
+
+## 2026-09-14 — MediaResource: checkbox de selección flotante (esquina superior-izquierda)
+- **Pedido del Tech Lead:** "así como se puso flotante las acciones, de igual forma el check de selección debería estar en la parte superior-izquierda superpuesto" (con captura mostrando el checkbox actual, suelto en la esquina inferior-izquierda de cada tarjeta, fuera de la imagen).
+- **Investigación:** el checkbox de selección por fila NO tiene un modo "flotante" nativo en Filament — `Table::recordCheckboxPosition()` (enum `RecordCheckboxPosition::BeforeCells`/`AfterCells`, confirmado en `vendor/filament/tables/src/Enums/RecordCheckboxPosition.php`) solo controla el ORDEN en el DOM, no la posición visual. Se resuelve con CSS a mano en el theme del panel, mismo criterio que ya se usó para el botón "⋮" flotante (`MediaResource::table()`).
+- **Qué se hizo:** `.fi-ta-record` (el wrapper nativo de Filament para cada tarjeta dentro de `contentGrid()`) recibe `position: relative` explícito; el checkbox (`.fi-ta-record-checkbox`) pasa a `position: absolute; top: 0.5rem; left: 0.5rem;` con un halo (`box-shadow` blanco/oscuro según tema) para que se lea sobre cualquier foto, clara u oscura — mismo problema de legibilidad que ya resolvió el fondo semi-opaco del botón de acciones. Selector con `input[type='checkbox']` (no solo la clase) a propósito: por especificidad CSS, un selector de solo-clases hubiera perdido contra la regla nativa de Filament para `.fi-checkbox-input` (fondo/ring/tilde) — con el `input[type='checkbox']` explícito se gana esa pulseada sin pisar el resto del estilo nativo del checkbox.
+- **Alcance, documentado a propósito:** la regla está scopeada a `.fi-ta-content-grid` (cualquier tabla en modo `contentGrid()`), no a `MediaResource` puntualmente — hoy es el ÚNICO resource que usa `contentGrid()` en el panel, así que en la práctica solo afecta acá; si otro resource lo adopta en el futuro, heredaría este mismo estilo (aceptado por ahora).
+- **Archivos:** `resources/css/filament/cms/theme.css`. Sin cambios en `MediaResource.php` (no hace falta tocar `->recordCheckboxPosition()`, el default `BeforeCells` ya coincide con el orden actual del DOM).
+- **Verificación:** balance de `{}` OK (script Python). Requiere `npm run build` para que el CSS tome efecto. Sin runtime para confirmar visualmente en este sandbox.
+
+## 2026-09-14 — Sidebar collapsible en Studio (`PanelCmsProvider`)
+- **Pedido del Tech Lead:** "activar el sidebar collapsible".
+- **Qué se hizo:** `->sidebarCollapsibleOnDesktop()`, nativo de Filament — colapsa el sidebar a una barra angosta de solo íconos con un botón para expandir/contraer, no lo oculta del todo (`sidebarFullyCollapsibleOnDesktop()` es la otra opción de Filament para eso, no la que se pidió). Puro Alpine/CSS que ya trae Filament — no requiere `npm run build` ni tocar el theme del panel. Aplicado solo al panel `cms` (Studio, el que se ve en la captura) — no se tocó `PanelPlatformProvider` (el panel de super-admins), a definir con el Tech Lead si también lo quiere ahí.
+- **Archivos:** `app/Providers/Filament/PanelCmsProvider.php`.
+- **Verificación:** balance de `(){}[]` OK. Sin runtime PHP en este sandbox para confirmar visualmente.
+
+## 2026-09-13 — Cache headers para media servida por Apache (`public/.htaccess`)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** el Tech Lead pidió mejorar performance tras compartir varias capturas de un audit Lighthouse/PageSpeed del sitio cica360; una de las secciones ("Usa tiempos de almacenamiento en caché eficientes") marcaba ~430 KiB de media (`media/cica360_media_slide*.webp`, `split_*.webp`, servida desde `api.stamless.host`) sin ningún header de cache — `Media::url()` apunta al symlink `public/storage`, Apache la sirve como archivo estático plano, nunca pasó por ningún controller que pudiera setear cache. Se agrega un bloque `mod_expires` en `public/.htaccess` (`image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`, `video/mp4`, `video/webm` → "access plus 1 month"). 1 mes, no 1 año: un archivo de `media` puede reemplazarse in-place con el mismo nombre (ya pasó esta sesión con las 2 imágenes OG), así que no hay cache-busting real por filename — mismo criterio que ya usa el `.htaccess` de cica360 para sus propios assets sin hash.
+- **Archivos:** `public/.htaccess`.
+- **Verificación:** sintaxis Apache revisada a mano (mismo formato que el bloque `mod_expires` ya existente en cica360). Sin servidor Apache real en este sandbox para probarlo en caliente.
+- **Siguiente:** el Tech Lead confirma en un hosting real (o con `curl -I` contra un archivo de `/storage/media/...`) que el header `Expires`/`Cache-Control` aparece.
+
+## 2026-09-13 — Endpoint público de tracking (Meta Pixel / GTM), ver ADR-066
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** el Tech Lead preguntó si guardar Meta Pixel ID / GTM ID en Preferencias > Integraciones (entrada previa de esta misma sesión) ya los activaba en la website — la respuesta era que no, faltaba el consumidor público. Aprobó implementarlo ("Sí, ambos ahora") y pidió explícitamente que la carga fuera perezosa para no afectar Lighthouse/PageSpeed Insights. Se agregó `App\Http\Controllers\Api\V1\SiteSettingsController::tracking()`, nuevo endpoint `GET /v1/{tenant}/settings/tracking` dentro del grupo `abilities:content:read` ya existente en `routes/api.php`, que devuelve `{ meta_pixel_id, gtm_id }` leídos de `Setting` (`tracking.meta_pixel_id`/`tracking.gtm_id`, ya guardados por `Preferences.php`). El controller es a propósito un whitelist explícito — nunca un dump genérico de `Setting` — por ser el primer endpoint de "config de sitio completo" y no de una página/post/servicio puntual. La inyección real de los scripts vive del lado de `cica360` (ver PROGRESS.md de ese repo).
+- **Archivos:** `app/Http/Controllers/Api/V1/SiteSettingsController.php` (nuevo), `routes/api.php` (import + ruta nueva).
+- **Verificación:** balance de `(){}[]` OK en ambos archivos. Sin runtime PHP en este sandbox — no se pudo pegarle al endpoint real ni correr `php artisan route:list`.
+- **Siguiente:** ver ADR-066 para el detalle completo (backend + frontend). El Tech Lead debe cargar IDs reales en Preferencias > Integraciones y confirmar en el Network tab del sitio (tras interactuar o esperar 5s) que `gtm.js`/`fbevents.js` se disparan.
+
+## 2026-09-13 — Corrección: imágenes OG por defecto con el color de marca real + logo oficial (no navy genérico)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** reporte del Tech Lead sobre las 2 imágenes OG recién sembradas (entrada de abajo): "las imagenes OG tiene que tener el fondo del color principal". Verificado con pixel-sampling: el fondo real era `#0B1E3A` (navy genérico, no vinculado a ningún token) y el "logo" era un wordmark "CICA" con gradiente dorado que tampoco es el logo oficial del sitio. Se regeneraron ambos archivos (mismos nombres, mismas dimensiones — `cica360_media_og_horizontal.jpg` 1200x630, `cica360_media_og_square.jpg` 1200x1200, sin tocar el seeder ni la tabla `media`) con: (1) fondo sólido `#2D2C4D` (`--color-cicaindigo-500`, el DEFAULT real de marca de CICA360, ver `cica360/src/styles/global.css`) con un vignette sutil del mismo hue (no una versión desaturada); (2) el logo OFICIAL rasterizado desde `cica360/public/logos/logo-main-white.svg` (el mismo SVG que usa `Header.astro` en el navbar real, alt="CICA360") en vez de un texto aproximado; (3) mismo lenguaje visual que la versión anterior (corner brackets dorados, regla dorada, tagline "SEGUROS · FINANZAS · ASESORÍA LEGAL" tracked-out en Lato Bold, la tipografía real del sitio) para no perder la identidad ya aprobada, solo corrigiendo color/logo.
+- **Archivos:** `storage/app/public/media/cica360_media_og_horizontal.jpg`, `storage/app/public/media/cica360_media_og_square.jpg` (binarios, reemplazados in-place). Sin cambios de código — el seeder de la entrada de abajo sigue apuntando a los mismos nombres de archivo.
+- **Verificación:** pixel-sampling confirma la esquina de ambos archivos en `#2E2D4D` (≈`#2D2C4D`, diferencia de redondeo JPEG) en vez de `#0B1E3A`.
+- **Siguiente:** el Tech Lead corre `db:seed` (o simplemente confirma, si ya lo había corrido, que los archivos en disco cambiaron) y verifica visualmente en Preferencias / al compartir un link del sitio.
+
+## 2026-09-13 — Seeder: SEO/Open Graph por defecto del tenant + 2 imágenes OG de CICA360
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** pedido explícito del Tech Lead ("considerar en el seeder de contenido inicial como setting general tanto para el SEO como para el OG"), tras confirmar en vivo (viendo "Ver código fuente" del sitio) que sin ningún dato cargado el fallback de ADR-065 cae en cascada hasta el título/descripción base y sin ningún `og:image`. Se agregan 2 archivos ya subidos por el Tech Lead a `storage/app/public/media/` (`cica360_media_og_horizontal.jpg` 1200x630, `cica360_media_og_square.jpg` 600x600) a `Cliente0MediaSeeder::FILES` (keys `og_horizontal`/`og_square`, mismo patrón "archivo commiteado + `firstOrCreate`" del resto del seeder). Nuevo método `Cliente0ContentSeeder::upsertSeoDefaults()`, llamado al final de `run()`, puebla las 7 claves de `Setting` de ADR-065 (`seo.default_title`/`seo.default_keywords`/`seo.default_description`/`og.default_title`/`og.default_description`/`og.default_image_rect_id`/`og.default_image_square_id`) con copy real de CICA360 (no placeholder) + los 2 ids de media recién sembrados, vía `Setting::updateOrCreate(['tenant_id', 'key'], ['value'])` — `tenant_id` explícito porque `HasTenant` no auto-completa fuera de un request HTTP real (sin `TenantManager` resuelto en un seeder).
+- **Archivos:** `database/seeders/Cliente0MediaSeeder.php` (2 entradas nuevas en `FILES`), `database/seeders/Cliente0ContentSeeder.php` (import `Setting`, llamada en `run()`, método `upsertSeoDefaults()` nuevo).
+- **Verificación:** balance de `(){}[]` OK en ambos archivos. Sin runtime PHP en este sandbox — no se pudo correr `php artisan db:seed` ni confirmar que los 2 archivos `.jpg` existen físicamente en el disco del Tech Lead (asumido por la captura de VS Code que compartió, ruta `storage/app/public/media/`).
+- **Siguiente:** el Tech Lead corre `php artisan db:seed --class=Cliente0ContentSeeder` (o `migrate:fresh --seed` completo) y confirma: (1) Preferencias → SEO/Open Graph muestran los valores nuevos al recargar; (2) `GET /v1/cica360/pages/servicios` (o cualquier página sin SEO propio) ya trae `og_image_rect`/`og_image_square` con `url` real; (3) "Ver código fuente" del sitio (`npm run dev`/`build` en cica360) ya muestra `<meta property="og:image">`.
+
+## 2026-09-13 — Preferencias: layout en tarjetas (Grid 2 cols) + nueva Section "Integraciones" (Meta Pixel / GTM)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** 2 ajustes en la misma página, mismo día que ADR-065 (ver entrada de abajo). (1) **Layout**: `preferences.blade.php` envolvía TODO el form en un `<div class="gnss-card" style="max-width: 32rem">` — apropiado cuando solo había 2 campos (idioma/zona horaria), pero apretaba las Sections nuevas de SEO/OG en una sola columna angosta en vez de verse como tarjetas independientes. Se sacó el wrapper del blade; `Preferences::form()` ahora usa `->columns(2)` a nivel de página con 4 `Section` (`Cuenta`/`Integraciones` arriba, `Metadata SEO`/`Open Graph` abajo, cada una ocupando 1 columna — responsive, se apilan solas en mobile). (2) **Integraciones nueva**: 2 campos más, mismo mecanismo `Setting`/`setting()` que SEO/OG (`tracking.meta_pixel_id`, `tracking.gtm_id`), pedido explícito del Tech Lead para dejar un lugar donde configurar Meta Pixel y Google Tag Manager. A diferencia de SEO/OG (fallback de contenido por página), estos 2 son config de SITIO completo — no hay noción de "por página" que los pise, así que NO pasan por `attachResolvedSeoMeta()` ni por ningún mecanismo de fallback.
+- **Archivos/áreas:** `app/Filament/Pages/Preferences.php`, `resources/views/filament/pages/preferences.blade.php`.
+- **Verificación:** balance de paréntesis/llaves/corchetes OK.
+- **Fuera de alcance a propósito:** NO se agregó exposición pública de `tracking.meta_pixel_id`/`tracking.gtm_id` (ni un endpoint `GET /v1/{tenant}/site` ni campo en un recurso existente) — solo se guardan en esta vuelta. Sin un consumidor confirmado en `cica360` todavía, agregar el endpoint ahora sería inventar contrato sin pedido concreto.
+- **Siguiente:** si/cuando se pida inyectar estos scripts en el frontend público, definir cómo se exponen (endpoint de "site info" nuevo vs. campo embebido) y documentarlo en `docs/context/api/stamless-api-v1.md` de `cica360`.
+
+## 2026-09-13 — SEO/Open Graph por defecto del tenant, expuestos en Preferencias, con fallback en la API pública (ADR-065)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** pedido explícito del Tech Lead: las secciones "Metadata SEO" y "Open Graph (Redes Sociales)" (ya existentes en el tab "SEO / Enlaces" de Page/Post/Service) ganan un equivalente TENANT-WIDE en `Preferences.php` (menú del avatar), usado como fallback por la API pública cuando una página/legal/servicio/publicación puntual no define su propio valor. Implementación: (1) 7 claves nuevas de `Setting` (`seo.default_title`/`seo.default_keywords`/`seo.default_description`/`og.default_title`/`og.default_description`/`og.default_image_rect_id`/`og.default_image_square_id`), sin tabla dedicada — `Setting`/`SettingService` ya existían sin consumidor real hasta ahora. (2) `Preferences.php` gana 2 `Section` nuevas (mismos campos/labels que `PageResource`, incluido `MediaUpload` para las imágenes) junto a `locale`/`timezone` — mezcla de scopes (tenant-wide + por-usuario) deliberada, documentada en el docblock de la clase y en el ADR, por instrucción explícita de ubicación del Tech Lead. (3) Nuevo método `ResolvesPublicLinks::attachResolvedSeoMeta()` (+ `mergeSeoDefaults()`/`seoDefaults()`) — mismo patrón que `attachResolvedLinks()`: setea un atributo transitorio `resolved_meta` en el record, sin tocar la columna `meta` real en DB. Fallback campo-por-campo con `blank()` para los 5 campos de texto; las 2 imágenes SIEMPRE se resuelven a objeto Media público (`resolveMediaRef()`), propia primero, default del tenant si no hay. (4) `PageController`/`PostController`/`ServiceController::show()` llaman `attachResolvedSeoMeta([$record])` junto a `attachResolvedLinks()`. (5) `PageResource`/`PostResource`/`ServiceResource`: `'meta' => self::asObject($this->meta)` → `self::asObject($this->resolved_meta ?? $this->meta)`.
+- **Bug preexistente cerrado de paso:** `meta.og_image_rect_id`/`meta.og_image_square_id` nunca se resolvían a URL — salían de la API como el id interno crudo de `Media`, inconsistente con el resto del contrato público (ADR-018, todo lo demás vía `resolveMediaRef()`). Ahora salen siempre como `og_image_rect`/`og_image_square` (`{uuid, url, alt_text, mime_type}`), con o sin fallback de por medio.
+- **Archivos/áreas:** `app/Http/Concerns/ResolvesPublicLinks.php` (3 métodos nuevos), `app/Http/Controllers/Api/V1/{Page,Post,Service}Controller.php` (1 línea c/u), `app/Http/Resources/Api/V1/{Page,Post,Service}Resource.php` (1 línea c/u), `app/Filament/Pages/Preferences.php` (2 Sections + mount/save actualizados), `docs/context/DECISIONS.md` (ADR-065), `docs/context/ARCHITECTURE.md` (§10.2), `docs/context/CURRENT_STATE.md`.
+- **Verificación:** balance de paréntesis/llaves/corchetes (script Python, comentarios/strings excluidos) OK en los 8 archivos PHP tocados. Sin runtime PHP en este sandbox — no se pudo correr `php artisan test`/`pint --dirty`, pendiente del Tech Lead.
+- **Fuera de alcance a propósito:** `Slider`/`Slide` no ganan fallback (el pedido fue explícito sobre "página|legal|servicio|publicación", sin tab SEO propio hoy). Los endpoints `index`/summary no se tocan (nunca expusieron `meta`).
+- **Siguiente:** el Tech Lead corre `vendor/bin/pint --dirty` + `php artisan test` (o el filtro relevante) y confirma visualmente: guardar valores en Preferencias, dejar vacío el SEO de una página de prueba, y verificar que `GET /v1/{tenant}/pages/{slug}` devuelve el fallback con `og_image_rect`/`og_image_square` como URL real.
+
+## 2026-09-13 — `->columns(2)` faltante en 2 Sections de "Propiedades" (Post, Service)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** pedido puntual ("en el blog... 'Propiedades de la publicación' debería estar en dos columnas, recuerda todas las properties a dos columnas o 3") sobre una captura mostrando esa Section en 1 columna. Auditado con grep: **todos** los `PropertiesSchema::make()` de `PageResource.php` (13 usos) ya tenían `->columns(2)` — el estándar del proyecto se venía respetando ahí. Los 2 huecos reales estaban en `PostResource::table()`'s "Propiedades del post" y `ServiceResource`'s "Personalización de estilos", ambos con la Section pero sin el `->columns(2)`.
+- **Qué se hizo:** `->columns(2)` agregado a los 2 `PropertiesSchema::make()` de `PostResource.php` y `ServiceResource.php`. Confirmado por grep que no quedan más usos de `PropertiesSchema::make()` sin `->columns()` en `app/Filament/`.
+- **Archivos/áreas:** `app/Filament/Resources/PostResource.php`, `app/Filament/Resources/ServiceResource.php`.
+- **Verificado:** balance de paréntesis/llaves/corchetes de ambos en 0.
+- **Siguiente:** confirmación visual del Tech Lead en ambos formularios (Editar Publicación → SEO/Enlaces → Propiedades del post; Editar Servicio → SEO → Personalización de estilos).
+
+## 2026-09-13 — Ajustes menores de listados: Blog, miniaturas circulares, "Sliders" sin aclaración
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo (4 pedidos puntuales del Tech Lead):**
+  1. `PostResource::$navigationLabel` "Publicaciones" → "Blog" (solo el label del menú principal — `$pluralLabel`/`$modelLabel` quedan igual, alimentan botones/breadcrumbs internos no pedidos). Alineado además con la URL pública real (`/blog/{slug}`, ya visible en la `->description()` de la columna Título).
+  2. `PostResource::table()`: primera columna nueva, miniatura circular (`ImageColumn::make('featuredImage.path')`, `->circular()`, `->disk()` dinámico) — mismo patrón exacto que `ServiceResource`/`TestimonialResource`.
+  3. `SliderResource::$navigationLabel` "Sliders (Carruseles)" → "Sliders".
+  4. `ServiceResource::table()`: la miniatura ya existente pasa de `->square()` a `->circular()`.
+- **Archivos/áreas:** `app/Filament/Resources/PostResource.php`, `app/Filament/Resources/SliderResource.php`, `app/Filament/Resources/ServiceResource.php`.
+- **Verificado:** balance de paréntesis/llaves/corchetes de los 3 archivos en 0.
+- **Siguiente:** confirmación visual del Tech Lead en Studio (menú principal + ambos listados).
+
+## 2026-09-13 — Paleta de marca Stamless dual-primary (Studio ámbar / Platform teal), no más `Color::Amber` de fábrica
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** en una vuelta anterior de este mismo día se sugirió mantener el primary ámbar (`Color::Amber`) del panel Studio; el Tech Lead lo corrigió con razón: "solo que el amber lo relacionan con Filament basico" — es literalmente el color de referencia/demo que trae Filament sin personalizar, no una decisión de marca. Encargo formal en 2 mensajes: (1) definir la paleta oficial con hex concretos (`--sl-primary` `#D97706` y familia cálida/ink/paper/muted/dark), aplicarla en Studio + Platform + landing + favicon/manifest + revisar mail; (2) ajuste fino — un primary DISTINTO por panel (Studio ámbar `#D97706` "creación/taller", Platform teal `#0F766E` "operación/control B2B", nunca reutilizar uno en el otro) y wordmark/logo SIN recolorear (tinta neutra `--sl-ink` `#171412`).
+- **Qué se hizo:**
+  1. **`app/Providers/Filament/PanelCmsProvider.php`** (Studio): `Color::Amber` → `Color::hex('#D97706')`. `<meta name="theme-color" content="#D97706">` sumado al `renderHook(HEAD_END)` de favicon ya existente (mismo turno anterior de este día).
+  2. **`app/Providers/Filament/PanelPlatformProvider.php`** (Platform): `Color::Indigo` (otro valor de scaffold sin decisión de diseño detrás) → `Color::hex('#0F766E')` (teal). Nuevo `renderHook(HEAD_END)` con el mismo set de favicon de marca que Studio + `<meta name="theme-color" content="#0F766E">` propia — Platform no tenía NINGÚN favicon propio hasta ahora.
+  3. **`resources/views/public/home.blade.php`** (landing `stamless.host`, teaser "Pronto"): `:root` con las CSS vars de marca (`--sl-primary`/`-hover`/`-tint`, `--sl-ink`/`--sl-paper`/`--sl-muted`/`--sl-dark` — deliberadamente SIN `--sl-platform-primary`, esta landing no linkea a Platform todavía). Fondo `#0B0C0E` (valor suelto) → `var(--sl-dark)` (`#1C1917`, mismo tono casi-negro, ahora es el token oficial). Accent del label "Pronto" `#C4A574` (dorado suelto) → `var(--sl-primary-tint)` (`#F5A524`). `<meta name="theme-color" content="#D97706">` nueva (usa el de Studio: es el producto que se está por lanzar).
+  4. **`public/favicon/site.webmanifest`**: `theme_color` `#f59e0b`→`#D97706`, `background_color` `#ffffff`→`#FAF7F2` (`--sl-paper`), `name` `"Stamless"`→`"Stamless Studio"` (este manifest es específicamente de Studio — Platform no tiene uno propio en esta vuelta).
+- **Contraste AA verificado (no solo declarado):** replicado en Python el algoritmo exacto de `Filament\Support\Colors\Color::generatePalette()` (conversión OKLCH↔sRGB, misma fórmula del vendor) para calcular el shade 600 real que Filament deriva de cada hex — texto blanco sobre ese shade: Studio `#D97706`→`#c65f00` da **4.17:1** (Platform `#0F766E`→`#009d8f` da **3.38:1**), ambos superan el mínimo AA de UI/texto grande (3:1); como referencia, el propio `Color::Amber` DEFAULT de Filament da solo **3.20:1** en el mismo shade — el cambio de Studio es una MEJORA de contraste, no una regresión. Hover (700): Studio 5.89:1, Platform 4.78:1, ambos ya sobre AA texto normal (4.5:1).
+- **Favicon existente confirmado neutro, sin rediseño necesario:** inspección de píxeles (Python/Pillow) de las 4 imágenes PNG (`favicon-96x96`, `apple-touch-icon`, `web-app-manifest-192/512`) confirma que el color dominante es gris carbón oscuro (`~#242529`), nunca ámbar — el pedido de "si el favicon es amber-500 puro, regenerar" NO aplica, solo hacía falta alinear los metadatos de color (`theme_color`/manifest), ya hecho.
+- **Revisado y NO tocado, a propósito:** `app/Filament/Widgets/PlanUsageWidget.php` usa `bg-amber-500` como color SEMÁNTICO de advertencia (barra de uso de plan al 80%), no de marca — tocarlo confundiría "cerca del límite" con "esto es Stamless". `app/Mail/ContactFormSubmitted.php` + `resources/views/emails/contacts/form-submitted.blade.php` no tienen color hardcodeado propio — usan el tema Markdown default de Laravel (vendor, nunca publicado/personalizado en este proyecto); rebrandearlo requeriría `vendor:publish --tag=laravel-mail` + reescribir su CSS, fuera de alcance (sin runtime PHP en este sandbox además). `resources/views/welcome.blade.php` (scaffold default de Laravel, con Tailwind embebido) confirmado sin ninguna ruta que lo sirva (`routes/web.php` no lo referencia) — dead code, no es superficie de marca.
+- **Archivos/áreas:** `app/Providers/Filament/PanelCmsProvider.php`, `app/Providers/Filament/PanelPlatformProvider.php`, `resources/views/public/home.blade.php`, `public/favicon/site.webmanifest`, `docs/context/ARCHITECTURE.md` (§10.1 nueva), `docs/context/DECISIONS.md` (ADR-064).
+- **Verificado:** balance de paréntesis/llaves/corchetes de los 2 providers PHP en 0; `site.webmanifest` validado como JSON; contraste WCAG calculado programáticamente (no estimado a ojo).
+- **Siguiente:** el Tech Lead debe recargar Studio y Platform (cada uno con su propio primary/favicon) y confirmar visualmente; recargar `stamless.host` y confirmar que el fondo/accent no cambiaron perceptiblemente (mismo tono, ahora con nombre de token) y que el ícono del navegador ya no es el genérico. Ningún paso requiere `npm run build` (todo es runtime de Filament o HTML/CSS plano). Pendiente NO resuelto en esta vuelta (fuera de alcance, no pedido): email transaccional con marca propia (requiere publicar y reescribir el tema Markdown de Laravel).
+
+## 2026-09-13 — Favicon de Stamless en el panel de Studio
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** pedido del Tech Lead con el set completo de `<link>` (favicon-96x96.png, favicon.svg, favicon.ico, apple-touch-icon.png, site.webmanifest) — los archivos ya estaban publicados en `public/favicon/` y `public/favicon.ico` (generados con un generador de favicons externo), solo faltaba conectarlos al `<head>` del panel.
+- **Qué se hizo:**
+  1. Segundo `->renderHook(PanelsRenderHook::HEAD_END, ...)` en `PanelCmsProvider::panel()` (Filament acumula closures por hook, no los reemplaza — separado del hook existente de CSS/JS versionado para no mezclar responsabilidades) con los 5 `<link>` tal cual los pidió el Tech Lead, usando `asset()` para las URLs.
+  2. `public/favicon/site.webmanifest`: `name`/`short_name` traían el placeholder del generador ("MyWebSite"/"MySite") — actualizado a "Stamless". `theme_color` de `#ffffff` a `#f59e0b` (ámbar del panel, `Color::Amber`).
+- **Archivos/áreas:** `app/Providers/Filament/PanelCmsProvider.php`, `public/favicon/site.webmanifest`.
+- **Verificado:** balance de paréntesis/llaves/corchetes del provider en 0; `site.webmanifest` validado como JSON válido.
+- **Siguiente:** el Tech Lead debe recargar Studio (puede requerir limpiar caché del navegador/favicon cacheado) y confirmar que el ícono aparece en la pestaña del navegador y al instalar como PWA.
+
+## 2026-09-13 — "Copiar a otra página" por bloque (extraItemActions del Builder de `blocks`)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** consulta del Tech Lead: "como podríamos resolver el hecho que el usuario va a querer copiar un bloque de una página a otra... tiene que ser un copiar, a parte de la acción clonar en cada bloque collapsed" — la acción "Duplicar" nativa de Filament (`->cloneable()`) solo clona DENTRO de la misma página; no existía forma de llevar un bloque ya armado a otra página sin rehacerlo a mano.
+- **Diseño acordado con el Tech Lead:** clic en "Copiar a otra página" → modal con Select de página destino → al confirmar, el bloque se agrega de inmediato como bloque adicional al final de la página elegida; el usuario después entra ahí a reordenar/ajustar si hace falta. Se evaluó la alternativa de un "portapapeles" diferido (copiar ahora, pegar después en otra página) y se descartó por requerir estado compartido entre páginas distintas — más superficie para bugs sin beneficio real sobre la copia inmediata.
+- **Qué se hizo:**
+  1. **`self::blockCompatibilityRules()`** (nuevo, `private static`) — centraliza las 3 reglas de exclusión bloque↔tipo de página (`footerOnly`/`legalOnly`/`legalExcluded`/`footerAllowed`) que antes vivían hardcodeadas solo dentro del closure de `->blocks()`. El closure de `->blocks()` se refactorizó para consumir este método (mismo comportamiento, sin lógica duplicada).
+  2. **`self::isBlockAllowedForPageType(string $blockName, PageTypeEnum $pageType): bool`** (nuevo, `private static`) — responde "¿este tipo de bloque puede vivir en este tipo de página?", reusando `blockCompatibilityRules()`. Usado para filtrar el Select de páginas destino: no tiene sentido ofrecer copiar un `colophon` a una Página normal, por ejemplo.
+  3. **`->extraItemActions([...])`** agregado al `Builder::make('blocks')`, junto a `->cloneable()`: acción `copyToPage` con modal (Select de página destino, excluye la página actual, filtrado por `isBlockAllowedForPageType()`) y `->action()` que lee el item vía `$component->getRawState()[$arguments['item']]` (mismo mecanismo que usa el `cloneAction` nativo de Filament) y hace `$targetPage->blocks()->create([...])` directo a la base de datos — UUID nuevo vía `HasUuid`, `sort_order` al final (`$targetPage->blocks()->count()`), copiando `type`/`lang_iso`/`pretitle`/`title`/`subtitle`/`is_visible`/`links`/`properties`/`content` tal cual. Notificación de éxito con el nombre de la página destino.
+- **Trade-off explícito, confirmado con el Tech Lead:** a diferencia de TODAS las demás acciones del Builder (clonar, borrar, reordenar), que quedan pendientes hasta que se apriete "Guardar", esta persiste en la base de datos al instante — la página destino no está cargada en este formulario Livewire, así que no hay forma de dejarlo "en borrador" sin un mecanismo de portapapeles con estado propio (alternativa evaluada y descartada, ver arriba). La página de origen nunca se modifica (es una copia, no un mover).
+- **Archivos/áreas:** `app/Filament/Resources/PageResource.php` (`blockCompatibilityRules()`, `isBlockAllowedForPageType()`, refactor del closure de `->blocks()`, `->extraItemActions()` nuevo).
+- **Verificado:** balance de paréntesis/llaves/corchetes del archivo completo, confirmado en 0. Sin tests automatizados nuevos (Livewire/Filament Builder actions — el proyecto no tiene suite de tests para el Builder de `blocks` en general, ver gaps ya anotados en entradas anteriores de "Duplicar"/`ContactResource`/widgets).
+- **Siguiente:** el Tech Lead debe recargar Studio, abrir una página con al menos un bloque, y confirmar en el menú de un bloque colapsado la nueva opción "Copiar a otra página": que el modal liste solo páginas compatibles con ese tipo de bloque, que al copiar aparezca de inmediato en la página destino (recargándola), y que la página de origen quede intacta.
+
+## 2026-09-13 — 3 widgets nuevos en el Escritorio: barras de uso del plan, KPIs de leads y últimos contactos
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** tras sacar `FilamentInfoWidget` y dejar solo `WelcomeWidget`, el Escritorio quedó prácticamente vacío. El Tech Lead lo notó con una captura: "entonces faltan los widgets para mostrar todo estos indicadores y auxiliares o utilidades con mucho UX" — cierra el pedido original del análisis de Dashboard ("un dashboard con barras de uso... contadores de contactos/leads... KPI's comunes").
+- **Qué se hizo — 3 widgets nuevos, todos registrados en `PanelCmsProvider::widgets()` con `$sort` propio (Welcome -3 → Leads -2 → PlanUsage -1 → RecentContacts 0, controla el orden visual sin reordenar el array):**
+  1. **`App\Filament\Widgets\PlanUsageWidget`** (`$sort = -1`): barra de progreso por recurso con límite de plan — Contenidos (Páginas+Legales+Secciones, vía `PageResource::navBadgeUsage()` ya existente), Publicaciones, Servicios, Sliders, Testimonios, Menús, Multimedia y API Tokens activos. Cada fila es un link directo al listado del recurso (ahorra clics, mismo espíritu del pedido "que ahorre tiempo ubicar las cosas"). Barra gris normal, ámbar al 80%, roja al 100%+ (mismo umbral que `FormatsUsageBadge::usageBadgeColor()`, sin límite = barra llena gris). Vista propia (`resources/views/filament/cms/widgets/plan-usage-widget.blade.php`) porque una barra de progreso no encaja en `StatsOverviewWidget` (que es "número + descripción", no barra). Para reusar los cálculos ya probados sin duplicar lógica, `PageResource::navBadgeUsage()` y `ApiTokens::activeTokensCountForTenant()` pasaron de `private` a `public static`.
+  2. **`App\Filament\Widgets\LeadsOverviewWidget`** (`$sort = -2`, extiende `StatsOverviewWidget`): 3 stat cards — "Leads nuevos" (rojo si hay pendientes), "En proceso" (ámbar), "Total de contactos" (con "N en los últimos 7 días" de descripción) — cada una linkeada a `ContactResource`.
+  3. **`App\Filament\Widgets\RecentContactsWidget`** (`$sort = 0`, extiende `TableWidget`): preview de los últimos 5 contactos (nombre+email, estado, fecha recibida vía `FriendlyDate`) sin salir del Escritorio, con acción de cabecera "Ver todos" hacia `ContactResource` completo — no duplica filtros/edición, es solo una vidriera rápida.
+- **Decisión de color evitando el error ya conocido de esta sesión:** para el relleno de las barras de `PlanUsageWidget` se usaron clases LITERALES de la paleta default de Tailwind (`bg-gray-400`, `bg-amber-500`, `bg-red-500`), no los nombres semánticos de Filament (`warning`/`danger`) ni sus custom properties — esta app ya tuvo que revertir un intento de adivinar el formato de esas variables en Tailwind v4 (ver la entrada de "Panel Studio" más abajo, `sidebar-project-info.blade.php`). Clases literales del palette default SÍ se compilan de forma segura vía el `@source` que ya escanea `resources/views/filament/**/*`.
+- **Archivos/áreas:** `app/Filament/Widgets/{PlanUsageWidget,LeadsOverviewWidget,RecentContactsWidget}.php` (nuevos), `resources/views/filament/cms/widgets/plan-usage-widget.blade.php` (nuevo), `app/Filament/Resources/PageResource.php` (`navBadgeUsage()` → `public`), `app/Filament/Pages/ApiTokens.php` (`activeTokensCountForTenant()` → `public`), `app/Providers/Filament/PanelCmsProvider.php` (registro de los 3 widgets).
+- **Verificado:** balance de paréntesis/llaves/corchetes de los 5 archivos PHP nuevos/tocados, confirmado en 0. Sin tests automatizados nuevos (son widgets de solo lectura sobre queries ya cubiertas indirectamente por otros tests).
+- **Siguiente:** el Tech Lead debe recargar el Escritorio y confirmar visualmente: las 8 barras de `PlanUsageWidget` con sus colores correctos según el consumo real de CICA360, las 3 stat cards de leads, y la tabla de últimos contactos (vacía hasta que llegue el primer submit real de formulario, si CICA360 todavía no tiene contactos de prueba sembrados). `npm run build`/`dev` no es necesario para estos 3 widgets — solo usan clases Tailwind ya cubiertas por el `@source` existente, no CSS nuevo en `theme.css`.
+
+## 2026-09-13 — Footer propio para la página de Contacto (sin el CTA), `Cliente0ContentSeeder`
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** con captura mostrando 2 Secciones ya en Studio ("Footer Contactos" y "Footer principal", el primero creado a mano por el Tech Lead para probar el layout — solo Colophon + Barra inferior, sin CTA), pedido: "actualizar el seeder con contenido inicial, tiene que haber un footer adicional para contactos... en esa sección footer de contactos solo tenga el colophon y la barra inferior con sus propiedades, osea lo mismo que el footer principal pero sin el bloque CTA". El CTA "¿Listo para transformar tu negocio?" invita a ir a la página de Contacto — tiene sentido en el resto del sitio, pero es redundante en la propia página de Contacto (el visitante ya está ahí).
+- **Qué se hizo:**
+  1. Extraído el Colophon + FooterBottom de `upsertFooterPage()` a un método nuevo `footerColophonAndBottomBlocks()` — mismo contenido exacto (columnas de marca/contacto/redes, copyright), reusado por ambos footers para que nunca queden desincronizados si se edita uno.
+  2. Nuevo `upsertFooterContactoPage(Tenant $tenant): Page` — Page tipo `Footer`, slug `footer-contactos`, título "Footer Contactos", con SOLO `footerColophonAndBottomBlocks()` (sin CTA).
+  3. `run()`: la página `contacto` ahora recibe su bloque `footer` apuntando a `footer-contactos` (`appendFooterBlock($pages['contacto'], $tenant, $pages['footer-contacto']->id)`), separado del `foreach` que sigue usando `footer-principal` para el resto (`sobre-cica`/`servicios`/`casos-de-exito`/`home`).
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php`.
+- **Verificado:** balance de paréntesis/llaves/corchetes del archivo completo, confirmado en 0.
+- **Atención antes de correr el seeder:** el "Footer Contactos" que ya existe en Studio (creado a mano por el Tech Lead) tiene que tener el slug **`footer-contactos`** exacto para que `Page::updateOrCreate` lo reconozca como el mismo registro y solo actualice sus bloques — si el slug quedó distinto (autogenerado de otro título), correr `php artisan db:seed --class=Cliente0ContentSeeder` crearía una TERCERA página de footer en vez de actualizar la existente. Más simple: borrar el "Footer Contactos" creado a mano en Studio y dejar que el seeder lo recree limpio con el slug correcto.
+- **Siguiente:** el Tech Lead debe correr `php artisan db:seed --class=Cliente0ContentSeeder` (idempotente) y confirmar en Studio: "Footer Contactos" con Colophon + Barra inferior únicamente (sin CTA), y que la página "Contacto" del sitio público muestre ESE footer (no el principal) tras el próximo build/deploy de cica360.
+
+### Corrección mismo día — límite de Páginas de Auspicio: 7 → 10
+Pedido del Tech Lead: "para el plan auspicio cambiar limites, 10 paginas 5 legales y 5 secciones". `Tenant::maxContentsPerType()`, rama `sponsorship`: `Page`/`Landing` de `7` a `10` — Legales y Secciones quedan sin cambios (ya estaban en 5). Mismo archivo/método que la vuelta anterior de este mismo día (ver más abajo) — el badge del sidebar y las tabs de `ManagePages` reflejan el nuevo tope automáticamente, sin tocar nada más (reusan `Tenant::maxContentsPerType()` en runtime, no un valor cacheado).
+
+### Corrección mismo día — auditoría de tono: sin voseo rioplatense en copy de Stamless (ADR-051)
+El Tech Lead notó voseo colado en copy nuevo/existente de Studio ("Ya tenés acceso...", "elegí una nueva expiración...") y recordó la regla ya establecida en ADR-051: el producto Stamless (Console/Studio) se escribe en español neutro — el voseo es exclusivo del contenido de marca de CICA360. Auditoría por grep de `app/Filament/**` y `resources/views/filament/**` encontró 6 instancias (algunas preexistentes de sesiones anteriores, no solo de esta vuelta) — todas corregidas a construcciones neutras/infinitivas, mismo criterio que ya usa el resto del proyecto:
+- `PlanStatusWidget` (blade): "Ya tenés acceso..." → "Incluye acceso..."; "Desbloqueá más contenido..." → "Desbloquear más contenido...".
+- `ApiTokens.php`: helper text de regenerar token ("elegí una nueva expiración" → "elegir una nueva expiración"); mensaje de límite de tokens ("revocá primero... esperá a que expire" → "revocar primero... esperar a que expire").
+- `Preferences.php`: subheading ("Cómo querés ver fechas..." → "Cómo se muestran las fechas...", impersonal).
+- `api-tokens.blade.php`: banner de token plaintext ("Guardá este token..." → "Guardar este token..."; "Si lo perdés, tenés que revocarlo..." → "Si se pierde, hay que revocarlo...").
+- `api-playground.blade.php`: estado vacío del response ("Elegí un ejemplo... completá el token y apretá Send" → "Elegir un ejemplo... completar el token y presionar Send").
+- **Archivos:** `app/Filament/Pages/{ApiTokens,Preferences}.php`, `resources/views/filament/{cms/widgets/plan-status-widget,pages/api-tokens,pages/api-playground}.blade.php`.
+
+### Corrección mismo día — nuevo `PlanStatusWidget` (plan actual + botón "Mejorar plan")
+Con captura mostrando el widget de bienvenida solo en su fila (columna 1 de 2, la otra vacía), el Tech Lead pidió: "falta un widget en segundo orden que seria para mostrar el plan y con un boton de mejorar plan". Se revirtió el `columnSpan = 'full'` que le acababa de poner a `WelcomeWidget` (tapaba el hueco estirando el saludo, sin agregar información) y en su lugar se creó `App\Filament\Widgets\PlanStatusWidget` (columna 1, comparte la primera fila con `WelcomeWidget` en columna 2):
+- Muestra el plan actual (`Tenant::planLabel()`) y un badge "Plan más completo" cuando el tenant ya está en el plan más alto (`Tenant::canPersonalizeStudioBrand()`, mismo gate que ya usa el brand de Studio).
+- Botón `mailto:` (NO un flujo de pago real — billing sigue "Fuera de alcance" en `TASK.md`) hacia `config('stamless.contact.sales_email')` (nueva config, `.env`: `STAMLESS_SALES_EMAIL`), con asunto/cuerpo precompletados (nombre del tenant + plan actual). Corrección del Tech Lead el mismo día ("para el auspicio quitar botón contactar con ventas"): en vez de un botón alternativo "Contactar a ventas" para el plan más alto, se oculta por completo con `@unless ($onTopPlan)` — no hay nada que "mejorar" para quien ya está en el plan más completo, así que no tiene sentido ningún CTA ahí.
+- Reordenado el `$sort` de los 5 widgets del Escritorio a valores espaciados de a 10 (`Welcome=-50, PlanStatus=-40, Leads=-30, PlanUsage=-20, RecentContacts=-10`) para poder insertar uno nuevo en el medio a futuro sin renumerar todo.
+- **Archivos:** `app/Filament/Widgets/PlanStatusWidget.php` (nuevo), `resources/views/filament/cms/widgets/plan-status-widget.blade.php` (nuevo), `app/Filament/Widgets/{Welcome,Leads,PlanUsage,RecentContacts}Widget.php` (`$sort`/`$columnSpan`), `config/stamless.php` (`contact.sales_email`), `.env.example` (`STAMLESS_SALES_EMAIL`), `app/Providers/Filament/PanelCmsProvider.php` (registro).
+- **Nota de implementación:** el botón usa `<x-filament::button tag="a" :href="...">` (componente Blade ya probado en `WelcomeWidget`), evitando repetir el error ya corregido antes en esta sesión de adivinar el formato de las CSS custom properties de color de Filament en Tailwind v4.
+
+### Corrección mismo día — layout del Escritorio: 2 columnas parejas, sin huecos
+Con captura mostrando "Uso del plan" a todo el ancho y, debajo, "Últimos contactos" ocupando solo la mitad con espacio vacío al lado, el Tech Lead pidió: "en dos columnas estara bien, que ocupen una columna cada una". El Dashboard de Filament usa una grilla fija de 2 columnas (`Filament\Pages\Dashboard::getColumns()`) SIN "dense packing" — un widget que no encuentra lugar en la fila actual salta a la siguiente, dejando el resto de esa fila vacío para siempre si nada más lo ocupa. Ajuste de `$columnSpan` en 3 widgets:
+- `PlanUsageWidget`: de `'full'` a `1` (columna, default de `Widget`) — la grilla interna de barras pasa de 2 columnas a 1 sola (ya no comparte fila con `RecentContactsWidget` en un espacio angosto apretado).
+- `RecentContactsWidget`: `1` explícito (ya era el default, se documenta para que quede claro que comparte fila a propósito con `PlanUsageWidget`).
+- `WelcomeWidget`: de `1` (heredado de `AccountWidget`/`Widget`) a `'full'` — mismo hueco que tenían "Uso del plan"/"Últimos contactos" existía arriba de todo, junto al saludo, sin que el Tech Lead lo mencionara todavía; se corrigió de una vez para no dejar el mismo bug sin resolver en otro lugar del mismo Escritorio.
+Resultado: Bienvenida (fila propia, ancho completo) → Leads (fila propia, ancho completo — `StatsOverviewWidget` ya trae `'full'` por default) → Uso del plan + Últimos contactos (comparten la última fila, una columna cada uno, sin huecos).
+- **Archivos:** `app/Filament/Widgets/{PlanUsageWidget,RecentContactsWidget,WelcomeWidget}.php`, `resources/views/filament/cms/widgets/plan-usage-widget.blade.php` (grid interno a 1 columna).
+
+### Corrección mismo día — badge de "Contactos" a formato "nuevos/total"
+Viendo el widget `LeadsOverviewWidget` ya andando, el Tech Lead pidió: "falta en contactos el contador, Contactos (Contactos nuevos/Total de contactos)". El badge del sidebar pasó de mostrar solo el conteo de pendientes ("Nuevo") a `"{nuevos}/{total}"` (ej. `"0/12"`) — misma idea que ya usa el widget de Leads (pendiente de atender sobre el total), pero NO es un "usado/límite" como el resto de los badges de la app (Contacts no tiene tope de plan). Sigue sin ocultarse en cero. Nuevo `totalCount()` privado junto al ya existente `pendingCount()`.
+- **Archivos:** `app/Filament/Resources/ContactResource.php`.
+
+### Corrección mismo día — badge de "Contactos" siempre visible + agrupado bajo "CRM"
+Con captura del sidebar mostrando "Contactos" sin ningún contador (a diferencia de "Multimedia 36/60" justo debajo), el Tech Lead pidió: "no te olvides de poner contador de contactos (0) y poner en orden en otro grupo de Contactos u otro termino que sea mejor tener que englobe al futuro modulo de CRM". Dos ajustes en `ContactResource.php`:
+1. `getNavigationBadge()`/`getNavigationBadgeColor()` ya no ocultan el badge en cero — antes devolvían `null` cuando no había leads "Nuevo" pendientes (criterio de "solo avisar si hay algo urgente"), ahora siempre muestran el número (`"0"` incluido), gris en 0 y rojo con pendientes — mismo criterio visual que el resto del sidebar, que nunca hace desaparecer su contador.
+2. Nuevo `$navigationGroup` (mismo patrón `string|UnitEnum|null` que ya usan `ApiTokens`/`Preferences` para "Desarrolladores"/"Cuenta") — en vez de agrupar como "Contactos" (demasiado acoplado al nombre de este recurso puntual). Primer intento: `'CRM'`; el mismo día el Tech Lead lo bajó un escalón ("por ahora CRM creo que lo mantenemos de forma sutil porque en esta primera etapa se reirán al ver solo un listado de contactos") — se cambió a **`'Clientes'`**, término que describe lo mismo sin sonar a categoría de producto todavía sin sustento, y que sigue englobando con naturalidad lo que se sume después (pipeline de deals, actividades, reportes).
+
+## 2026-09-13 — Dashboard Nivel 1 (Widget de bienvenida con badge de plan) + Nivel 2 (Contacts Resource)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** siguiente paso del plan de Dashboard por niveles (Nivel 1 = económico/sin dependencias/valor inmediato, ya con los badges de uso de la entrada de abajo; Nivel 2 = Contacts Resource; Nivel 3 = analítica de visitas/requests, requiere frontend o 3ros — sigue sin ejecutarse). El Tech Lead pidió explícitamente: "quitar el widget Filament, dejar el de bienvenida (pero agregar en un badge el tipo de plan), empezar por el Nivel 1 ya mismo... aprovechar esto como oportunidad para habilitar el Contacts Resource si el momento te lo permite (Nivel 2)".
+- **Qué se hizo — Nivel 1 (widgets del Dashboard):**
+  1. `Filament\Widgets\FilamentInfoWidget` (promo/versión del framework, sin valor para el cliente del panel) sacado de `PanelCmsProvider::widgets()`.
+  2. Nuevo `App\Filament\Widgets\WelcomeWidget` (extiende `Filament\Widgets\AccountWidget`, vista propia `resources/views/filament/cms/widgets/welcome-widget.blade.php` clonada de la vendor) que agrega un `<x-filament::badge>` con `Tenant::planLabel()` junto al nombre del usuario — verde (`success`) para planes pagos (mismo gate que `canPersonalizeStudioBrand()`), gris para Free/Freemium. Reemplaza a `AccountWidget` nativo en `PanelCmsProvider::widgets()`.
+- **Qué se hizo — Nivel 2 (Contacts Resource):** el dominio (`Contact`/`ContactActivity`/`ContactPolicy`/`ContactSubmissionService`/`DataMasker`, ver ADR-015) ya existía completo desde el cierre de la API — solo faltaba la pantalla en Studio. Nuevo `App\Filament\Resources\ContactResource` (patrón `ManageRecords`, sin `getPages` de create):
+  - **Sin alta manual** (`canCreate(): false`): un Contact nace de un envío de formulario real, no de un alta editorial — a diferencia de Testimonios/Páginas/etc.
+  - Tabla: nombre+email (fusionados vía `->description()`), estado (badge coloreado por `ContactStatusEnum`), origen, formulario de origen, asignado a, fecha de recepción (`FriendlyDate`). Filtros por estado, asignado y formulario. Orden por defecto: más recientes primero.
+  - Modal de gestión (`EditAction` en slide-over): datos del contacto editables (nombre/email/teléfono/empresa — el cast `encrypted` de `Contact` descifra/cifra de forma transparente), respuestas dinámicas del formulario (`content.data` vía `KeyValue` deshabilitado), gestión (estado/asignado a/último contacto/notas internas), y una línea de tiempo de solo lectura de `ContactActivity` (mismo patrón de armar el badge a mano con `FilamentColor`/`BadgeComponent` que ya usa `PageResource::renderTypeBadge()` — este proyecto no usa Infolists en ningún otro Resource, no se introduce acá).
+  - Acción de fila "Agregar nota" (modal chico, un solo `Textarea`) que crea un `ContactActivity` tipo `note` sin necesidad de abrir el modal completo — pensado para el caso más común ("lo llamé, dejo constancia").
+  - Acciones masivas: marcar en proceso/cerrado, eliminar.
+  - Badge de nav = cantidad de contactos en estado "Nuevo" (no el total histórico — lo que importa es lo pendiente de atender), color `danger`, oculto en 0.
+  - **Decisión explícita de exposición:** `email`/`phone`/`company` se muestran DESCIFRADOS (no vía `DataMasker`) en Studio — el propósito completo del Resource es que el tenant pueda contactar a su propio lead; `#[Hidden(...)]` del modelo sigue intacto y solo afecta la serialización de la API pública, no el acceso a atributos que usa Filament acá.
+- **Archivos/áreas:** `app/Filament/Widgets/WelcomeWidget.php` (nuevo), `resources/views/filament/cms/widgets/welcome-widget.blade.php` (nuevo), `app/Providers/Filament/PanelCmsProvider.php` (widgets), `app/Filament/Resources/ContactResource.php` + `ContactResource/Pages/ManageContacts.php` (nuevos).
+- **Verificado:** balance de paréntesis/llaves/corchetes en los 4 archivos PHP nuevos/tocados, confirmado en 0 (sin runtime PHP en este sandbox). Sin tests automatizados nuevos — deuda conocida (el dominio de `Contact` ya tiene cobertura en `ContactSubmissionServiceTest`; falta cobertura de Filament sobre `ContactResource` en sí).
+- **Siguiente:** el Tech Lead debe recargar Studio y confirmar visualmente: (a) el widget de bienvenida ya no tiene el bloque de "Filament" debajo, y el nombre del usuario muestra el badge de plan; (b) "Contactos" aparece en el sidebar con su ícono y badge de pendientes; (c) al menos un contacto de prueba (via `POST forms/{slug}/submit` o los ya sembrados de CICA360, si los hay) se ve completo, editable, y "Agregar nota" registra la actividad en la línea de tiempo. Actualizado `TASK.md` para sacar "Filament Resource de Contacts" de "Fuera de alcance ahora". El Nivel 3 del plan (contador de visitas por página, analítica de requests/responses) sigue pausado, requiere decisiones de infraestructura (frontend cooperando o 3ros) fuera del alcance de esta vuelta.
+
+## 2026-09-13 — Badges de uso (sidebar + tabs) + límite de Menús + límites de Contenidos por tipo
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** el Tech Lead pidió, a partir del análisis de Dashboard (ver más abajo, "Nivel 1" del plan por niveles), que cada opción del sidebar que ya tiene un límite de plan muestre su consumo ("Contenidos 7/10") y que las tabs internas de Contenidos muestren el conteo activo por tipo ("Páginas (5)", "Legales (0)", "Secciones (1)") — "eso si implementa en una, mientras voy leyendo el resto del plan". Sobre la marcha agregó dos ajustes de negocio: un límite de **cantidad de Menús** (antes sin tope) y una revisión de los límites de **Contenidos por tipo** (antes un solo número por plan aplicado por igual a Página/Legal/Footer).
+- **Qué se hizo:**
+  1. Trait nuevo `App\Filament\Concerns\FormatsUsageBadge` (`formatUsageBadge(count, limit)` → `"7/10"` o `"7"` si el plan no tiene tope; `usageBadgeColor(count, limit)` → gris / `warning` al 80% / `danger` al 100%+) para no repetir esta lógica en cada Resource.
+  2. `getNavigationBadge()`/`getNavigationBadgeColor()` agregados a `PageResource`, `PostResource`, `ServiceResource`, `SliderResource`, `TestimonialResource`, `MediaResource`, `MenuResource` y a la página `ApiTokens` (los 3 primeros usan `Tenant::maxX()` ya existentes; `ApiTokens` suma un helper `activeTokensCountForTenant()` porque `getNavigationBadge()` es estático y el conteo original vivía en un método de instancia).
+  3. `ManagePages::getTabs()` reescrito: cada tab (Páginas/Legales/Secciones) muestra `->badge()` con el conteo activo de ESE tipo puntual para el tenant actual (sin fracción — la tab ya representa un tipo, repetir el límite 3 veces sería ruido).
+  4. **Límite de Menús** (pedido mid-turn: "son 5 menús límite sea free o auspicio"): `Tenant::maxMenus()` nuevo — `5` fijo para Free/Freemium/Auspicio (a diferencia de los demás límites, que sí varían por plan). `MenuResource` gana `isMenuLimitReached()`/`menuLimitMessage()` y el guard completo (`disabled`/`tooltip`/`before` con notificación) tanto en el botón de "Crear Menú" como en el `ReplicateAction` de duplicar.
+  5. **Límites de Contenidos por tipo** (pedido mid-turn, con captura de las tabs ya funcionando: "límite máximo de 7 páginas, 5 legales y 5 secciones para auspicio. y para free que sea 3 legales y 3 secciones"): `Tenant::maxContentsPerType()` pasó de `(): ?int` (un solo número por plan) a `(PageTypeEnum $type): ?int` (un número por plan **y** por tipo) — Free: Página/Landing 5 (sin cambio, no pedido)/Legal 3/Footer 3; Auspicio: Página/Landing 7/Legal 5/Footer 5. `PageResource::isContentLimitReached()`/`contentLimitMessage()` ahora reciben y reenvían el `$type`. El badge agregado del sidebar (`PageResource::getNavigationBadge()`) ya no puede multiplicar "un límite" × 3 tipos: nuevo `navBadgeUsage()` privado suma el conteo y el límite propio de cada uno de los 3 tipos (`NAV_BADGE_TYPES`, sin `Landing` — no tiene acción de "Crear" habilitada en el MVP), tratando el agregado como "sin límite" si CUALQUIER tipo individual no tiene tope (evita mostrar una fracción a medias).
+- **Archivos/áreas:** `app/Filament/Concerns/FormatsUsageBadge.php` (nuevo), `app/Models/Tenant.php` (`maxMenus()` nuevo, `maxContentsPerType()` reescrito con parámetro), `app/Filament/Resources/{Page,Post,Service,Slider,Testimonial,Media,Menu}Resource.php`, `app/Filament/Resources/PageResource/Pages/ManagePages.php` (tabs con badge), `app/Filament/Pages/ApiTokens.php`.
+- **Verificado:** balance de paréntesis/llaves/corchetes de los 3 archivos más tocados (`Tenant.php`, `PageResource.php`, `MenuResource.php`) confirmado en 0 con script Python (sin runtime PHP en este sandbox). Sin tests automatizados nuevos para esta vuelta — deuda conocida, no bloqueante (son badges de solo lectura + límites que ya seguían el patrón probado de `isXLimitReached()`).
+- **Siguiente:** el Tech Lead debe recargar Studio y confirmar visualmente: badge del sidebar de "Contenidos" mostrando la suma correcta (ej. Auspicio con 6 Páginas + 1 Legal + 1 Footer → "8/17"), tabs de Páginas mostrando el conteo por tipo, botón "Crear Menú" deshabilitado al llegar a 5, y los nuevos topes de Contenidos por tipo aplicados en la práctica. El resto del plan de Dashboard (Nivel 2: Contacts Resource, Nivel 3: analítica de visitas/requests) sigue en revisión del Tech Lead — ver entradas siguientes para lo ya autorizado a ejecutar.
+
+## 2026-09-13 — Panel Studio: sacar el selector de tenant, brand con el nombre del tenant (gateado por plan) + bloque de plan para Free
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Contexto/motivación:** el Tech Lead reportó (captura) que el sidebar de Studio mostraba "Stamless" como marca del panel y, debajo, un bloque "C  CICA360  ⌄" que parece un selector de tenant/proyecto — confuso porque insinúa que la cuenta podría tener acceso a más de un tenant/proyecto, cuando el modelo de datos actual es estrictamente 1 cuenta = 1 tenant (`User::getTenants()` siempre devuelve 0 o 1 elemento, `tenant_id` es columna propia de `User`, no un pivot muchos-a-muchos — confirmado leyendo el modelo). Confirmado con el Tech Lead que esto queda así por ahora ("está bien dejar uno por tenant"); si el negocio pide multi-proyecto en el futuro, es un cambio de arquitectura con su propio ADR. Aclarado además que esto es SOLO para el panel Studio (`PanelCmsProvider`) — el panel Manager/Plataforma (`PanelPlatformProvider`) no tiene `->tenant()` configurado (nunca tuvo tenancy activo, ve todos los tenants), queda intacto.
+- **Qué se hizo, versión final:**
+  1. `->tenantMenu(false)` en `PanelCmsProvider::panel()` — saca el bloque completo del selector del sidebar (Filament lo gatea entero con `@if (hasTenancy() && hasTenantMenu())` en `sidebar.blade.php`, no queda ni el ícono ni la flecha).
+  2. Nuevo gate de plan en el modelo: `Tenant::canPersonalizeStudioBrand()` (Free/Freemium → `false`, Auspicio/Convenio y cualquier plan pago → `true` — mismo criterio que `canEditCopyright()`, pero método propio porque son decisiones de negocio distintas aunque hoy coincidan) y `Tenant::planLabel()` (etiqueta legible: "Free", "Auspicio/Convenio", o `ucfirst($plan)` de fallback).
+  3. `->brandName()` en `PanelCmsProvider`: para tenants que pueden personalizar, muestra `"{nombre del tenant} Studio"` (ej. "CICA360 Studio"); para Free/Freemium, muestra el genérico `"Stamless Studio"` (`config('app.name')` + el mismo sufijo); sin tenant resuelto (login), solo `"Stamless"` sin sufijo. El sufijo "Studio" va en `<span class="fi-logo-suffix">` con estilo propio en `resources/css/filament/cms/theme.css` — iterado en vivo con el Tech Lead varias veces (chico+opaco → thin → versión final: `font-size: 1.05em` — un toque más grande que el nombre —, `font-weight: 300` — light — y `opacity: .75`) para que lea como sufijo elegante sin perder legibilidad. `HtmlString` porque `getBrandName()` se imprime con `{{ }}` en el Blade de Filament (`components/logo.blade.php`) y Blade no escapa un `Htmlable`; el nombre real del tenant se escapa con `e()` antes de insertarlo (dato de usuario).
+  4. Donde estaba el selector (mismo hook de Filament, `SIDEBAR_LOGO_AFTER`) ahora hay un `renderHook` que, SOLO para tenants Free/Freemium (`! canPersonalizeStudioBrand()`), inyecta un bloque estático (`resources/views/filament/cms/sidebar-project-info.blade.php`, sin dropdown ni flecha) con el nombre real del proyecto arriba y "Plan actual: Free" debajo en letra chica/atenuada — es el único lugar donde un tenant Free ve su nombre de proyecto real, ya que su brand de arriba muestra el genérico "Stamless Studio". Para tenants de pago (Auspicio/Convenio, etc.) el hook no renderiza nada — "los auspicios y otros planes de pago solo mostrarán el titular Studio" (ya ven su nombre real personalizado arriba, este bloque sería redundante).
+- **Archivos/áreas:** `app/Models/Tenant.php` (`canPersonalizeStudioBrand()`, `planLabel()`), `app/Providers/Filament/PanelCmsProvider.php` (`tenantMenu(false)`, `brandName()`, nuevo `renderHook(SIDEBAR_LOGO_AFTER, ...)`), `resources/views/filament/cms/sidebar-project-info.blade.php` (nuevo), `resources/css/filament/cms/theme.css` (`.fi-logo-suffix`, `.fi-project-info*`).
+- **Siguiente:** el cambio de PHP se ve con solo recargar el panel; el CSS necesita `npm run build` (o `npm run dev`/`composer run dev`). El Tech Lead debe verificar visualmente con al menos un tenant Free/Freemium (para ver el bloque "Plan actual") y uno de pago/Auspicio (para confirmar que NO aparece ese bloque, solo el brand personalizado).
+
+## 2026-09-13 — Fix: `is_home` no se desactivaba en las demás páginas al editar desde el form
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** bug reportado por el Tech Lead con captura (2 páginas — "Home" y "Home (copia)" — quedaron con el check verde de "Inicio" a la vez, tras duplicar Home y activarle `is_home` a la copia desde el form de edición). Causa raíz: la invariante "solo 1 página Home por tenant" SOLO estaba implementada a mano dentro del ícono clickeable de la columna "Inicio" en `PageResource::table()` — el `Toggle::make('is_home')` del form de editar/crear (`HeadingFieldset`) simplemente guardaba el valor tal cual, sin desactivar la página que antes era Home. Se centralizó la regla en un hook `Page::booted()` → `static::saving()`: cualquier guardado (form, ícono de tabla, factories, etc.) que deje `is_home=true` desactiva automáticamente cualquier OTRA página `is_home=true` del mismo tenant (scope por `tenant_id`, no por `lang_iso` — Home es a nivel de sitio). El ícono de la tabla se simplificó para solo togglear su propio valor (`$record->update(['is_home' => ! $record->is_home])`), ya que el hook del modelo cubre el resto.
+- **Archivos/áreas:** `app/Models/Page.php` (nuevo `booted()`), `app/Filament/Resources/PageResource.php` (simplificación de la action `toggleIsHome`).
+- **Siguiente:** el dato ya duplicado en la captura (2 páginas con `is_home=true`) se corrige solo, sin migración de datos: basta con hacer clic en el ícono "Inicio" de "Home (copia)" en la tabla para apagarla (ahora sí queda solo "Home" en `true`). El Tech Lead debe correr `php artisan test` (no hay runtime de PHP en este sandbox) y verificar el escenario: duplicar Home → activar Home en la copia desde el form → confirmar que la original se desactiva sola.
+
+## 2026-09-13 — Fix UX: footer del modal de Duplicar pegado al texto de arriba
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** el Tech Lead reportó (captura) que la barra de botones del modal de confirmación de "Duplicar" se veía pegada a la línea/texto de arriba, sin el padding-top estándar, y sugirió alternativamente centrar los botones. Se aplicaron ambos ajustes: (1) `->modalFooterActionsAlignment('center')` en los 6 `ReplicateAction` (Page/Post/Service/Testimonial/Slider/Menu) para centrar la fila de botones; (2) un override de CSS en el theme del panel (`.fi-modal-footer-actions { padding-top: 1rem !important; }`) que fuerza separación estándar en TODOS los modales de confirmación sin campos propios (Duplicar, Eliminar, etc.) — Filament solo agrega `mt-6` automático cuando detecta que el modal "no tiene contenido", condición que en la práctica no siempre se cumple.
+- **Archivos/áreas:** `app/Filament/Resources/{Page,Post,Service,Testimonial,Slider,Menu}Resource.php` (alineación del footer), `resources/css/filament/cms/theme.css` (override de padding).
+- **Siguiente:** requiere `npm run build` (o `npm run dev`/`composer run dev`) para que el cambio de CSS se vea reflejado — el Tech Lead debe correrlo y verificar visualmente el modal de Duplicar en al menos un resource.
+
+## 2026-09-13 — Duplicar extendido a Menús/Sliders/Testimonios + modal de confirmación más amigable (ADR-061, addendum)
+- **Agente/autor:** Claude (Tech Lead asistido)
+- **Qué se hizo:** a pedido del Tech Lead ("no hay en menus, selider y testimonios no hay duplicar"), se agregó `Actions\ReplicateAction` a `TestimonialResource` (sin slug ni hijos: copia oculta), `SliderResource` (slug único + clona `Slide`s hijos conservando sus FKs a `Media`) y `MenuResource` (slug único + clona recursivamente el árbol completo de `MenuItem`s hasta 3 niveles vía nuevo helper `duplicateMenuItemsRecursive()`, reasignando `parent_id` a los IDs ya guardados de las copias). Además, tras ver el modal de confirmación por defecto ("Replicar :label" / botón "Replicar" — inconsistente con el label "Duplicar" del botón y sin explicar qué pasa), el Tech Lead pidió "hacerlo mas amigables, mas UX": se agregó `->modalHeading()`, `->modalDescription()` y `->modalSubmitActionLabel('Sí, duplicar')` con copy propio en los 6 resources con Duplicar (Page, Post, Service, Testimonial, Slider, Menu), explicando en una frase qué se clona y en qué estado queda la copia.
+- **Archivos/áreas:** `app/Filament/Resources/TestimonialResource.php`, `SliderResource.php`, `MenuResource.php` (ReplicateAction + helpers nuevos), `PageResource.php`, `PostResource.php`, `ServiceResource.php` (solo el copy del modal, sin tocar la lógica de duplicado ya existente), `docs/context/DECISIONS.md` (addendum a ADR-061).
+- **Siguiente:** escribir tests automatizados para la feature Duplicar en los 6 resources (slug único, estado inicial de la copia, clonado correcto de blocks/slides/árbol de menu_items) — sigue pendiente desde el ADR original, no se pudo correr `php artisan test` en este sandbox por falta de runtime de PHP. El Tech Lead debe verificar visualmente el nuevo copy del modal y correr la suite de tests en su entorno.
+
+## 2026-09-13 — Acción "Duplicar" en Páginas, Publicaciones y Servicios (ADR-061)
+
+- **Pedido del Tech Lead**: "deberia tener duplicar, de esa forma, facilitar a los usuarios o clientes que puedan replicar paginas o publicaciones o servicios para editarlos con sus properties definidos y asi heredar lo configurado anteriormente".
+- **Qué se hizo**: `Actions\ReplicateAction` agregada al menú de acciones de fila (dentro del `ActionGroup` de la vuelta anterior) en `PageResource`, `PostResource`, `ServiceResource`. El duplicado nace como Borrador (nunca hereda `status`/`published_at` del original), con título "{título} (copia)" y un slug único generado (`{slug}-copia`, `-copia-2`, etc. si ya existe). `uuid` se excluye explícitamente para que `HasUuid` le genere uno nuevo al guardar (si se copiara, dos filas terminarían compartiendo el mismo UUID público). En `PageResource`, además: `is_home` se fuerza a `false` (solo puede haber una página Home por tenant) y un `->after()` clona cada `Block` hijo de la página original apuntándolo al nuevo `page_id` — sin esto, duplicar una página daría una página vacía sin el contenido real (que vive en los bloques, no en columnas de `Page`). Duplicar respeta el mismo límite de plan que crear un registro nuevo (`isContentLimitReached()`/`isPostLimitReached()`/`isServiceLimitReached()`, mismo trío `->disabled()`/`->tooltip()`/`->before(...$action->halt())` ya usado en los `CreateAction` de estos resources) — no debe ser una forma de esquivar el tope.
+- **Archivos**: `app/Filament/Resources/PageResource.php`, `app/Filament/Resources/PostResource.php`, `app/Filament/Resources/ServiceResource.php`. Ver ADR-061 en `DECISIONS.md` para el detalle completo y las alternativas descartadas.
+- **Verificación**: balance de llaves/paréntesis/corchetes (script que ignora strings/comentarios) en los 3 archivos, todo en 0. Se confirmó leyendo el código fuente de Filament (`Actions/ReplicateAction.php`, `Support/Concerns/EvaluatesClosures.php`) que los closures `beforeReplicaSaved()`/`after()`/`before()`/`disabled()`/`tooltip()` resuelven `$record` (registro original) y `$replica`/`$action` (según el nombre del parámetro) automáticamente, sin necesidad de pasarlos a mano. **Sin runtime de PHP en este sandbox** — no se pudieron escribir/correr tests para esta feature todavía.
+- **Siguiente**: escribir al menos un test por resource (slug único al duplicar, `status` = Draft, `is_home` = false en Page, blocks clonados) y correrlos. Confirmar visualmente que la acción "Duplicar" aparece en el menú de cada fila y que el duplicado abre editable con todo lo esperado. Si el Tech Lead quiere lo mismo en Menús/Sliders/Testimonios, extender el mismo patrón (no se incluyó en esta vuelta porque el pedido nombraba explícitamente solo Páginas/Publicaciones/Servicios).
+
+## 2026-09-13 — Fecha pub. debajo de Estado también en Publicaciones (addendum ADR-059)
+
+- **Pedido del Tech Lead**: "lo mismo en publicaciones" (screenshot de `PostResource`).
+- **Qué se hizo**: mismo cambio que en `PageResource` — `description()` en la columna `status` mostrando la fecha de publicación, columna suelta `published_at` eliminada.
+- **Archivos**: `app/Filament/Resources/PostResource.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes (script que ignora strings/comentarios). Sin runtime de PHP en este sandbox.
+- **Siguiente**: confirmación visual del Tech Lead.
+
+## 2026-09-13 — Agrupar acciones de fila en todos los módulos + Fecha pub. debajo de Estado en Páginas (addendum ADR-059)
+
+- **Pedidos del Tech Lead**: (1) "los listados de cada apartado o modulo, agrupar las acciones" (con screenshot del menú lateral: Menús, Contenidos, Publicaciones, Servicios, Sliders, Testimonios); (2) sobre la tabla de Páginas: "la fecha de publicacion pasar debajo del estado como segunda linea".
+- **Qué se hizo**:
+  1. Mismo patrón `Actions\ActionGroup::make([...])` aplicado en `ApiTokens::table()` (vuelta anterior), ahora en el `->actions([...])` de las 7 tablas de Resources: `MenuResource`, `PageResource`, `PostResource`, `ServiceResource`, `SliderResource`, `TestimonialResource`, `MediaResource` (esta última no aparece en el menú del screenshot pero tenía el mismo problema de acciones sueltas, así que se incluyó por consistencia). En cada caso se envuelven las acciones existentes (Editar/Eliminar, y en `PageResource` también Restaurar/Borrado permanente) sin tocar su lógica interna.
+  2. En `PageResource::table()`, la columna `status` (badge "Estado") suma `->description(fn (Page $record) => FriendlyDate::format($record->published_at))` — misma técnica que ApiTokens. La columna suelta `published_at` ("Fecha pub.") se saca de la tabla por quedar duplicada.
+- **Archivos**: `app/Filament/Resources/{MenuResource,PageResource,PostResource,ServiceResource,SliderResource,TestimonialResource,MediaResource}.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python — esta vez con una versión mejorada que primero saca strings/comentarios antes de contar (la versión naive daba falsos positivos por paréntesis dentro de texto en español). Los 7 archivos dan balance 0. Sin runtime de PHP en este sandbox para correr los tests de Filament de cada resource.
+- **Siguiente**: correr la suite de tests de Filament (`ApiTokensRegenerateTest`, y los tests de cada Resource si existen) y confirmar visualmente el menú agrupado en cada listado + la fecha bajo Estado en Páginas.
+
+## 2026-09-13 — Agrupar acciones de fila en un menú (16va vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead**: "ahora agrupar las acciones" — Regenerar/Editar plataforma-origen/Revocar ocupaban bastante ancho como 3 enlaces sueltos en cada fila.
+- **Qué se hizo**: las 3 se envuelven en `Actions\ActionGroup::make([...])` — patrón estándar de Filament para acciones de fila, un solo botón con menú desplegable en vez de 3 enlaces.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Se confirmó en el código fuente de Filament (`Table/Concerns/HasActions.php::getFlatActions()`) que las acciones agrupadas se siguen registrando de forma PLANA por nombre — los tests existentes (`ApiTokensRegenerateTest`, `ApiTokensEditOriginTest`) que llaman `callTableAction('regenerate', ...)`/`('editOrigin', ...)` por nombre simple siguen funcionando sin cambios, no hace falta ajustar el path a `['grupo', 'accion']`. Sin runtime de PHP en este sandbox para confirmarlo corriendo la suite.
+- **Siguiente**: correr los tests de Filament una vez más y confirmar visualmente el menú.
+
+## 2026-09-13 — Fix: leading excesivo en "Expira" bajo Token (15va vuelta, addendum ADR-059)
+
+- **Reporte del Tech Lead**: "tiene mucho leading o altura la fecha de expiracion" — confirmado con el inspector del navegador (screenshot): el div `.fi-ta-text.fi-ta-text-has-descriptions` mostraba mucho aire vertical alrededor de "Expira: nunca".
+- **Causa raíz**: la 14va vuelta envolvía el texto en `<span class="fi-ta-text fi-ta-text-item fi-size-sm ...">` para poder pintarlo de rojo si el token venció. Esas clases son las de un ITEM de la lista interna de `TextColumn` (pensadas para alinearse con badges/íconos) — `.fi-ta-text-item.fi-size-sm` trae `leading-6` (24px de interlineado) en `text.css`, muy por encima de lo que corresponde a texto secundario chico. Ese span quedaba anidado DENTRO del `<p class="fi-ta-text-description">` que Filament ya pone automáticamente alrededor de `description()` y que ya trae `text-sm text-gray-500` correctos (`text.css`, selector `.fi-ta-text > .fi-ta-text-description`).
+- **Qué se hizo**: si el token no venció, ahora es texto plano sin ningún `<span>` extra (hereda el tamaño/color correctos del `<p>` padre). Si venció, se envuelve en un `<span>` con SOLO las clases de color (`FilamentColor::getComponentClasses(ItemComponent::class, 'danger')`), sin las clases `fi-ta-text-item`/`fi-size-sm` que causaban el interlineado de más.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Sin runtime de PHP en este sandbox.
+- **Siguiente**: confirmación visual del Tech Lead.
+
+## 2026-09-13 — Limpieza de columnas duplicadas: quitar Plataforma/Dominio/Creado, ajustar la descripción, mover Expira bajo Token (13va-14va vuelta, addendum ADR-059)
+
+- **Pedidos del Tech Lead** (en orden): "quitar 'Dominio:'", "quitar 'Creado:'", "pero por que sigue existiendo las columnas plataforma y dominio permitido", "la columna creado tambien", "poner la fecha de expiración debajo del token".
+- **Qué se hizo**:
+  1. La descripción bajo "Nombre" quedó como `{fecha} · [badge Plataforma] · {dominio}`, sin los prefijos "Creado:"/"Dominio:" (solo texto plano + badge).
+  2. Se sacan las columnas sueltas `platform` y `allowed_origin` de la tabla — quedaban duplicadas con esa descripción. Editar plataforma/origen de un token sigue disponible vía la acción de fila "Editar plataforma/origen" (sin cambios). El bridge `triggerEditOriginAction()` (que solo servía para la columna clickeable que ya no existe) se borra por quedar sin ningún llamador.
+  3. Se saca la columna suelta `created_at` — duplicada con la misma descripción. `->defaultSort('created_at', 'desc')` sigue andando igual (ordena contra la query, no depende de que exista un `TextColumn` visible con ese nombre).
+  4. `expires_at` se fusiona como `description()` de la columna `last_four` (Token): "Expira: {fecha}", en rojo si ya expiró — mismo mecanismo que el badge de Plataforma pero usando `FilamentColor::getComponentClasses(ItemComponent::class, ...)` (la utilidad que usa Filament para texto NO-badge, en vez de `BadgeComponent::class`). La columna `expires_at` independiente se saca de la tabla.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php` (nuevo import `Filament\Tables\View\Components\Columns\TextColumnComponent\ItemComponent`), `tests/Feature/Filament/ApiTokensEditOriginTest.php` (el test que verificaba el click en la columna `allowed_origin` ya no aplica — se reemplaza por `test_the_edit_origin_row_action_mounts_for_an_existing_token`, que monta la acción de fila directo en vez de simular un click de columna que ya no existe).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff) en ambos archivos. Sin runtime de PHP en este sandbox.
+- **Siguiente**: correr `php artisan test --compact tests/Feature/Filament/ApiTokensEditOriginTest.php tests/Feature/Filament/ApiTokensLimitTest.php tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` y confirmar visualmente que la tabla quedó como se pidió: Nombre (con fecha + badge + dominio debajo), Permisos, Token (con fecha de expiración debajo), Último acceso (oculta por defecto).
+
+## 2026-09-13 — Segunda fila bajo Nombre con badge real de Plataforma (12va vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead**: "ahora poner una segunda fila debajo de nombre conformado por: Creado + Plataforma (como badge) + Dominio (dominio solo si plataforma es web, si no dejará de mostrase)".
+- **Qué se hizo**: `TextColumn::description()` en la columna `name` — funciona dentro de una celda de tabla normal (a diferencia de `Layout\Stack`/`Split`, abandonados en la 11va vuelta). Muestra "Creado: {fecha} · [badge Plataforma] · Dominio: {dominio}", con el segmento de Dominio omitido por completo cuando `platform !== 'web'` o no hay `allowed_origin` cargado. El badge de Plataforma es HTML real (no texto), armado con `FilamentColor::getComponentClasses(BadgeComponent::class, $color)` — la misma utilidad que usa Filament internamente para pintar sus propios badges (`TextColumn::toOptimizedHtml()`), para no depender de clases Tailwind inventadas a mano y respetar el tema claro/oscuro. El resultado se envuelve en `Illuminate\Support\HtmlString`: el render de `description()` usa el helper `e()` de Laravel, que devuelve el HTML tal cual (sin escapar) cuando el valor implementa `Htmlable`.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php` (nuevos imports: `Filament\Support\Facades\FilamentColor`, `Filament\Support\View\Components\BadgeComponent`, `Illuminate\Support\HtmlString`). Las columnas `platform`/`allowed_origin` de la tabla NO se tocaron — siguen existiendo como columnas propias (con su header), esta fila es información adicional a simple vista, no un reemplazo.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff), y se confirmó en el código fuente de Filament (`Colors/ColorManager.php`, `View/Components/BadgeComponent.php`) que ambas clases/métodos usados existen tal cual. Sin runtime de PHP en este sandbox.
+- **Siguiente**: confirmación visual del Tech Lead — es la primera vez en esta serie de vueltas que se inyecta HTML manual dentro de una tabla de Filament (antes solo se usó texto plano en `description()`), así que vale la pena que confirme que el badge se ve bien (colores, tamaño, alineación) antes de dar esto por cerrado.
+
+## 2026-09-13 — Vuelta definitiva a tabla clásica (11va vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead**: "nada, no sabes resolverlo aun, volvamos a table" — después de 5 vueltas intentando un layout de tarjetas con `Layout\Stack`/`Layout\Split` (7ma a 10ma vuelta) sin lograr un resultado visual correcto y sin forma de renderizar/depurar la UI real de Filament en este sandbox, se abandona el enfoque de tarjetas por completo.
+- **Qué se hizo**: se sacan TODOS los `Stack`/`Split` de `->columns([...])` — vuelve a ser una tabla `<table>` clásica con columnas sueltas: Nombre, Permisos (badges múltiples), Plataforma (badge de color, se mantiene igual que se pidió desde el principio), Dominio permitido (clickeable a `editOrigin`, sin cambios), Token, Expira, Creado, Último acceso (esta última con `->toggleable(isToggledHiddenByDefault: true)` para no hacer la tabla demasiado ancha por default). Como la tabla clásica SÍ muestra `<thead>` con el `->label()` de cada columna, ya no hace falta el truco de meter el label dentro del texto (`formatStateUsing` con "Etiqueta: valor") ni depender de tooltips — el header de la columna ya lo deja claro sin ambigüedad.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php` (se sacan también los imports ya no usados: `Layout\Split`, `Layout\Stack`, `Support\Enums\TextSize`, `Support\Icons\Heroicon`).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Sin runtime de PHP en este sandbox — los tests de `ApiTokensEditOriginTest`/`ApiTokensLimitTest`/`ApiTokensPlatformFieldVisibilityTest` no dependen de la estructura de columnas visual (solo de estado en BD y montaje de actions), así que no deberían verse afectados por este cambio, pero falta confirmar corriendo la suite.
+- **Siguiente**: pedir al Tech Lead correr los tests de Filament una vez más y confirmar visualmente. Se cierra por ahora la exploración de layout tipo "tarjeta" para esta pantalla — si más adelante se quiere retomar, evaluar hacerlo con HTML a mano dentro de una sola columna (Blade custom) en vez de `Layout\Stack`/`Split`, ya que este sandbox no permite verificar visualmente esos componentes antes de que el Tech Lead los vea.
+
+## 2026-09-13 — Fix: sacar el `Stack` intermedio que rompía Plataforma/Dominio/Token/Expira (10ma vuelta, addendum ADR-059)
+
+- **Reporte del Tech Lead**: "no ha quedado asi" sobre el screenshot de la 9na vuelta — el badge "Web" quedaba a la izquierda pero "Dominio: cica360.com" aparecía flotando lejos, y "Expira" directamente no se veía en ningún lado de la tarjeta.
+- **Causa probable**: la 9na vuelta envolvió los dos `Split` (platform+dominio, token+expira) dentro de un `Stack` intermedio — 2 niveles de anidado (`->columns([ Stack::make([ Split::make([...]), Split::make([...]) ]) ])`). Ese nivel extra de `Stack` alrededor de dos `Split` hermanos parece no renderizar como se espera (a diferencia de `Stack` envolviendo `TextColumn`s simples, que sí funcionó bien para las fechas). No se pudo confirmar la causa exacta a nivel de CSS/Blade sin poder renderizar la UI en este sandbox.
+- **Qué se hizo**: se saca el `Stack` intermedio. `Split(platform, allowed_origin)` y `Split(last_four, expires_at)` vuelven a ser entradas de PRIMER NIVEL en `->columns([...])` (mismo nivel que el `Stack` de Nombre+fechas y que `abilities`), no anidadas dos niveles adentro. Confirmado en el CSS de Filament (`fi-ta-record-content-ctn { flex-col }`) que las entradas de primer nivel ya se apilan verticalmente solas, así que 2 `Split` de primer nivel alcanzan para las 2 líneas pedidas sin necesitar el `Stack` que se sacó.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Sin runtime de PHP en este sandbox — y sin forma de renderizar la UI para confirmar visualmente antes de que el Tech Lead recargue.
+- **Siguiente**: confirmación visual del Tech Lead. Si el problema persiste con esta estructura más simple, evaluar reemplazar `Split` por HTML manual dentro de una única columna (mayor control, más riesgo de romper con el tema claro/oscuro).
+
+## 2026-09-13 — Fechas apiladas + Plataforma/Dominio/Token en 2 líneas, no 4 (9na vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead** (sobre screenshot de la 8va vuelta): "en desktop no formes 4 filas, mantenla en 2: debajo del titulo dejar dos filas de Creado y ultimo acceso, luego deberia visualizarse el badge (web o api) y el dominio a lado y debajo como segunda fila el token".
+- **Qué se hizo**: Creado/Último acceso dejan de ir lado a lado en un `Split` — ahora es un `Stack` (cada fecha en su propia línea, apiladas). El bloque de Plataforma/Dominio/Token/Expira pasa de un único `Split` de 4 items a un `Stack` de 2 líneas: línea 1 = `Split[platform, allowed_origin]` (badge + dominio lado a lado), línea 2 = `Split[last_four, expires_at]` (Token junto con Expira, ya que el pedido no aclaraba dónde iba Expira y ambos son datos de seguridad del token). Permisos no se tocó — el pedido no lo mencionaba, sigue en su fila propia de la 8va vuelta.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Sin runtime de PHP en este sandbox.
+- **Siguiente**: confirmación visual del Tech Lead. Si "mantenla en 2" contaba Permisos como una de las filas (en vez de las 2 filas del bloque Plataforma/Token), avisar para reacomodar.
+
+## 2026-09-13 — Permisos a su propia fila (multi-badge) + doble fecha limpia bajo el título (8va vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead**: "permisos que permita cambiar y uede ser varios por eso deberia mantenerse en una columna y cambiar por ultimo acceso, asi quedaran doble fecha debajo del titulo".
+- **Interpretación** (el pedido no especifica layout exacto, se avisa al Tech Lead para que corrija si no es lo que quiso decir): Permisos puede tener más de una ability (array) y a futuro podría ser editable — por eso se le da su PROPIA fila en vez de compartir el `Split` con Dominio/Token/Expira. Plataforma se retira de la fila de las fechas para que Creado + Último acceso queden "doble fecha" limpia debajo del nombre, sin nada en el medio.
+- **Qué se hizo**: Fila 2 ahora es `Split->from('sm')` con solo `created_at` + `last_used_at`. Fila 3 nueva: `abilities` sola, con `->badge()` — confirmado en el código fuente de `TextColumn::toEmbeddedHtml()` que un estado array con `->badge()` renderiza cada ability como su propio badge (el colapso a un string separado por comas solo pasa cuando `isBadge()` es `false`). Fila 4: `platform` (reubicado acá, sigue siendo badge de color) + `allowed_origin` + `last_four` + `expires_at`, mismo `Split->from('sm')` de antes.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). Sin runtime de PHP en este sandbox — no debería romper ningún test existente (ninguno de los tests de Filament actuales verifica el string renderizado de una celda, solo estado de BD y montaje de actions), pero falta confirmar corriendo la suite.
+- **Siguiente**: el Tech Lead confirma si el layout resultante (Permisos como fila de badges independiente, Plataforma junto a Dominio/Token/Expira) es lo que pidió — la frase original era ambigua sobre dónde exactamente debía ir Plataforma.
+
+## 2026-09-13 — Fix real de test + labels visibles en vez de tooltip-only (7ma vuelta, addendum ADR-059)
+
+- **Reporte del Tech Lead (2 partes)**: (1) corrió los tests por primera vez y `ApiTokensEditOriginTest::test_clicking_the_allowed_origin_column_opens_the_edit_origin_action` falló; (2) sobre la tarjeta ya renderizada: "pero confunde, que es? no lo entenderan 'nunca' y arriba 2h antes" — un ícono + tooltip-al-hover no comunica qué campo es cada valor.
+- **Causa raíz del test**: no era un bug de la 6ta vuelta — `triggerEditOriginAction()` monta la action con contexto `['table' => true, 'recordKey' => ...]`, pero el test llamaba `assertTableActionMounted('editOrigin')` SIN pasar el record, que internamente solo espera `['table' => true]` (ver `Filament\Tables\Testing\TestsActions::parseNestedTableActions()`). Nunca se había corrido este test hasta ahora (sin runtime de PHP en el sandbox del agente).
+- **Fix del test**: `assertTableActionMounted('editOrigin', $record->getKey())` — así el contexto esperado también incluye `recordKey`, igual que lo que se monta de verdad.
+- **Fix de UI**: se abandona depender de ícono+tooltip como única pista. Cada columna secundaria de la tarjeta (`created_at`, `last_used_at`, `abilities`, `allowed_origin`, `last_four`, `expires_at`) arma su texto con el label DENTRO del string vía `formatStateUsing` (ej. `"Creado: hace 3 días"`, `"Último acceso: nunca"`, `"Token: ••••6694"`, `"Dominio: — click para agregar"`, `"Expira: nunca"`), visible siempre sin necesitar hover. El ícono se mantiene como refuerzo visual, no como única fuente de significado. `expires_at` también pierde su `->placeholder('Nunca')` suelto (la fuente exacta de la confusión reportada) a favor del mismo patrón "Etiqueta: valor".
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`, `tests/Feature/Filament/ApiTokensEditOriginTest.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff) en ambos archivos. Sin runtime de PHP en este sandbox — el Tech Lead ya corrió los 16 tests una vez (15 passed / 1 failed, el que se corrigió acá); falta confirmar que ahora los 16 pasan.
+- **Siguiente**: pedir al Tech Lead correr de nuevo `php artisan test --compact tests/Feature/Filament/ApiTokensEditOriginTest.php tests/Feature/Filament/ApiTokensLimitTest.php tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` y confirmar visualmente que las tarjetas ahora se entienden sin ambigüedad.
+
+## 2026-09-13 — Card layout con `Stack`/`Split` A PROPÓSITO — Plataforma vuelve a ser badge (6ta vuelta, addendum ADR-059)
+
+- **Pedido del Tech Lead**: "no quiero necesariamente una table, quiero algo mas moderno y responsive, pero me presentas eso que se ve muy mal estructurado y estilado, por ejemplo en modo tabla la plataforma tiene que mantenerse en un badge colorido, pero agrega a la segunda fila la fecha de creado al inicio luego plataforma y por ultimo ultimo acceso" — a diferencia de la 4ta vuelta, acá el modo "tarjeta" (que antes era el bug) es justo lo que se pidió.
+- **Qué se hizo**: `Tables\Columns\Layout\Stack` y `Tables\Columns\Layout\Split` vuelven a `->columns([...])`, esta vez deliberadamente. Estructura por tarjeta: fila 1 = `name` (negrita, `TextSize::Large`); fila 2 = `Split->from('sm')` con `created_at` → `platform` (otra vez columna real, `->badge()->color()`: web=success/app=info/null=gray) → `last_used_at`; fila 3 = otro `Split->from('sm')` con `abilities`, `allowed_origin` (sigue siendo la entrada clickeable a `editOrigin`, sin cambios), `last_four`, `expires_at` — todas con ícono, gris/chico y `->tooltip()` (el modo tarjeta no muestra `<label>` de columna). `TextColumn::description()` de la 5ta vuelta ya no se usa: Plataforma y Último uso vuelven a ser columnas de pleno derecho.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **PHPUnit no se corrió — sin runtime de PHP en este sandbox.** Pedir al Tech Lead correr `php artisan test --compact tests/Feature/Filament/ApiTokensEditOriginTest.php tests/Feature/Filament/ApiTokensLimitTest.php tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` para confirmar que nada se rompió.
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. El resultado visual (tarjetas, colores del badge, orden de la segunda fila) todavía necesita confirmación directa del Tech Lead — no hay forma de renderizar/capturar la UI de Filament en este sandbox.
+
+## 2026-09-13 — Revertido: `Stack` rompía la tabla entera, vuelta a `description()` (addendum ADR-059)
+
+- **Reporte del Tech Lead**: "pasaste todo debajo de nombre, no pedi eso" — la vuelta anterior (usando `Tables\Columns\Layout\Stack`) hizo que TODA la tabla (Permisos, Dominio, Token, Expira, Creado, no solo Nombre/Plataforma/Último uso) se apilara verticalmente por fila, sin headers.
+- **Causa raíz**: mal entendido de `Stack` — en Filament 5, con solo UN componente de layout en `->columns([...])`, la tabla ENTERA pasa a modo "lista de tarjetas" (confirmado en el blade fuente de Filament), no solo la celda donde se usó. No era el tool correcto para "agrupar 2-3 campos, dejar el resto igual".
+- **Qué se hizo**: revertido el `Stack` — vuelta a columnas sueltas en modo tabla normal (headers intactos). "Plataforma" y "Último uso" ahora viven como `TextColumn::description()` de la columna `name` (funciona dentro de una celda normal sin romper el resto de la tabla), como texto plano "Web · Último uso: hace 2h" en gris automático. La columna `platform` independiente se eliminó (su info vive en la descripción de Nombre); "Dominio permitido" sigue siendo la entrada clickeable para editar.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`, `tests/Feature/Filament/ApiTokensEditOriginTest.php` (ajustado: ya no verifica click en la columna `platform`, que dejó de existir).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox.**
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. Recargar Console. Si el Tech Lead sigue queriendo la "píldora" visual de Plataforma específicamente bajo Nombre (no solo texto plano), evaluar una vuelta aparte con HTML a mano o un componente Blade — se dejó fuera de esta vuelta por riesgo (no se puede probar visualmente en este sandbox).
+
+## 2026-09-13 — Agrupar Plataforma + Último uso debajo de Nombre con `Stack` (addendum ADR-059)
+
+- **Corrección del Tech Lead** sobre la entrada anterior: "No, Plataforma y ultimo uso, ambos debajo de nombre" — no era fusionar "Último uso" dentro de la columna Plataforma, era agrupar AMBAS (Plataforma y Último uso) debajo de Nombre.
+- **Qué se hizo**: `Tables\Columns\Layout\Stack::make([...])` reemplaza las columnas sueltas `name`/`platform` — agrupa Nombre (negrita) + badge de Plataforma (sigue clickeable) + "Último uso" (gris, chico) en una sola celda apilada. Verificado en el código fuente de Filament que las columnas anidadas en un `Stack` se siguen registrando igual en el mapa de columnas de la tabla, así que el click para editar plataforma/dominio sigue funcionando sin cambios.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox.**
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. Recargar Console para ver el cambio.
+
+## 2026-09-13 — Limpieza de UI en API Tokens: español, placeholder genérico, badge corto, tabla más angosta (addendum ADR-059)
+
+- **Pedido del Tech Lead** (4 ajustes en un mismo mensaje, sobre `App\Filament\Pages\ApiTokens`): (1) placeholder de "Dominio permitido" genérico — "el place holder tiene que ser generico recuerda que será multi tenant" — `cica360.com` → `tudominio.com`. (2) columna "Abilities" → "Permisos" — "todo deberia ser en español... pero Abilities deberia ser en español" (los códigos entre paréntesis tipo `content:read` quedan en inglés a propósito). (3) badge de "Plataforma" más corto — "me parece muy extenso, deberia ser solo web o app" — el label descriptivo largo del enum queda solo para los `<select>` de los forms. (4) "Último uso" fusionado como segunda línea (tono gris tenue) debajo del badge de Plataforma, en vez de columna aparte — "pongas plataforma ultimo acceso debajo con los tonos de color adecuados de segunda linea para la facil lectura" — de paso angosta la tabla.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox.**
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. Recargar Console para ver los cambios.
+
+## 2026-09-13 — Bug real: "Dominio permitido" nunca aparecía al elegir "Web" (addendum ADR-059)
+
+- **Reporte del Tech Lead**: primero sobre `editOrigin` — "pero solo me pide seleccionar si es WEB o api pero si eso ya lo lleno en 'Editar plataforma/origen'" — y después, sobre `createToken` — "al crear uno nuevo solo tengo esto tambien no hay donde registrar dominios". En ambos forms, elegir "Web" nunca hacía aparecer el campo de dominio.
+- **Causa raíz**: `Select::options(ApiTokenPlatformEnum::class)` registra automáticamente un `EnumStateCast` (confirmado en el código fuente de Filament) — el estado del campo pasa a ser la INSTANCIA del enum, no el string `'web'`. La comparación `$get('platform') === ApiTokenPlatformEnum::Web->value` (objeto vs. string, con `===`) daba `false` siempre. Mismo bug en 4 lugares: `visible()`/`required()` de `allowed_origin` en `createToken` Y en `editOrigin`, más el cálculo de qué guardar en el `->action()` de ambas. Esto también explica por qué los primeros tokens de prueba quedaron con `platform=Web` pero dominio vacío.
+- **Qué se hizo**: comparar contra el CASE del enum (`=== ApiTokenPlatformEnum::Web`, sin `->value`) en las 4 condicionales; extraer `->value` recién al persistir. Nuevo `tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` (4 tests con `assertFormFieldIsVisible()`/`assertFormFieldIsHidden()`) que reproduce el bug exacto reportado.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`, `tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` (nuevo).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — ningún test se pudo ejecutar (correr `php artisan test --compact tests/Feature/Filament/ApiTokensPlatformFieldVisibilityTest.php` para confirmar).
+- **Siguiente**: recargar la página en Console (los cambios de PHP no se reflejan sin recargar el componente Livewire) y reintentar: elegir "Web" ahora debería mostrar el campo "Dominio permitido" tanto al crear como al editar un token existente.
+
+## 2026-09-13 — Columnas de Plataforma/Dominio clickeables — la acción de editar quedaba fuera de vista (addendum ADR-059)
+
+- **Reporte del Tech Lead**, viendo la tabla real: "pero no entiendo donde se pueden adicionar los dominios o el dominio, no hay en ningun lugar en el menu". La acción `editOrigin` (entrada anterior de este mismo día) SÍ existía, como ícono de fila — pero en una tabla de 8 columnas + 3 acciones, queda fuera del viewport sin scroll horizontal. Era un problema de descubribilidad, no de funcionalidad faltante.
+- **Qué se hizo**: columnas `platform`/`allowed_origin` ahora clickeables (`->action('triggerEditOriginAction')`), con placeholders que invitan a hacer click ("— click para agregar", "Sin restricción — click para configurar") y tooltip explícito. Se agregó el método puente `ApiTokens::triggerEditOriginAction()` porque `TextColumn::action(string)` llama a un método del componente Livewire, no reutiliza una action de tabla por nombre — el puente remonta la action real `editOrigin` vía `mountAction()`. También: "Expiración" y "Plataforma" ahora van en la misma fila (`Grid::make(2)`) en el form de crear token, pedido aparte sobre cómo se veía ese formulario.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`, `tests/Feature/Filament/ApiTokensEditOriginTest.php` (1 test nuevo).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — ningún test se pudo ejecutar.
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. Correr `php artisan test --compact tests/Feature/Filament/ApiTokensEditOriginTest.php`. Para los 2 tokens reales de CICA360 que ya muestran `platform=Web` con `allowed_origin` vacío (screenshot compartido por el Tech Lead): hacer click directo en la celda "Dominio permitido" de cada uno y completar el dominio ahí — no hace falta revocar ni recrear nada.
+
+## 2026-09-12 — Editar plataforma/dominio de un token existente, sin regenerarlo (addendum ADR-059)
+
+- **Gap detectado por el Tech Lead**: "no es necesario registrar los dominios? no veo eso" — seguido de "dominios desde donde se usara el cliente o detectara como refer o algo asi". El form de `createToken` solo dejaba setear `platform`/`allowed_origin` al MOMENTO de crear el token — para un token ya existente no había ninguna forma de agregarlo o cambiarlo sin revocar y crear uno nuevo (perdiendo el secreto, con el costo de actualizar el cliente en producción).
+- **Qué se hizo**: nueva acción de tabla `editOrigin` en `App\Filament\Pages\ApiTokens` — mismo form (Select `platform` + TextInput condicional `allowed_origin`) precargado con los valores actuales, pero solo actualiza esos dos campos (`forceFill()->save()`), nunca el secreto del token — sin el modal de advertencia de `regenerate`, porque no invalida nada. Mismo `abort_unless()` de ownership que `regenerate`/`revoke`. Se agregaron también dos columnas nuevas en la tabla (`platform` como badge, `allowed_origin` como texto) para que la configuración de cada token sea visible sin abrir ningún modal — antes no se podía ver desde la lista.
+- **Archivos**: `app/Filament/Pages/ApiTokens.php`, `tests/Feature/Filament/ApiTokensEditOriginTest.php` (nuevo, 4 tests).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — ningún test se pudo ejecutar.
+- **Siguiente**: ver addendum de ADR-059 en `DECISIONS.md`. Correr `php artisan test --compact tests/Feature/Filament/ApiTokensEditOriginTest.php`. Con esto, para activar la protección en el token real de CICA360 ya no hace falta revocar/recrear: alcanza con usar "Editar plataforma/origen" desde la tabla de tokens en Console.
+
+## 2026-09-12 — Límite de API Tokens activos por plan + confirmación de aislamiento cross-tenant (ADR-060)
+
+- **Pedido del Tech Lead**: "pero tambien deberia validarse por tenant, si no imaginate que otro se conecte a tenant diferente, ademas me falto ver para plan free / auspiciador deberia permitir un limite de tokens, para free 5 y para asupicio 10" — dos pedidos en un mismo mensaje.
+- **Parte 1 (aislamiento por tenant)**: ya existía, sin cambios de código necesarios. `App\Http\Concerns\ResolvesTenant::resolveTenant()` (usado por los 8 controllers de `Api\V1`) rechaza con 403 cualquier token cuyo tenant no coincida con el `{tenant_slug}` de la URL — corre DESPUÉS de `ValidateTokenOrigin` en la cadena, así que pasar la validación de origen nunca alcanza para saltarse el chequeo de tenant. Ya cubierto por `ApiAuthTest::test_token_from_a_different_tenant_is_forbidden` y `ApiTokensRegenerateTest::test_a_user_cannot_regenerate_a_token_from_a_different_tenant`; se agregó un test adicional combinando ambos mecanismos (`ApiAuthTest::test_a_web_token_with_a_matching_origin_is_still_forbidden_for_a_different_tenant`) y una nota explícita en el docblock de `ValidateTokenOrigin`.
+- **Parte 2 (límite de tokens)**: nuevo `Tenant::maxApiTokens()` (mismo patrón que `maxPosts()`/`maxServices()`/etc.: free/freemium = 5, sponsorship = 10, otros planes = sin límite). `App\Filament\Pages\ApiTokens`: `isTokenLimitReached()`/`tokenLimitMessage()`/`activeTokensCount()` nuevos, aplicados a la acción `createToken` con `->disabled()`/`->tooltip()`/`->before(...halt())` (mismo trío que `PostResource`, etc.). El conteo es por TENANT (todos sus users), solo tokens activos (`expires_at IS NULL OR expires_at > now()` — uno ya vencido no ocupa cupo).
+- **Archivos**: `app/Models/Tenant.php`, `app/Filament/Pages/ApiTokens.php`, `app/Http/Middleware/ValidateTokenOrigin.php` (docblock), `tests/Feature/Api/V1/ApiAuthTest.php` (1 test nuevo), `tests/Feature/Filament/ApiTokensLimitTest.php` (nuevo, 7 tests).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff) en todos los archivos PHP tocados/nuevos. **Sin runtime de PHP en este sandbox** — ningún test se pudo ejecutar.
+- **Siguiente**: ver ADR-060 en `DECISIONS.md`. Correr `php artisan test --compact --filter=ApiTokensLimitTest` y `--filter=ApiAuthTest`.
+
+## 2026-09-12 — Rediseño: protección de origen POR TOKEN (platform web/app), no por tenant (ADR-059, supersede ADR-058)
+
+- **Corrección del Tech Lead** sobre la entrada anterior (ADR-058, más abajo): "me refiero a stamless, la proteccion es para stamless, no para el sitio web, porque lo pueden usar solo con node o react o app y es importante a nivel de refer se pueda validar internamente como api, por eso tambien un select si es una web o es app desde donde se usará el api, si es app mobile ya no se valida porque es diferente la comunicacion, pero desde desktop via web creo que si por que el cliente estara alojado en un server identificado por un dominio, de que forma se puede solucionar entonces?".
+- **Por qué el diseño anterior estaba mal**: `Tenant::domains()` asume un único "dominio del sitio" por tenant — pero un mismo tenant puede tener tokens consumidos por clientes completamente distintos (sitio web con dominio propio, backend Node/React sin dominio público, app mobile sin `Origin` significativo). La protección tiene que vivir en el TOKEN, no en el tenant.
+- **Qué se hizo**: dos columnas nuevas en `personal_access_tokens` (`platform`: `web`/`app`, `allowed_origin`: host) vía nueva migración; `App\Enums\ApiTokenPlatformEnum`; nuevo `App\Http\Middleware\ValidateTokenOrigin` (alias `validate-origin`, registrado en `bootstrap/app.php`, aplicado al grupo padre `v1/{tenant_slug}` en `routes/api.php` — cubre `content:read` Y `forms:submit` por igual). Sin `platform` seteado (default) = sin restricción; `platform=app` = nunca se valida; `platform=web` con `allowed_origin` = exige que `Origin`/`Referer`/`X-Forwarded-Host` matcheen, con el mismo bypass de desarrollo (`stamless.security.strict_origin_check`) ya existente. `App\Filament\Pages\ApiTokens`: nuevos campos `platform`/`allowed_origin` en el form de creación (visibles/requeridos condicionalmente vía `Get $get`), persistidos con `forceFill()` (mismo patrón que `last_four`); `regenerate` los preserva del token anterior.
+- **Revertido**: `FormSubmissionController::assertOriginIsAllowed()`/`resolveClaimedOriginHost()` (eliminados), `Cliente0Seeder::upsertDomain()` (vuelto a su forma original, sin `PUBLIC_DOMAIN`).
+- **Archivos**: `database/migrations/2026_09_12_150000_add_platform_fields_to_personal_access_tokens_table.php`, `app/Enums/ApiTokenPlatformEnum.php`, `app/Http/Middleware/ValidateTokenOrigin.php`, `bootstrap/app.php`, `routes/api.php`, `app/Filament/Pages/ApiTokens.php`, `config/stamless.php` (docblock actualizado), `app/Http/Controllers/Api/V1/FormSubmissionController.php` (revertido), `database/seeders/Cliente0Seeder.php` (revertido), `tests/Feature/Api/V1/FormSubmissionApiTest.php` (8 tests de ADR-058 reemplazados por 8 equivalentes con tokens reales), `tests/Feature/Api/V1/ApiAuthTest.php` (1 test nuevo confirmando cobertura de `content:read`).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff) en todos los archivos PHP tocados/nuevos. **Sin runtime de PHP en este sandbox** — ningún test se pudo ejecutar.
+- **Siguiente**: ver ADR-059 en `DECISIONS.md` (ADR-058 marcado `Superseded by ADR-059`). Correr `php artisan migrate` + `php artisan test --compact --filter=FormSubmissionApiTest` y `--filter=ApiAuthTest`. Pendiente del Tech Lead: decidir si activar `platform=web` + `allowed_origin=cica360.com` en el token real de CICA360 desde Filament (opt-in, no automático). Actualizar también `cica360/docs/context/DECISIONS.md` (addendum de ADR-004) y `cica360/docs/context/PROGRESS.md` para que dejen de referenciar el diseño por `Tenant::domains()`.
+
+## 2026-09-12 — Validación de dominio de origen en `POST forms/{slug}/submit` (ADR-058)
+
+- **Pedido del Tech Lead**: "también validar que el formulario solo reciba de un dominio de la app (website cliente) que fue configurada al crear un token, por seguridad, creo que amerita que opinas?".
+- **Opinión dada antes de implementar**: vale la pena como defensa en profundidad, pero no es una barrera dura — el submit real es server-to-server (proxy PHP de cica360), y `Origin`/`Referer`/`X-Forwarded-Host` son headers que arma el propio llamador, no una garantía criptográfica; alguien con el token robado y un cliente HTTP directo puede escribirlos con cualquier valor. Donde SÍ es una barrera real es en el fallback de token expuesto en el navegador (ADR-002 de cica360): ahí un navegador real no deja que un script de otro dominio falsee `Origin`. El valor principal acá es protección contra error de configuración (token de un tenant usado, por accidente, desde el proxy de otro).
+- **Qué se hizo**: nuevo `FormSubmissionController::assertOriginIsAllowed()` — reutiliza `Tenant::domains()` (tabla ya existente, antes solo usada para links "ver en vivo" en Filament). Si el tenant no tiene ningún `Domain` registrado, no se aplica nada (opcional, "sera opcion de cada cliente si desea usar"). Si tiene dominios registrados, exige que `Origin`/`Referer`/`X-Forwarded-Host` matcheen alguno — salvo que `config('stamless.security.strict_origin_check')` sea `false` (default fuera de producción), en cuyo caso `localhost`/`127.0.0.1`/sin header quedan permitidos sin registrarlos, para no frenar el desarrollo local (pedido explícito).
+- **Archivos**: `app/Http/Controllers/Api/V1/FormSubmissionController.php`, `config/stamless.php`, `database/seeders/Cliente0Seeder.php` (nueva constante `PUBLIC_DOMAIN`, se siembra `cica360.com` como `Domain` adicional del tenant), `tests/Feature/Api/V1/FormSubmissionApiTest.php` (8 tests nuevos).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff) en los 4 archivos PHP. **Sin runtime de PHP en este sandbox** — los tests nuevos tampoco se pudieron ejecutar.
+- **Siguiente**: ver ADR-058 en `DECISIONS.md`. Correr `php artisan test --compact --filter=FormSubmissionApiTest` (18 tests en total ahora) y re-seedear (`Cliente0Seeder`) para que `cica360.com` quede registrado como `Domain`. Ver también `cica360/docs/context/DECISIONS.md`, addendum de ADR-004, mismo día (header `X-Forwarded-Host` en `contacto.php`).
+
+## 2026-09-12 — `geo_country_code` (por IP) llega siempre al submit, independiente del `<select>` de País (addendum ADR-057)
+
+- **Pedido del Tech Lead**: "cabe la posibilidad abierta de que el cliente cambie de pais en el formulario pero siempre el api debe recibir el IP y country_code de origen, por favor asegurarse eso" — aclarando que no debía ser obligatorio: "no requeridos de lado de stamless, sera opcion de cada cliente si desea usar".
+- **Qué se hizo**: nuevo `FormSubmissionController::resolveOriginCountry()` — lee el header `X-Origin-Country` (2 letras, validado), que CICA360 ahora resuelve DE NUEVO en cada submit desde la IP real (no del lookup de UX al cargar la página, que puede no haber corrido o estar desactualizado — ver `cica360/docs/context/PROGRESS.md`, mismo día). `ContactSubmissionService::submit()` lo guarda en `Contact::data['geo_country_code']` SOLO si viene — no es una columna dedicada, no participa de ninguna validación de `FormField`, y es independiente de un eventual campo `country` de negocio que el visitante elija a mano (puede cambiarlo libremente sin afectar esto). Opcional para todo tenant: si su proxy no manda el header, simplemente no aparece la clave. Nuevos tests `test_geo_country_code_from_header_is_stored_independently_of_the_declared_country_field` y `test_submission_succeeds_without_x_origin_country_header`.
+- **Archivos**: `app/Http/Controllers/Api/V1/FormSubmissionController.php`, `app/Services/ContactSubmissionService.php`, `tests/Feature/Api/V1/FormSubmissionApiTest.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — los tests nuevos tampoco se pudieron ejecutar.
+- **Siguiente**: ver addendum de ADR-057 en `DECISIONS.md`. Correr `php artisan test --compact --filter=FormSubmissionApiTest` (11 tests en total ahora).
+
+## 2026-09-12 — `FormSubmissionController` prioriza `X-Forwarded-For` para `Contact::ip_address` (ADR-057)
+
+- **Pedido del Tech Lead**: junto con la preselección de país por IP del lado cica360 (ver `cica360/docs/context/PROGRESS.md`, mismo día), pidió "de paso enviamos al api el IP para seguimiento tambien" — pero CICA360 pega contra este endpoint vía un proxy PHP server-to-server (`contacto.php`), así que `$request->ip()` sin más veía SIEMPRE la IP saliente del hosting del proxy, nunca la del visitante real.
+- **Qué se hizo**: nuevo `FormSubmissionController::resolveClientIp()` — prioriza el header `X-Forwarded-For` (primer valor, validado como IP) sobre `$request->ip()`. Es informativo únicamente (`Contact::ip_address` no participa en rate-limiting ni en ninguna decisión de seguridad), así que confiar en un header en teoría spoofeable no abre ninguna puerta nueva. `contacto.php` (cica360) se actualiza en paralelo para reenviar la IP real en ese header — sin ese cambio del otro lado, este no tiene efecto. Nuevo test `test_ip_address_is_taken_from_x_forwarded_for_when_present`.
+- **Archivos**: `app/Http/Controllers/Api/V1/FormSubmissionController.php`, `tests/Feature/Api/V1/FormSubmissionApiTest.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — el test nuevo tampoco se pudo ejecutar.
+- **Siguiente**: ver ADR-057 en `DECISIONS.md`. Correr `php artisan test --compact --filter=FormSubmissionApiTest` (8 tests en total ahora).
+
+## 2026-09-12 — Validación de "Consulta" a texto plano + puntuación (sin HTML/código)
+
+- **Pedido del Tech Lead**: "la valicacion en campo de consulta, ese textarea debe tener una validacion coherente al tipo de info que recibirá, nada de html, solo texto, signos de puntuacion o cualquier otro pero solo texto plano".
+- **Qué se hizo**: `NoHtmlTags` (ya aplicada a todo `Textarea` desde la 1ra vuelta de ADR-056) solo bloquea markup bien formado, no caracteres sueltos de código (`{ } \` ~ ^ |`). Se siembra un `validation_rules` propio para el campo `message` en `Cliente0ContentSeeder::upsertContactForm()`: allow-list `/^[\p{L}\p{N}\s.,;:!?\'"()\-_¿¡%\/@#&*+=$°]*$/u` (letras Unicode, dígitos, espacios/saltos de línea, puntuación común en español), deliberadamente sin `< > { } [ ] \ \` ~ ^ |`. Nuevo test `test_a_message_field_with_its_own_plain_text_validation_rules_rejects_code_like_characters`. Espejado en cica360 (ver PROGRESS.md de ese repo, mismo día).
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php`, `tests/Feature/Api/V1/FormSubmissionApiTest.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python (sin diff). **Sin runtime de PHP en este sandbox** — el test nuevo tampoco se pudo ejecutar, sigue pendiente junto con los anteriores de esta serie.
+- **Siguiente**: ver addendum "Actualización 2026-09-12 (3ra vuelta)" en ADR-056. Correr `php artisan test --compact --filter=FormSubmissionApiTest` (7 tests en total) y re-seedear (`Cliente0ContentSeeder`) para que el `validation_rules` de `message` tome efecto en la DB.
+
+## 2026-09-12 — WhatsApp con código de país automático (frontend) + regex de teléfono endurecido en la API
+
+- **Pedido del Tech Lead**: al elegir el país, armar el número de WhatsApp con el código de llamada correspondiente (bandera + "+51"/"+54"/etc.), autoformato en grupos de 3 dígitos ("espacios solo 2"), input que solo permite dígitos, y "al final se envia concatenado el codigo pais y el numero" — con el pedido explícito de que la API "tiene que soportar el unico simbolo '+' de forma opcional + el numero (sólo y unicamente digitos)".
+- **Fix (API)**: `ContactSubmissionService::rulesForField()` — la regla BASE para `FormFieldTypeEnum::Tel` pasa de `/^[0-9+\-\s()]{6,20}$/` (toleraba espacios/guiones/paréntesis, porque antes el visitante los tipeaba directo) a `/^\+?[0-9]{6,20}$/` ("+" opcional, solo dígitos) — calza con el nuevo formato que arma el frontend. Se retira el `validation_rules` de `phone` sembrado minutos antes en `Cliente0ContentSeeder` (quedaba idéntico a la regla base nueva, redundante). Nuevo test `test_a_phone_value_must_be_an_optional_plus_followed_only_by_digits`.
+- **Archivos/áreas**: `app/Services/ContactSubmissionService.php`, `database/seeders/Cliente0ContentSeeder.php`, `tests/Feature/Api/V1/FormSubmissionApiTest.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python. **Sin runtime de PHP en este sandbox** — el test nuevo tampoco se pudo ejecutar, sigue pendiente junto con los 4 de la entrada anterior.
+- **Siguiente**: ver addendum "Actualización 2026-09-12 (2da vuelta)" en ADR-056. Ver también `cica360/docs/context/PROGRESS.md` (mismo día) para el detalle completo del lado frontend (bandera/código de país/autoformato).
+
+## 2026-09-12 — Validación real de FORMATO en `POST forms/{slug}/submit` (antes solo presencia) + seguridad anti-XSS/injection/uploads
+
+- **Pedido del Tech Lead**: "añadimos validaciones y seguridad en el post del api para el submit del formulario y seguridad y validacion en el formulario de la pagina, quiero evitar XSS, injection, uploads y cualquier forma de acceder al stamless" — con el detalle exacto de nombre (solo letras, un espacio entre palabras, 3–40 caracteres), correo (charset estándar + TLD válido) y ciudad (mismo criterio que nombre), más un pedido de reorden de campos: "nombre, correo, pais, whatsapp, cuidad, area interes, caja de consulta".
+- **Investigación previa** (solo lectura) confirmó: `ContactSubmissionService` solo validaba PRESENCIA (`filled()`), nunca formato; `FormField.validation_rules`/`FormFieldDefinition.validation_rules` existían en el esquema desde el inicio del proyecto pero jamás se leían (columna muerta); el tipo `File` del enum no tenía ninguna implementación real de subida (sin riesgo práctico hoy porque el endpoint solo acepta JSON, pero tampoco estaba explícitamente bloqueado); sin sanitización de contenido (XSS) en ningún punto del pipeline; rate limiting (10/min/IP) y auth (`Bearer` + ability `forms:submit`) ya estaban bien — sin cambios ahí.
+- **Fix**: nuevo `ContactSubmissionService::assertFieldsAreValid()` (corre después de `assertRequiredFieldsPresent()`) — arma un `Validator` dinámico por `Form`/tenant: reglas base por `FormFieldTypeEnum` (email real, teléfono con charset esperado, `select`/`radio` limitados a su propio catálogo de `options`, tipo Archivo → `prohibited` explícito) + reglas ADICIONALES desde `FormField::validation_rules` (recién puesto a funcionar — antes muerto) + `App\Rules\NoHtmlTags` nuevo en todo campo de texto (rechaza cualquier valor con markup, defensa contra XSS almacenado). Nueva excepción `InvalidFieldFormatException` (mismo shape `{campo:[mensajes]}` que la de campos faltantes), capturada junto a ella en `FormSubmissionController`.
+- **CICA360 (`Cliente0ContentSeeder::upsertContactForm()`)**: reglas de nombre/ciudad (letras Unicode + un espacio, 3-40 caracteres) y correo (regex con TLD) sembradas como `validation_rules` de esos `FormField` — NO hardcodeadas por nombre de campo en el servicio genérico, para no romper el diseño 100% dinámico/multi-tenant de formularios. Reorden de `$fieldsConfig` según el pedido (nombre, correo, país, whatsapp, ciudad, área de interés, consulta).
+- **Espejo en cica360** (`ContactForm.tsx`): mismo reorden de campos + sanitización en vivo al tipear (impide directamente escribir caracteres fuera de rango) + validación de formato en `onBlur`/antes de enviar, con los MISMOS patterns que el backend — capa de UX únicamente, la autoridad real sigue siendo 100% del servidor. Ver entrada en `cica360/docs/context/PROGRESS.md`.
+- **reCAPTCHA/Turnstile**: NO implementado esta vuelta — requiere credenciales de un servicio externo que el Tech Lead todavía no proveyó. Recomendación dada en el chat: Cloudflare Turnstile por sobre Google reCAPTCHA v3 (mejor privacidad, sin depender de Google) — `Form::enable_recaptcha` ya existe en el esquema (inerte), quedaría como el flag a activar el día que haya site key/secret reales.
+- **Archivos/áreas**: `app/Rules/NoHtmlTags.php` (nuevo), `app/Exceptions/Api/InvalidFieldFormatException.php` (nuevo), `app/Services/ContactSubmissionService.php`, `app/Http/Controllers/Api/V1/FormSubmissionController.php`, `database/seeders/Cliente0ContentSeeder.php`, `tests/Feature/Api/V1/FormSubmissionApiTest.php` (4 tests nuevos).
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python en los 5 archivos PHP tocados/nuevos. **Sin runtime de PHP en este sandbox** — los tests nuevos NO se pudieron ejecutar; pendiente que el Tech Lead corra `php artisan test --compact --filter=FormSubmissionApiTest` antes de dar esto por cerrado. Lado cica360 verificado con `tsc --noEmit` (0 errores) y `astro-check` (0 errores, mismos 2 warnings preexistentes no relacionados).
+- **Siguiente**: ver ADR-056 (decisión completa, alternativas descartadas). Correr los tests nuevos del lado genesis; re-seedear CICA360 para que `validation_rules`/el nuevo orden de campos tomen efecto; decidir si se avanza con reCAPTCHA/Turnstile (necesita credenciales del Tech Lead).
+
+## 2026-09-11 — Límite por plan extendido a Posts/Services/Testimonials/Sliders/Media/Items de menú
+
+- **Pedido del Tech Lead**, inmediatamente después de confirmar el límite de contenidos (ADR-054): "para el free 10 publicaciones activas y para auspicio 20 publicaciones / para free con 10 servicios y auspicios con 20 servicios / para free con 6 testimonios o casos de exito y para auspicio con 20 testimonios / para free con 7 items de menu y para auspicio con 12 items / para free con 2 sliders y para auspicio con 5 sliders / pra free con 40 multimedia y para asupicio 60 multimedia".
+- **Fix (5 recursos simples — Posts/Services/Testimonials/Sliders/Media)**: mismo patrón que `PageResource`. `Tenant`: 5 métodos nuevos (`maxPosts()`, `maxServices()`, `maxTestimonials()`, `maxSliders()`, `maxMedia()`), cada uno `match($this->plan)` con su propio par Free/Sponsorship. Cada resource (`PostResource`, `ServiceResource`, `TestimonialResource`, `SliderResource`, `MediaResource`) suma `isXLimitReached()`/`xLimitMessage()` públicos; se aplica `->disabled()`/`->tooltip()`/`->before()` tanto al `CreateAction` del header (`ManageX::getHeaderActions()`) como al de `emptyStateActions()` del propio `XResource::table()` — los 2 puntos de creación de cada recurso, confirmados leyendo cada archivo antes de tocarlo. Ninguno de estos 5 modelos usa `SoftDeletes`, así que "activo" es simplemente `count()` de filas del tenant.
+- **Fix (items de menú — caso distinto)**: `MenuResource` no tiene un botón "Crear item" individual — el árbol completo (`itemsTree`) se edita client-side en `MenuTreeBuilder` y se sincroniza TODO junto recién al guardar el `Menu` (`syncMenuTree()`), así que no hay botón que deshabilitar por adelantado. Se agregó `Tenant::maxMenuItems()` + `MenuResource::exceedsMenuItemLimit(array $itemsTree)`/`menuItemLimitMessage()` (privados), aplicados con `->before()` en `createAction()` (compartido entre el header de `ManageMenus` y el estado vacío de la tabla) y en el `EditAction` de `table()` — cuenta el array `itemsTree` completo (todos los niveles de profundidad) que llega en `$data` contra el límite.
+- **Archivos/áreas**: `app/Models/Tenant.php`; `app/Filament/Resources/PostResource.php` + `PostResource/Pages/ManagePosts.php`; `ServiceResource.php` + `ServiceResource/Pages/ManageServices.php`; `TestimonialResource.php` + `TestimonialResource/Pages/ManageTestimonials.php`; `SliderResource.php` + `SliderResource/Pages/ManageSliders.php`; `MediaResource.php` + `MediaResource/Pages/ManageMedia.php`; `MenuResource.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python en los 11 archivos tocados. `ServiceResource.php` y `TestimonialResource.php` muestran un delta preexistente de +1 paréntesis (texto de comentarios en prosa, no código real) — mismo patrón ya documentado para `PageResource.php` en ADR-054, no originado por esta edición (confirmado aislando cada bloque agregado: todos cierran en 0). Sin runtime PHP disponible en este sandbox para un `php -l` real.
+- **Siguiente**: ver ADR-055 (decisión completa, alternativas descartadas). Confirmar visualmente en Studio los 6 topes nuevos, en particular el caso de items de menú (guardar un árbol que supere el límite debe rechazar el guardado con notificación, no solo dejar de mostrar un botón).
+
+## 2026-09-11 — Límite real de contenidos por tipo/plan: 5 (Free/Freemium) o 7 (Sponsorship) por cada tipo de `PageTypeEnum`
+
+- **Pedido del Tech Lead**: "dentro del plan free y aspicio hay limites de cantidades de paginas o podrian tenerlo? asi ya no se permite si limitamos hasta 10 contenidos activos (sin contar los eliminados softdelete)" — precisado luego vía preguntas: 5 por cada tipo de contenido (Página/Landing/Legal/Footer) para Free, 7 por tipo para Sponsorship.
+- **Hallazgo previo**: `plans.max_pages` ya existía (sembrado en 20 para Free) pero NUNCA se aplicaba en ningún lado del código — límite fantasma, mismo patrón de "declarado pero no enforced" ya visto varias veces esta sesión.
+- **Fix**: `Tenant::maxContentsPerType()` nuevo (`free`/`freemium` → 5, `sponsorship` → 7, cualquier otro plan → sin límite). `PageResource::isContentLimitReached()`/`contentLimitMessage()` nuevos, consultados desde los 6 puntos de creación de contenido (3 botones de `ManagePages::getHeaderActions()` + 3 acciones de estado vacío en `PageResource::table()`): cada botón se deshabilita con tooltip explicativo al llegar al tope de SU tipo, más un `->before()` server-side como red de seguridad.
+- **Archivos/áreas**: `app/Models/Tenant.php`, `app/Filament/Resources/PageResource.php`, `app/Filament/Resources/PageResource/Pages/ManagePages.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes en los 3 archivos, sin cambios de delta respecto al baseline.
+- **Siguiente**: ver ADR-054 (decisión completa, alternativas descartadas). Confirmar visualmente que el botón se deshabilita al llegar al tope de cada tipo, para el tenant CICA360 (plan `sponsorship`, tope 7).
+
+## 2026-09-11 — Fix real: 500 al escribir una respuesta de FAQ (`Livewire\Exceptions\MaxNestingDepthExceededException`)
+
+- **Reportado por el Tech Lead**, con captura del error real en Studio al editar el campo "Respuesta" de un item de FAQ: `Property path [mountedActions.0.data.blocks.{uuid}.data.content.items.{uuid}.answer.content.0] exceeds the maximum nesting depth of 10 levels`.
+- **Causa**: el campo `answer` de cada item del Repeater de FAQ usaba `Forms\Components\RichEditor::make('answer')`. El documento JSON en vivo que arma ese campo (Tiptap, `{content: [...]}`) sumado a la profundidad YA alta de Builder→Block→Repeater→item→campo supera el límite de anidamiento de Livewire (10 niveles) con solo escribir un párrafo simple — ni hace falta guardar, el 500 salta apenas Livewire sincroniza el estado del formulario. Además, aunque no hubiera crasheado: `Faq.astro` (cica360) renderiza esta respuesta como texto plano (`{item.answer}`, sin `set:html`) — el HTML que produce un rich editor nunca se hubiera visto formateado en el sitio, era el campo equivocado para lo que el frontend realmente consume.
+- **Fix**: `RichEditor` reemplazado por `Textarea` (3 filas) — mismo tipo de dato (texto plano) que ya espera `Faq.astro`, sin el árbol JSON profundo que rompía a Livewire.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (bloque `faq`, campo `answer`).
+- **Verificación**: balance de llaves/paréntesis/corchetes sin cambios de delta respecto al baseline. Se revisaron los otros 3 usos de `RichEditor` en el archivo (`rich_text`, `split` ×2) — todos son campos de bloque de primer nivel (`content.body`), sin el nivel extra de Repeater que causó este crash específico; se dejan sin tocar por no tener evidencia de problema.
+- **Siguiente**: confirmar visualmente que ahora se puede escribir y guardar una respuesta de FAQ sin error 500.
+
+## 2026-09-11 — Bloque `image` (Filament): quitado el heading fantasma, agregado copy/agrupamiento, corregido el degradado fantasma
+
+- **Pedido del Tech Lead**: "el bloque imagen unica falta alinear UX y con buenos copys y no deberia tener heading este bloque".
+- **2 problemas reales encontrados** (mismo patrón que el rediseño de `contact_form` esta sesión): (1) traía `HeadingFieldset::make()` pero el frontend (`ImageBlock.astro`) nunca lo usaba como encabezado — en cambio, usaba `block.title` como un caption improvisado, aunque el bloque YA tiene su propio campo `content.caption` sin usar. (2) todos los campos estaban sueltos, sin agrupar ni copy que explique su efecto. (3), encontrado de paso: el Select de "Tipo de fondo" ya ofrecía "Degradado" sin los campos `background_color_secondary`/`gradient_direction` que lo hacen funcionar — mismo "degradado fantasma" ya corregido en otros 6 bloques (ver ADR-052).
+- **Fix (Filament)**: se quita `HeadingFieldset::make()`. Los campos pasan a `Section::make('Imagen')` (archivo + caption + aspecto/alineación en grid de 2, con `helperText`) y `Section::make('Personalización de estilos')` (colapsada, con los 2 campos de degradado sumados).
+- **Fix (cica360, `ImageBlock.astro`)**: reescrito para consumir de verdad `content.caption` (ya no `block.title`), `content.aspect` (4 variantes de `aspect-ratio`), `content.align` (posición del `<figure>` dentro de la sección) y fondo sólido/degradado vía `resolveBackgroundStyle()` + `padding_y` en 4 pasos. `properties.animation` queda sin consumir a propósito (dead en TODO el proyecto, no específico de este bloque).
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (bloque `image`), `cica360/src/components/blocks/ImageBlock.astro`.
+- **Verificación**: balance de llaves/paréntesis/corchetes en el lado PHP (sin cambios de delta); `astro-check` en cica360 — 0 errores.
+- **Siguiente**: confirmar visualmente en Studio que ya no aparece el fieldset de encabezado en este bloque, y que el caption/aspecto/alineación/fondo se ven reflejados en el sitio.
+
+## 2026-09-11 — Selector de bloques de `Legal`: se saca `rich_text` (redundante con `legal_notice`) y se reordena `legal_notice` justo debajo de `heading`
+
+- **Pedido del Tech Lead**, con captura del selector ya filtrado a 7 bloques para `Legal`: "quita texto enriquecido" + "mueve aviso legal en segundo orden, debajo de heading".
+- **Fix**: `rich_text` se suma a `$legalExcludedBlocks` (mismo motivo que el resto de exclusiones de esa lista — redundante, `legal_notice` ya es el bloque de texto largo para este tipo). El orden del selector seguía el orden de declaración en `$allBlocks` (heading, rich_text, cta, ...), dejando `legal_notice` lejos del tope — se agrega un `usort` (estable desde PHP 8.0) con un ranking explícito solo para `heading` (0) y `legal_notice` (1), todo lo demás en rango 2 conserva su orden relativo original.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (`Builder::make('blocks')->blocks(...)`, rama `Legal`).
+- **Verificación**: balance de llaves/paréntesis/corchetes sin cambios de delta respecto al baseline.
+- **Siguiente**: confirmar visualmente que el selector para `Legal` queda: Heading, Aviso Legal, Llamado a la Acción, Formulario de Contacto, Logos/Socios, Footer.
+
+## 2026-09-11 — Selector de bloques de un contenido tipo `Legal`: se excluyen 8 bloques de landing/marketing
+
+- **Pedido del Tech Lead**, con captura del selector "Añadir bloque": "cuando sea tipo de contenido legales quitar de las opciones de bloques a: hero, imagen unica, caracteristicas/grid, preguntas frecuentes, split imagen y texto, testimonios, grid servicios, grid casos de uso — pero dejar el bloque de legales".
+- **Fix**: nueva rama dedicada `if ($typeVal === PageTypeEnum::Legal->value)` en el `->blocks(function (Get $get) ...)` del Builder de `blocks` — excluye `hero`, `image`, `features`, `faq`, `split`, `testimonials`, `services_grid`, `testimonials_grid` (más `colophon`/`footer_bottom`, ya excluidos para todo lo que no sea `Footer`). Quedan disponibles para `Legal`: `heading`, `rich_text`, `cta`, `contact_form`, `legal_notice`, `logos` — un Aviso Legal simple puede necesitar un banner, texto, un CTA o un formulario de contacto al pie, sin necesitar grids de marketing.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (`Builder::make('blocks')->blocks(...)`).
+- **Verificación**: balance de llaves/paréntesis/corchetes sin cambios de delta respecto al baseline.
+- **Aclarado**: el comentario "[el bloque de legales] no está mostrándose" fue una confusión del Tech Lead mirando el selector de un contenido tipo `Página` (no `Legal`) — `legal_notice` nunca debió aparecer ahí (ver entrada de ADR-053/exclusión anterior en este mismo documento). Sin acción adicional.
+
+## 2026-09-11 — `Cliente0HomeSlidesSeeder`: slide duplicada ("El socio que necesitas" ×2) — faltaba podar filas sobrantes por `sort_order`
+
+- **Pedido del Tech Lead**, con captura del editor de Slider mostrando 4 slides en vez de 3 (la última repetida): "en slider estas generando contenido inicial duplicado".
+- **Causa**: `run()` solo hace `updateOrCreate(['tenant_id', 'sort_order' => 0|1|2], ...)` para las 3 slides definidas en `SLIDES` — nunca borra una fila que haya quedado de una corrida anterior con más slides o de antes de que existiera este `updateOrCreate` por `sort_order` (a diferencia de `Cliente0ContentSeeder`, que desde su creación sí "poda filas sobrantes por sort_order" para los bloques). Cada `db:seed` sucesivo puede ir dejando huérfanos en vez de converger siempre a las 3 slides reales.
+- **Fix**: al final de `run()`, se borran las slides del slider `home` con `sort_order >= count(SLIDES)` — mismo criterio de convergencia ya usado en otros seeders del proyecto.
+- **Archivos/áreas**: `database/seeders/Cliente0HomeSlidesSeeder.php`.
+- **Siguiente**: correr `php artisan db:seed` y confirmar que "Editar Slider" muestra exactamente 3 slides, sin la duplicada.
+
+## 2026-09-11 — Bloque `legal_notice` ya no aparece en el selector de bloques de una Página normal — exclusivo de contenidos tipo `Legal`
+
+- **Pedido del Tech Lead**, con captura del selector "Añadir bloque" mostrando "Aviso Legal / Contenido..." disponible en una Página común: "cuando sea tipo de contenido: Pagina, no mostrar bloque Aviso legal, que solo lo tenga el tipo de pagina: Legales".
+- **Fix**: en el `->blocks(function (Get $get) ...)` del Builder de `blocks`, se agrega `$legalOnlyBlocks = ['legal_notice']` y se excluye de la lista salvo cuando `type === PageTypeEnum::Legal` — mismo mecanismo ya usado para `colophon`/`footer_bottom` (exclusivos de `Footer`), pero al revés (exclusivo de `Legal`, oculto en el resto). No afecta la rama `Footer` (que ya usa una whitelist propia sin `legal_notice`).
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (`Builder::make('blocks')->blocks(...)`).
+- **Verificación**: balance de llaves/paréntesis/corchetes sin cambios de delta respecto al baseline.
+- **Siguiente**: confirmar visualmente que "Aviso Legal / Contenido..." desaparece del selector al editar una Página/Landing/Footer, y que sigue disponible al editar un contenido tipo Legal.
+
+## 2026-09-11 — Se descarta el tipo de contenido `header` (Cabecera): eliminado de `PageTypeEnum` y de todo el código que lo trataba igual que `footer`
+
+- **Pedido del Tech Lead**, con captura del menú "+ Crear Contenido" (4 opciones: Página/Cabecera/Pie de página/Aviso Legal): "creo que descartaremos en stamless el tipo de contenido (pages): Crear Cabecera (header)".
+- **Verificación antes de tocar código**: a diferencia de `Footer` (consumido de verdad por el bloque `footer` vía `content.footer_page_id`, resuelto en `ResolvesPublicLinks`), `Header` no tenía NINGÚN mecanismo de consumo — ni bloque, ni setting, ni endpoint lo referenciaba. El navbar real de CICA360 se arma con Menús + Settings, no con una Página tipo Header. Cero páginas `Header` sembradas en ningún seeder — nada que migrar.
+- **Fix**: `case Header` eliminado de `PageTypeEnum`. Se quita el botón "Crear Cabecera (Header)" (`ManagePages::getHeaderActions()`); la tab "Secciones" (antes Header+Footer) filtra ahora solo `Footer`, y su acción de estado vacío crea un Footer en vez de un Header. Se simplifican 5 chequeos en `HeadingFieldset.php` y 3 en `PageResource.php` que trataban a `Header` igual que `Footer` (prefijo de slug, visibilidad de tabs/campos, color de badge, descripción de fila) — quedan comparando solo contra `Footer`. `Page::scopePubliclyLinkable()` ya no excluye `Header` (no hace falta, no existe más).
+- **Archivos/áreas**: `app/Enums/PageTypeEnum.php`, `app/Filament/Resources/PageResource/Pages/ManagePages.php`, `app/Filament/Resources/PageResource.php`, `app/Filament/Schemas/HeadingFieldset.php`, `app/Models/Page.php`.
+- **Verificación**: balance de llaves/paréntesis/corchetes vía script Python en los 5 archivos, sin cambios de delta respecto al baseline. Ver ADR-053 y la entrada equivalente en `cica360/docs/context/PROGRESS.md` (`PageType` union en `types.ts`).
+- **Siguiente**: `vendor/bin/pint --dirty --format agent`, confirmar visualmente en Studio que el menú "+ Crear Contenido" ya solo ofrece Página/Pie de página/Aviso Legal.
+
+## 2026-09-11 — 8 bloques nuevos suman los 3 tipos de fondo (sólido/degradado/imagen), mismo patrón ya usado por `cta`/`features`/`colophon`/`heading`
+
+- **Pedido del Tech Lead**: "asi deberia poder cambiarse de la misma forma los demas bloques existentes, todos deberian permitir personal el fondo en 3 tipos, no se por que solo 4 bloques tiene eso" — tras la corrección del punto de "Imágenes del Encabezado" en `heading` (entrada de abajo), pidió generalizar el mismo esquema. Confirmó explícitamente 3 exclusiones en el camino: "en el hero obviar", "en el footer_bottom obviar", "split tambien obviar". Elegido el alcance final vía pregunta directa: los 8 candidatos claros — `rich_text`, `faq`, `contact_form`, `testimonials` (teaser), `logos`, `services_grid`, `testimonials_grid`, `legal_notice`. Quedan deliberadamente afuera, además de las 3 exclusiones del Tech Lead: `image`/galería (no tiene noción de "fondo" propia) y `footer` (ya resuelto aparte).
+- **Qué se hizo (cada uno de los 8 bloques)**: la `Section` "Personalización de estilos" pasa su selector de `background_type` (2 opciones: sólido/degradado) a `background_type_image` (3 opciones, mismo campo subyacente `properties.background_type`, ver `PropertiesSchema.php`), se agrega `MediaUpload::make('content.background_image_id', 'Imagen de fondo')` visible solo con `background_type: image`, y un `Grid::make(2)` de filtros (`media_blend_mode`, `overlay_opacity`, `media_brightness`, `media_opacity`, `media_filter_saturate/grayscale/sepia/contrast/hue_rotate/blur`) con la misma visibilidad condicional — ambos campos nuevos anidados DENTRO de la misma sección que el selector (mismo criterio recién corregido en `heading`, no un acordeón aparte).
+- **Bug dormido encontrado y corregido de paso**: 6 de los 8 bloques (todos menos `legal_notice`, que no tenía fondo en absoluto) ya ofrecían "Degradado" como opción de `background_type` en el Select, pero NUNCA tuvieron los campos `background_color_secondary`/`gradient_direction` — la opción existía en el admin pero no hacía nada, un degradado "fantasma" desde que se creó cada uno de esos bloques. Se agregan esos 2 campos a los 6 (`rich_text`, `faq`, `contact_form`, `testimonials`, `logos`, `services_grid`, `testimonials_grid`), mismo criterio de "no dejar opciones muertas en el admin" ya aplicado esta sesión al bloque `contact_form`.
+- **Caso especial — `logos`**: este bloque ya reutilizaba `media_opacity`/`media_filter_grayscale` para OTRA cosa (el efecto hover de "gris a color" de cada logo, en `Logos.astro`). El nuevo grid de filtros de fondo-imagen para este bloque puntual excluye esos 2 campos (quedan reservados para el efecto existente) — limitación documentada inline, no un patrón a repetir en otro bloque.
+- **`legal_notice`**: no tenía NINGÚN campo de fondo (solo `padding_y`/`content_width`) — se construye la `Section` de estilos completa desde cero.
+- **Registro de medios (`ResolvesPublicLinks::BLOCK_MEDIA_FIELDS`)**: agregar el `MediaUpload` en el schema de Filament no alcanza — sin una entrada en este registro, el API público nunca resuelve `background_image_id` a un objeto `Media` (`content.background_image`), y el campo interno queda expuesto crudo (violación de ADR-018, "el API nunca expone ids internos"). Se agregan las 8 entradas nuevas (`'{bloque}' => ['background_image_id' => 'background_image']`).
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (los 8 bloques), `app/Http/Concerns/ResolvesPublicLinks.php` (`BLOCK_MEDIA_FIELDS`).
+- **Verificación**: sin PHP en este sandbox — balance de llaves/paréntesis/corchetes verificado vía script Python en ambos archivos, delta sin cambios respecto al baseline preexistente (`+2`). Pendiente que el Tech Lead corra `vendor/bin/pint --dirty --format agent` y confirme visualmente en Studio.
+- **Siguiente**: ver ADR-052 (decisión formal del alcance/exclusiones) y la entrada equivalente en `cica360/docs/context/PROGRESS.md` (lado frontend, mismo día) — de nada sirve el campo en Filament si el componente Astro correspondiente no lo consume.
+
+## 2026-09-11 — Bloque `heading` (Filament): "Imágenes del Encabezado" ya no aparece separada/desubicada al elegir Tipo de fondo = Imagen
+
+- **Pedido del Tech Lead**, con captura: "en el admin en el bloque heading, creo que esta mal que cuando se cambien dentro de propiedades visuales, en el campo Tipo de fondo: imagen, ahi recien se muestre la seccion de Imagenes del Encabezado. se ve raro eso" — pidió elegir entre (1) mostrar siempre esa sección y cambiar property según la opción, o (2) mover la sección debajo de "Propiedades Visuales".
+- **Recomendación aplicada (ninguna de las 2 tal cual, la que ya usa el resto del código)**: `cta`, `features` y `colophon` ya resuelven el mismo problema (fondo sólido/degradado/imagen) poniendo el selector "Tipo de fondo" y su campo de imagen dependiente EN LA MISMA sección — `heading` era el único bloque que los tenía en 2 secciones separadas (`Section` "Imágenes del Encabezado", ubicada ANTES de "Propiedades Visuales", con el selector escondido DENTRO de esta última, colapsada). Se mueve la `Section::make('Imágenes del Encabezado')` para que viva anidada dentro de `Section::make('Propiedades Visuales')`, justo después de la grilla de campos que incluye el selector — se abre la sección una sola vez y todo lo de fondo aparece junto, sin saltos ni contenido apareciendo fuera de foco. Se descartó mostrarla siempre (opción 1 literal): dejaría 3 campos de imagen vacíos visibles en la inmensa mayoría de páginas que usan fondo sólido/degradado.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (bloque `heading`).
+- **Siguiente**: confirmar visualmente que al elegir "Imagen" en Tipo de fondo (dentro de Propiedades Visuales) las 3 imágenes aparecen ahí mismo, sin necesidad de scrollear a otra sección.
+
+## 2026-09-11 — Sección "Personalización de estilos": faltaba `->columns(2)` en 8 bloques (Filament, tablet/desktop quedaba a 1 columna)
+
+- **Pedido del Tech Lead**, con captura de "Personalización de estilos" en 1 sola columna en desktop: "recuedas las alturas..." — corrección puntual: "en tablet y desktop debe siempre ser a 2 columnas las properties".
+- **Causa**: al agregar cada bloque nuevo (`services_grid`, `testimonials_grid`, `contact_form`, FAQ, aviso legal, galería) se usó `PropertiesSchema::make([...])` sin encadenar `->columns(2)` — Filament cae a 1 columna por defecto en cualquier viewport si no se especifica.
+- **Fix**: se agrega `->columns(2)` a los 8 `PropertiesSchema::make([...])` que no lo tenían (bloques: galería/media, `faq`, `contact_form`, `legal_notice`, `services_grid`, `testimonials_grid` — 2 secciones "Personalización de estilos" cada uno). Se dejó sin tocar el único caso de un solo campo (`show_scroll_indicator`, no necesita columnas).
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php`.
+- **Siguiente**: confirmar visualmente en tablet/desktop que las 2 columnas quedan parejas en todos los bloques tocados.
+
+## 2026-09-11 — Bloque `contact_form` (Filament): quitado el "Encabezado" fantasma, agregado copy y agrupamiento
+
+- **Pedido del Tech Lead**, con captura del formulario de edición: "corrijamos o alineamos el bloque de formulario de contactos se ve super mal el acabado, tiene ser mas UX y con buen copy".
+- **2 problemas reales encontrados**: (1) el bloque traía `HeadingFieldset::make()` (Pre título/Título/Subtítulo) igual que todos los demás bloques, pero desde la corrección de esta misma sesión ("el formulario no debe tener nada en el heading", ver `ContactFormBlock.astro` en cica360) el frontend NUNCA lee ese heading para este bloque — quedaban 3 campos que no hacían nada, confusos para cualquier editor. (2) a diferencia del resto de bloques, ni el selector de Formulario/texto de introducción ni las properties de fondo/estilo estaban agrupados en un `Section` con título/descripción — quedaban sueltos, sin jerarquía visual ni copy que explique qué hace cada campo.
+- **Fix**: se elimina `HeadingFieldset::make()` del bloque. El selector de Formulario + texto de introducción pasan a vivir dentro de `Section::make('Formulario')` con descripción; se agrega `helperText` a ambos campos explicando su efecto real (dónde se crean los formularios, dónde aparece el texto de introducción). Las properties de fondo/estilo pasan a `Section::make('Personalización de estilos')` con descripción y `->collapsed()`, mismo patrón que el resto de bloques (y ya con `->columns(2)`, ver entrada anterior). Todo el copy nuevo en español neutro sin voseo (ADR-051) — se corrigió una redacción propia con voseo ("Elegí"/"buscás"/"creá") detectada al revisar el propio diff antes de cerrar el cambio.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (bloque `contact_form`).
+- **Siguiente**: confirmar visualmente en el admin que ya no aparece "Encabezado (Opcional)" en este bloque y que las 2 secciones nuevas se leen bien.
+
+## 2026-09-11 — `testimonials_grid` (página Casos de Éxito): `content.limit` explícito (9 de 12 testimonios)
+
+- **Pedido del Tech Lead**: "para el seeder del bloque de casos de exito grid se necesita dejar la cantidad a mostrar y orden que este seteado e integrado con el frontsite" — `content.limit` pasa de `null` (catálogo completo, sin tope) a `9` en `upsertCasosDeExitoPage()`. `content.order: 'asc'` ya estaba seteado desde la primera vuelta (ADR-050).
+- **"Integrado con el frontsite" — verificado, sin cambios de código adicionales**: `ResolvesPublicLinks::transformBlockContent()` (rama `testimonials_grid`) ya recorta con `$ordered->take((int) $content['limit'])` cuando el valor es numérico — funciona igual con `9` que con `null` (antes tomaba el catálogo completo por ser `empty()`). `TestimonialsGrid.astro` (cica360) solo lee `content.items[]` ya resuelto/recortado por el backend, sin lógica de límite propia — con 9 items servidos (de los 12 sembrados en `Cliente0TestimonialsSeeder`) y su propio `INITIAL_VISIBLE`/`STEP` de 6, el botón "Más casos" revela los 3 restantes de esos 9; los 3 testimonios fuera del límite (10º-12º por `sort_order`) no llegan nunca a esta página — comportamiento esperado de un límite real, a diferencia de `services_grid` (9 de 9, sin recorte visible).
+- **Archivos/áreas**: `database/seeders/Cliente0ContentSeeder.php` (`upsertCasosDeExitoPage()`, bloque `testimonials_grid`).
+- **Siguiente**: correr `php artisan db:seed` y confirmar visualmente que `/casos-de-exito` muestra 9 testimonios (6 al cargar + 3 tras "Más casos"), no los 12 sembrados.
+
+## 2026-09-11 — Formulario "Contactame": select de País ampliado a 16 (Centroamérica + resto de Sudamérica hispanohablante)
+
+- **Pedido del Tech Lead**: "aumentar mas paises del continente latinoamericano centro-sur" — los 8 países originales (`$countryOptions` en `upsertContactForm()`) tenían bandera real sembrada para Servicios, pero este `<select>` de Contacto es texto plano sin ícono, así que sumar países no depende de ningún asset nuevo. Se agregan Colombia, Venezuela (resto de Sudamérica hispanohablante) y Panamá, Costa Rica, Nicaragua, Honduras, El Salvador, Guatemala (Centroamérica hispanohablante) — deliberadamente sin México (Norteamérica), Caribe, ni Guyana/Surinam/Belice (no hispanohablantes, no pedidos).
+- **Archivos/áreas**: `database/seeders/Cliente0ContentSeeder.php` (`upsertContactForm()`, `$countryOptions`).
+- **Siguiente**: correr `php artisan db:seed`. Ver entrada equivalente en `cica360/docs/context/PROGRESS.md` (mismo día) — `ContactForm.tsx`'s `COUNTRY_OPTIONS` actualizado en paralelo, misma lista.
+
+## 2026-09-11 — Bloque `contact_form`: fondo `cicagray-50` (`#F6F6F6`), mismo criterio que `services_grid`/`testimonials_grid`
+
+- **Pedido del Tech Lead**: "mira l espectativa tambien indica que el fondo es cicagray-50" — el bloque `contact_form` de `upsertContactoPage()` ya tenía `background_type`/`background_color` disponibles en su schema de Filament (`PropertiesSchema::make([...])`), pero sin sembrar. Se agrega `properties.background_type: 'solid'`/`background_color: '#F6F6F6'`, mismo tono ya usado en `services_grid` (página Servicios) y `testimonials_grid` (página Casos de Éxito).
+- **Archivos/áreas**: `database/seeders/Cliente0ContentSeeder.php` (`upsertContactoPage()`, bloque `contact_form`).
+- **Siguiente**: correr `php artisan db:seed`. Ver entrada equivalente en `cica360/docs/context/PROGRESS.md` (mismo día) — `ContactFormBlock.astro` ahora consume `block.properties` vía `resolveBackgroundStyle()` (antes lo ignoraba por completo).
+
+## 2026-09-11 — Página Contacto: bloque `rich_text` "Hablemos" eliminado, `contact_form` sin heading propio
+
+- **Pedido del Tech Lead**, con captura mostrando el bloque "Hablemos" (título + párrafo) renderizado justo encima del formulario: "no necesitamos este bloque, y el formulario no debe tener nada en el heading".
+- **Qué se hizo**: se elimina por completo el bloque `rich_text` ("Hablemos", con su párrafo introductorio) de `upsertContactoPage()` — antes vivía entre el banner `heading` ("Contactame") y el bloque `contact_form`. El bloque `contact_form` pierde `title` ("Envíanos tu consulta") y `content.intro` — queda solo con `content.form_id`. La página va ahora directo del banner al formulario, sin ningún texto intermedio.
+- **Archivos/áreas**: `database/seeders/Cliente0ContentSeeder.php` (`upsertContactoPage()`).
+- **Siguiente**: correr `php artisan db:seed`. Ver entrada equivalente en `cica360/docs/context/PROGRESS.md` (mismo día) — `ContactFormBlock.astro` ya no renderiza heading propio bajo ninguna circunstancia (no solo por falta de dato sembrado).
+
+## 2026-09-11 — "Filtro de testimonios" (bloque `testimonials`, teaser): copy sin la palabra "trae"
+
+- **Pedido del Tech Lead**: "cuando expresas 'acá solo se elige cuáles trae este bloque' tal vez no se entienda... por que ese traer no creo que lo entiendan... la idea es que muchos usuarios no solo desarrolladores lo usen, con la IA hasta profesionales y gente comun crea sus webs y necesita de una CMS headless" — sugirió reemplazar por "cuáles se comparten públicamente en el API", pidiendo corrección si estaba equivocado.
+- **Corrección aplicada** (el Tech Lead invitó a corregirlo si hacía falta): la frase sugerida ("...se comparten públicamente en el API") describe algo que este campo NO controla — la visibilidad pública de un testimonio la define el toggle "Visible" del propio módulo Testimonios, no este filtro. Este campo (`content.limit`/`content.order`) solo decide CUÁNTOS testimonios y en qué orden se muestran EN ESTE BLOQUE en particular. Se optó por lenguaje llano fiel a lo que el campo realmente hace, sin introducir el concepto técnico de "API" (innecesario para un usuario no técnico): "Los testimonios se administran en el módulo Testimonios, disponible en el menú lateral. Aquí solo se define cuántos se muestran en este bloque y en qué orden. Se muestran únicamente los marcados como visibles en ese módulo."
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (Section "Filtro de testimonios" del bloque `testimonials`).
+- **Siguiente**: confirmar que se entiende bien para un usuario sin perfil técnico.
+
+## 2026-09-11 — Corrección urgente: sacado el voseo del copy de Stamless — regla de tono formalizada (ADR-051)
+
+- **Corrección del Tech Lead**, inmediatamente después de la vuelta de copywriting anterior (ver entrada de abajo): "nooooo, con mucho cuidado todo lo de stamless tiene que estar en un tono hipano neutral y amigable para gente comun no necesariamente tecnica o profesional, nada de argento o jergas" — la reescritura anterior había usado voseo rioplatense ("Dejalo vacío...", "indicá un número...", "Agregá un botón...") por analogía incorrecta con la voz de marca de CICA360 (que SÍ usa voseo, pero es un tenant particular, no el producto Stamless).
+- **Qué se hizo**: los 6 strings reescritos en la vuelta anterior (2 descriptions + 1 helper "Cantidad a mostrar" por bloque, en `services_grid`/`testimonials_grid`) se corrigen a construcciones neutras/infinitivas ("Dejar vacío...", "Agregar un botón...", "Este bloque solo permite elegir..."). Auditoría de paso encontró 2 instancias PREEXISTENTES del mismo problema, sin relación con esta vuelta: `->description('Elegí si el fondo...')` (campo `background_type`, Section "Fondo", reusada por varios bloques) — corregidas a `Elegir si el fondo...`.
+- **Regla formalizada** — ver ADR-051 en `DECISIONS.md`: Stamless (Console/Studio, cualquier copy de Filament) siempre en español neutro; el voseo rioplatense es exclusivo del contenido de marca de CICA360 (seeders de contenido público + componentes `.astro`), no del producto.
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (6 strings + 2 preexistentes).
+- **Siguiente**: auditoría más amplia (opcional, no bloqueante) de otras secciones de Filament por si quedó más voseo suelto de rondas anteriores a esta regla — no se encontró nada más en `PageResource.php` en esta pasada rápida.
+
+## 2026-09-11 — Copywriting/UX de los bloques `services_grid`/`testimonials_grid` en Console (Studio)
+
+- **Pedido del Tech Lead**, con captura de "Catálogo de casos de éxito" en el admin: "las descripciones de las secciones y campos necesita mejor copywriter y mejor UX por que parece las conversaciones que hemos tenido, corregir en grid de servicio y en grid de casos de exito" — las descripciones/helper texts de estas 2 secciones habían quedado redactadas como notas internas de desarrollo (paréntesis tipo "(ej. el catálogo completo de 'Servicios')", referencias cruzadas a otros botones del sitio, frases largas con doble explicación) en vez de copy claro para quien administra el contenido.
+- **Qué se hizo**: reescritas las 4 descripciones + 2 helper texts de "Cantidad a mostrar"/"Orden" en AMBOS bloques (`services_grid` y `testimonials_grid`), pasando a voz imperativa/2da persona con el mismo voseo rioplatense ya usado en el resto de la marca ("Dejalo vacío...", "indicá un número...", "Agregá un botón..."), sin jerga de desarrollo ni ejemplos entre paréntesis. Las 2 secciones "Filtro de/Catálogo de" quedan más cortas y accionables; las 2 secciones "Enlace 'Ver más' (opcional)" ya no mencionan el nombre exacto de otro botón del sitio ("Ver más servicios"/"Más casos") — alcanza con explicar que no hace falta si la página ya muestra el catálogo completo.
+- **No tocado a propósito**: la sección "Filtro de testimonios" del bloque `testimonials` (teaser, no `testimonials_grid`) — el pedido fue explícito solo sobre los 2 bloques "grid".
+- **Archivos/áreas**: `app/Filament/Resources/PageResource.php` (secciones de `services_grid` y `testimonials_grid`).
+- **Siguiente**: confirmar visualmente en Studio que las nuevas descripciones se leen claras y sin jerga técnica.
+
+## 2026-09-11 — Formulario "Contactame": 3 campos nuevos (`city`/`country`/`area_of_interest`) sembrados en el form `contacto`
+
+- **Pedido del Tech Lead**, con captura del mockup real de "Contactame" (Nombre y Apellido/Correo electrónico/Ciudad/WhatsApp/País [select]/Área de interés [select]/Consulta/botón "CONTACTAME AHORA"): "la espectativa de contactame, quiero que se genere el formulario basico y que envie al endpoint correcto".
+- **Backend (esta vuelta)**: `FormFieldDefinitionSeeder.php` gana 3 entradas nuevas al catálogo GLOBAL reutilizable (`city`: Text/required; `country`: Select/required; `area_of_interest`: Select/required) — el catálogo global solo fija el TIPO de campo, sin `options` propias (ese modelo nunca las persiste). `Cliente0ContentSeeder::upsertContactForm()` reescrito por completo: pasa de un loop simple sobre 4 keys fijas (`name`/`email`/`phone`/`message`) a un `$fieldsConfig` explícito de 7 campos en el orden del mockup (`name`/`email`/`city`/`phone`/`country`/`area_of_interest`/`message`), cada uno con su label/required propios vía `FormField` (no el default de la `FormFieldDefinition`). `country`/`area_of_interest` llevan `options` concretas por-`FormField` (no en el catálogo global): 8 países LatAm con bandera real ya sembrada en el frontend (AR/UY/BR/BO/CL/PY/PE/EC) y los 9 títulos reales del catálogo de Servicios (`Cliente0ServicesSeeder`), respectivamente.
+- **No se tocó** `ContactSubmissionService`/`Contact`/`FormField` — arquitectura ya genérica (`CORE_CONTACT_FIELDS` fijo, cualquier otra key mapeada a `data` jsonb si tiene un `FormField.name` activo) soporta campos nuevos sin cambios de código, solo sembrando el catálogo/form correctos.
+- **Archivos**: `database/seeders/FormFieldDefinitionSeeder.php`, `database/seeders/Cliente0ContentSeeder.php` (`upsertContactForm()`).
+- **Siguiente**: correr `php artisan db:seed`, `vendor/bin/pint --dirty --format agent`. Ver entrada equivalente en `cica360/docs/context/PROGRESS.md` (mismo día) para el lado frontend (`ContactForm.tsx` reescrito, `ContactFormPayload` en `types.ts`).
+
+## 2026-09-11 — Bloque `testimonials_grid` nuevo — catálogo completo de "Casos de éxito" (mismo tratamiento que `services_grid`, ver ADR-050)
+
+- **Pedido del Tech Lead**, con captura de mockup real de la página "Casos de éxito" (grid 3×3, avatar circular + frase + firma, botón "MÁS CASOS"): "la espectativa esta en la primera captura y la realidad, es un bloque de testimonios que creamos a modo preview o resumen solo para home u otras paginas, pero este tiene que ser un bloque nuevo especial como el de servicios, donde va el heading y luego la configuracion todo igual al de servicios en el admin. luego la integracion en astro tiene que ser con ese mismo aspecto de la espectativa de diseño. no olvides preparar el seeder".
+- **Implementado** (espejo punto por punto de `services_grid`/ADR-049, ver ADR-050 para el detalle completo): `BlockTypeEnum::TestimonialsGrid` nuevo; `PageResource.php` gana `Builder\Block::make('testimonials_grid')` (copia 1:1 del schema de `services_grid` — heading + `content.limit`/`content.order` + link único opcional + estilos) y `$testimonialsGridLinkFields`; `ResolvesPublicLinks.php` — `testimonials_grid` comparte la MISMA query batched que ya arma el bloque `testimonials` (teaser), sin duplicar el `SELECT`, pero ordena por `sort_order` (curaduría manual) en vez de `created_at` (recencia), mismo criterio que distingue `services_grid` de un teaser; el item resuelto sale con `uuid`/`name`/`role`/`quote`/`avatar` (sin `slug`/`href`, un testimonio no tiene página de detalle propia). `Cliente0ContentSeeder::upsertCasosDeExitoPage()`: el bloque `testimonials` (teaser, colores `cicagreen-*`) se reemplaza por `testimonials_grid` (`limit: null, order: asc`, fondo `#F6F6F6`, sin `title` propio); `decorator_bottom_color` del `heading` de esa misma página pasa de `#ffffff` a `#F6F6F6` (mismo criterio que "Servicios"). El bloque `testimonials` (teaser) de Home/"Sobre CICA" queda SIN CAMBIOS.
+- **Frontend (cica360, misma vuelta)**: `TestimonialsGrid.astro` nuevo — misma estructura de sección que `ServicesGrid.astro` (heading + grid estático 1/2/3 columnas, sin carousel, "Más casos" de a 6 100% client-side), tarjeta reusando el diseño ya validado de `Testimonials.astro` (avatar circular, frase itálica, firma "— Nombre"), sin chips de filtro. `BlockRenderer.astro`/`types.ts` actualizados.
+- **Archivos**: `app/Enums/BlockTypeEnum.php`, `app/Filament/Resources/PageResource.php`, `app/Http/Concerns/ResolvesPublicLinks.php`, `database/seeders/Cliente0ContentSeeder.php` (genesis); `src/components/blocks/TestimonialsGrid.astro`, `src/components/blocks/BlockRenderer.astro`, `src/lib/types.ts` (cica360).
+- **Siguiente**: correr `php artisan db:seed`, `vendor/bin/pint --dirty --format agent`, y confirmar visualmente `/casos-de-exito` contra el mockup. Actualizar `docs/context/api/stamless-api-v1.md` (ambos repos) con el contrato de `testimonials_grid`.
+
+## 2026-09-11 — Página Servicios: `content.limit`/`content.order` explícitos en el bloque `services_grid` del seeder
+
+- **Pedido del Tech Lead**: "el catalogo de servicios cuando se configura en el seeder falta especificar la cantidad a mostrar de forma dinamica como 9 y el orden manual del catalogo" — el contenido semilla de `services_grid` en `upsertServiciosPage()` traía `content.limit: null` (sin tope, "todos los publicados") sin ejemplificar el campo admin-editable (`content.limit`/`content.order`, sección "Catálogo de servicios" en `PageResource.php`). Pasa a `content.limit: 9` (cantidad a mostrar) + `content.order: 'asc'` (orden MANUAL — el `sort_order` curado a mano en `ServiceResource`, no recencia, ver ADR-049).
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php` (`upsertServiciosPage()`, bloque `services_grid`).
+- **Siguiente:** correr `php artisan db:seed` y confirmar que `/servicios` sigue mostrando el catálogo completo (9 de 9, dado que hoy el total coincide con el límite).
+
+## 2026-09-11 — Fix real: CTA duplicado en la página Servicios ("¿Listo para transformar tu negocio?" apilado 2 veces)
+
+- **Bug reportado con captura**: "doble bloque en el contenido inicial" — la página `/servicios` mostraba el mismo banner CTA dos veces seguidas. Causa: al agregar (2026-09-10) "los demás bloques tienen que estar en el contenido inicial del seeder", se sembró un bloque `cta` explícito dentro de `upsertServiciosPage()` — sin recordar que ESE MISMO CTA ya se agrega automáticamente a TODAS las páginas públicas vía el bloque `footer` compartido (`appendFooterBlock()` → `upsertFooterPage()`, que lo tiene desde 2026-09-01). Este precedente ya estaba documentado en el propio archivo (comentario idéntico en `upsertHomePage()`/`upsertSobreCicaPage()`: "el CTA final... NO se agrega acá — ya viene incluido automáticamente vía el bloque `footer` compartido... agregarlo de nuevo acá lo duplicaría") — se pasó por alto al escribir la página Servicios.
+- **Fix**: se saca el bloque `cta` de `upsertServiciosPage()`. Como ya no necesitaba el link hacia "Contacto", se revierte también el parámetro `Page $contactoPage` que se le había agregado (y el reordenamiento de `$pages` en `run()` que eso forzó) — `upsertServiciosPage()` vuelve a su firma original (`Tenant $tenant` solo) y `servicios` vuelve a crearse junto a `casos-de-exito` en el mismo array literal, sin dependencias.
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php` (`run()`, `upsertServiciosPage()`).
+- **Siguiente:** correr `php artisan db:seed` y confirmar que la página `/servicios` ya muestra un solo banner CTA al pie.
+
+## 2026-09-11 — Página Servicios: fondo `cicagray-50` en el bloque `services_grid`, mismo color en el decorador del banner
+
+- **Pedido del Tech Lead**: "cicagray-50 es el background del bloque servicio y el mismo del decorador en el header" — `cicagray-50` = `#F6F6F6` (`--color-cicagray-50`, cica360/global.css). Se agrega `properties.background_type: 'solid'`/`background_color: '#F6F6F6'` al bloque `services_grid` de `upsertServiciosPage()`, y se cambia `decorator_bottom_color` del bloque `heading` de la misma página de `#ffffff` a `#F6F6F6` — el mismo color en ambos hace que la ola del banner se funda con el fondo del bloque de abajo en vez de cortar contra blanco.
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php` (`upsertServiciosPage()`: `properties` del bloque `heading` y del bloque `services_grid`).
+- **Siguiente:** correr `php artisan db:seed`. Confirmar visualmente que la transición banner→grid ya no muestra ninguna costura de color.
+
+## 2026-09-11 — Catálogo de Servicios reemplazado por el dataset REAL (9 servicios, imágenes dedicadas) — descarta el dataset de ejemplo de la 1ra vuelta
+
+- **Pedido del Tech Lead**, con 2 capturas: el árbol de `storage/app/public/media/` mostrando 9 archivos ya subidos (`cica360_media_service_*.webp`, uno por servicio) y una tabla Título/Descripción con el catálogo real de 9 servicios: "en el demo de contenidos el primero es Seguro financiero el titular correcto de todo ese contenido de ejemplo, pero el resto de servicios que deberian haber son estos... cambiar la data con 9 servicios... con sus respectivos contenidos segun el primer contenido de ejemplo".
+- **Qué se hizo**: `Cliente0ServicesSeeder.php` reescrito por completo — los 12 servicios de ejemplo de la 1ra vuelta (8 migrados + 4 inventados, con 6 imágenes genéricas reutilizadas cíclicamente) se reemplazan por los 9 reales: Seguridad Financiera, Seguro Financiero, Asesoría y Consultoría Estratégica, Asesoría Contable y Financiera, Asesoría Editorial Integral, Turismo y Asesoría Vacacional, Bienes Raíces e Inversión, Asesoramiento Legal Integral, Asesoría Notarial — título/subtítulo exactos de la tabla entregada, cada uno con SU PROPIA foto dedicada (ya no genéricas cíclicas). "Seguro Financiero" hereda el `content.intro` que en la 1ra vuelta vivía bajo "Seguros generales" (pólizas patrimoniales/RC) — el Tech Lead confirmó que ese contenido correspondía a este título, no al anterior. El resto de `intro` reutiliza el tono de los rubros que ya existían cuando el tema coincide, y agrega intro propio corto para los 3 rubros nuevos (editorial, turismo, notarial) extendiendo la descripción dada, sin inventar detalles no verificables. Se agrega un paso de PODA al final del seeder (`Service::whereNotIn('slug', $slugs)->delete()`) para que los 12 registros de la 1ra vuelta no queden huérfanos junto a los 9 reales.
+- **`Cliente0MediaSeeder.php`**: 9 entradas nuevas (`service_*`) registrando los archivos ya subidos por el Tech Lead a `storage/app/public/media/`.
+- **Efecto colateral esperado**: con exactamente 9 servicios (antes 12), el botón "Ver más servicios" de `ServicesGrid.astro` (cica360) no se muestra por ahora (`items.length > 9` deja de cumplirse) — comportamiento correcto y ya contemplado en el componente, no un bug; el catálogo real puede superar las 9 más adelante y el botón reaparece solo.
+- **Archivos/áreas:** `database/seeders/Cliente0ServicesSeeder.php` (reescrito), `database/seeders/Cliente0MediaSeeder.php` (9 entradas nuevas).
+- **Siguiente:** correr `php artisan db:seed` (o `db:seed --class=Cliente0MediaSeeder` seguido de `--class=Cliente0ServicesSeeder`) para que el catálogo real reemplace al de ejemplo. Confirmar que los 9 archivos `.webp` realmente están commiteados en `storage/app/public/media/` (no solo visibles en el árbol del editor) antes de sembrar. Pendiente confirmación visual del Tech Lead contra la tabla entregada.
+
+## 2026-09-10 — Corrección al seeder de la página Servicios: sin bloque `rich_text` intro, `services_grid` sin título
+
+- **Agente/autor:** Claude (genesis).
+- **Qué se hizo:** pedido del Tech Lead revisando el contenido inicial recién sembrado: "en seeder, en el contenido inicial el servicio no tienen el bloque de texto enriquecido y el bloque de servicios pero sin titulo de contenido" — el mockup real de "Servicios" no tiene ningún párrafo introductorio entre el banner y el grid (va directo del `heading` al catálogo), y el grid tampoco tiene un heading propio arriba (el banner superior ya cumple ese rol). Se saca por completo el bloque `rich_text` ("Qué ofrecemos") de `upsertServiciosPage()` y se quita `title: 'Nuestros servicios'` del bloque `services_grid` (queda solo `type`/`content`, sin `pretitle`/`title`/`subtitle` — `syncBlocks()` los default a `null` si no vienen seteados). `BlockHeading.astro` (cica360) ya está preparado para no renderizar nada cuando los 3 campos vienen `null`, así que no hizo falta tocar el frontend.
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php` (`upsertServiciosPage()`).
+- **Siguiente:** correr `php artisan db:seed` para que el cambio se refleje (bloque `rich_text` de una corrida anterior queda podado automáticamente por `syncBlocks()`, vía el `sort_order >= count($blocks)` al final del método). Confirmar visualmente que la página `/servicios` ya no muestra el párrafo ni el heading "Nuestros servicios" sobre el grid.
+
+## 2026-09-10 — `services_grid` resuelto en runtime contra la tabla `services` (ADR-049, cierra el pendiente de ADR-034)
+
+- **Agente/autor:** Claude (genesis).
+- **Qué se hizo:** pedido del Tech Lead, con mockup completo de la página "Servicios" (banner, grid 3×3 de cards con imagen/título/subtítulo/banderas de país/CTA, botón "MÁS SERVICIOS", banner CTA final): resolver el pendiente que ADR-034 había dejado abierto sobre `services_grid`. Se replicó 1:1 el patrón de `testimonials` (ADR-033): el bloque `services_grid` de `PageResource.php` pierde su `Repeater::make('content.items')` manual y los `TextInput::make('title')`/`TextInput::make('subtitle')` duplicados (ya cubiertos por `HeadingFieldset::make()`), reemplazado por una `Section` "Catálogo de servicios" (`content.limit` nullable — vacío = todos los publicados; `content.order` `asc`/`desc` sobre `sort_order`, no `created_at` como testimonios — un catálogo se cura a mano, no tiene noción de "más reciente") + un enlace único opcional (`LinkSchema::makeSingle()`, mismo patrón que `testimonials`/`cta`) + la Section de estilos ya existente. `ResolvesPublicLinks.php` gana la rama de resolución: query batched `Service::query()->published()->get()`, recorte/orden en memoria por bloque, cada item resuelto con la misma forma que `ServiceSummaryResource` (`uuid`/`slug`/`pretitle`/`title`/`subtitle`/`countries`/`image`) más `href` (`/servicios/{slug}`). Se creó `Cliente0ServicesSeeder.php` (12 servicios reales en la tabla `services` — los 8 que ya vivían inline en el bloque, migrados tal cual, más 4 nuevos tomados de rubros ya presentes en `Cliente0TestimonialsSeeder`, para superar el umbral de 9 y poder demostrar la paginación "Ver más servicios" de a 9 — reutiliza 6 imágenes genéricas ya sembradas, cíclicas). `upsertServiciosPage()` (`Cliente0ContentSeeder.php`) gana el parámetro `Page $contactoPage`, el bloque `services_grid` sembrado pasa a `content.limit: null, order: 'asc'` (catálogo completo), y se agrega un bloque `cta` final "¿Listo para transformar tu negocio?" (mismo CTA reutilizable que ya cierra Home/Sobre CICA) — el `run()` principal se reordenó para que `contacto` exista antes de llamar a `upsertServiciosPage()`.
+- **Archivos/áreas:** `app/Http/Concerns/ResolvesPublicLinks.php`, `app/Filament/Resources/PageResource.php` (bloque `services_grid`), `database/seeders/Cliente0ServicesSeeder.php` (nuevo), `database/seeders/Cliente0ContentSeeder.php` (`run()`, `upsertServiciosPage()`), `docs/context/DECISIONS.md` (ADR-049).
+- **Siguiente:** frontend (cica360) — rediseñar `ServicesGrid.astro` como grid estático (NO carrusel, el Tech Lead aclaró explícitamente "testimonials usa slides o sliders y eso no es el caso, aquí es modo grid") reusando `BlockHeading.astro` y la estructura de sección estándar de `Features`/`RichText`/`Logos`, con "Ver más servicios" revelando de a 9 100% client-side sobre datos ya horneados en build (sitio 100% estático, sin fetch en vivo). Sin PHP en este sandbox — pendiente `php artisan db:seed`, `vendor/bin/pint --dirty --format agent`, y confirmación visual del Tech Lead contra el mockup.
+
+## 2026-09-10 — Filament: `show_scroll_indicator` agregado al schema del bloque `features`
+
+- **Agente/autor:** Claude (cica360, extendido a genesis por necesidad del frontend).
+- **Qué se hizo:** pedido del Tech Lead en cica360: "no veo hasta ahora la flecha de invitacion a scrollear que ya usa otros bloques que ya hemos hecho" — al implementar el mismo patrón de `show_scroll_indicator` en `Features.astro` (mismo que `RichText.astro`/`Hero.astro`/`SliderResource`), se confirmó que el campo NO estaba declarado en el schema de Filament del bloque `features` — solo en `slider`/`hero`/`rich_text`. Se agregó `PropertiesSchema::make(['show_scroll_indicator'])` a la Section "Personalización de estilos" del bloque `features`. Campo 100% reusable (`PropertiesSchema.php`, `Forms\Components\Toggle` bindeado a `properties.show_scroll_indicator`, sin `visible()`/dependencias externas) — no requirió ningún setup adicional, solo agregar la llamada.
+- **Archivos/áreas:** `app/Filament/Resources/PageResource.php` (bloque `features`, `Section::make('Personalización de estilos')`, gana `PropertiesSchema::make(['show_scroll_indicator'])`).
+- **Siguiente:** sin `php` disponible en este sandbox, no se pudo correr `php -l`/tests — revisado manualmente contra los otros 3 call-sites existentes del mismo campo (patrón idéntico). Confirmar en el admin que el toggle aparece y funciona; activar el toggle para la página "Sobre CICA" (Misión/Visión/Valores) si se quiere la flecha visible ahí, per pedido del Tech Lead.
+
+## 2026-09-09 — Seeder: título/subtítulo del bloque `features` acortados (título 1 línea, subtítulo 2 líneas)
+
+- **Agente/autor:** Claude (cica360, extendido a genesis por el mismo seeder de contenido).
+- **Qué se hizo:** pedido del Tech Lead: "Cambiar titulo y subtitulo para que el titulo no pase de una linea y el subtitulo no pase de 2 lineas" — en `Features.astro` (cica360) este heading vive dentro de la sección pineada a `100vh` en mobile/tablet, así que la cantidad de líneas que ocupa el texto afecta el layout, no solo el estilo. Título baja de 35 a 19 caracteres ("La confianza se construye de cerca" → "Confianza de cerca"); subtítulo baja de 86 a 51 caracteres ("Con cercanía y transparencia genuinas, acompañamos tu crecimiento con compromiso real." → "Cercanía, transparencia y compromiso en cada paso."). Mismo enfoque persuasivo/PNL ya establecido, reforzando los mismos valores que listan las tarjetas de abajo (Cercanía/Transparencia/Compromiso, presentes en `content.items` "Valores" de este mismo bloque).
+- **Archivos/áreas:** `database/seeders/Cliente0ContentSeeder.php` (bloque `features` de `upsertSobreCicaPage()`: `title`/`subtitle`, comentario nuevo con esta 5ta vuelta documentada).
+- **Siguiente:** correr `php artisan db:seed` (o el seeder específico) para persistir el cambio en la base — no ejecutado en esta sesión (sin conexión a base de datos disponible acá). Confirmar visualmente en cica360 que el título entra en 1 línea y el subtítulo en 2 en todas las resoluciones del sitio.
+
+## 2026-09-09 — Reversión deliberada: se agrega pretitle/título/subtítulo al bloque `features` de "Sobre CICA" (Misión/Visión/Valores)
+
+- **Contexto**: el 2026-09-07 se había sacado el heading de este bloque a pedido explícito del Tech Lead ("en este diseño no se usa ningun heading" — ver entrada de más abajo), siguiendo fiel al Figma de referencia. Esa decisión sigue siendo correcta para el motivo por el que se tomó.
+- **Pedido nuevo, motivo distinto** (cica360, mismo día): en tablet/mobile, `Features.astro` pinea la sección a `100vh`/`100dvh` mientras dura el scroll horizontal del carousel — necesario por cómo funciona el pin de GSAP ScrollTrigger (ver PROGRESS.md de cica360, "el height:100vh era necesario, no cosmético"). Con las tarjetas centradas verticalmente en una sección de pantalla completa y sin heading, quedaba mucho espacio vacío arriba/abajo del carousel (capturas del Tech Lead en tablet/mobile). Pedido textual: "poner un mejor titulo y subtitulo un poco largos ahi para disimular un poco... tienen que ser bien persuasivos y marketeros, que no suene incoherente si no acorde a su identidad... aplicar PNL si es posible... que no sea un simple relleno si no que sea util y con proposito".
+- **Qué se hizo**: se agregan `pretitle`/`title`/`subtitle` al bloque `features` en `Cliente0ContentSeeder.php::upsertSobreCicaPage()` — copy persuasivo con técnicas de PNL (presuposiciones — "acompañamos... que buscan crecer con la certeza de", predicados sensoriales — "escuchamos primero, actuamos con claridad después"), voseo regional (consistente con el resto del sitio), y reforzando explícitamente los mismos VALORES que las 3 tarjetas listan abajo (transparencia, cercanía, compromiso) para que el heading no se sienta desconectado del contenido:
+  - `pretitle`: "Nuestra esencia"
+  - `title`: "La confianza se construye con cercanía, transparencia y resultados reales"
+  - `subtitle`: "En CICA acompañamos a personas y organizaciones que buscan crecer con la certeza de contar con un aliado genuino. Escuchamos primero, actuamos con claridad después, y sostenemos cada relación con la misma transparencia, cercanía y compromiso que nos definen."
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (bloque `features` de `upsertSobreCicaPage()`).
+- **Verificación**: balance de sintaxis (tokenizer Python) OK. Sin PHP disponible en este sandbox para `php -l`. **Pendiente**: correr `php artisan db:seed --class=Cliente0ContentSeeder` (o el seeder que corresponda) en un entorno con PHP/DB real, y confirmación visual del Tech Lead en tablet/mobile de que el heading efectivamente reduce la sensación de vacío.
+- **Siguiente**: si el Tech Lead pide ajustar el tono/largo del copy, es un cambio de texto puntual en el mismo array — no requiere tocar `Features.astro` (ya soporta pretitle/título/subtítulo condicionalmente desde el rediseño original).
+
+**CORRECCIÓN (2da vuelta, mismo día) — error real en vivo**: el Tech Lead corrió el seeder y reportó, con captura del error de Laravel: `QueryException`, "value too long for type character varying(255)" — `subtitle` de la tabla `blocks` es `varchar(255)` y el texto original (~265 caracteres) lo excedía. Feedback: "muy largo el titulo, tiene que ser mas corto y no estamos usando pretitulo". Fix:
+
+- Se saca `pretitle` por completo — consistente con el resto del seeder (`testimonials`/`logos` de esta misma página tampoco lo usan, no era una excepción a propósito).
+- `title`: de una oración larga (76 caracteres) a "La confianza se construye de cerca" (34 caracteres) — más en línea con el largo de otros títulos de bloque en este archivo ("Casos de éxito", "Empresas con las que trabajamos").
+- `subtitle`: de ~265 a 185 caracteres — "Acompañamos a personas y organizaciones que buscan crecer, con la certeza de contar con un aliado genuino: escuchamos primero y actuamos con transparencia, cercanía y compromiso reales." Con margen real bajo el límite de 255, no "que entre por poco".
+- Se mantiene el mismo espíritu (PNL, voseo, refuerzo de los valores Transparencia/Cercanía/Compromiso que listan las tarjetas de abajo), solo más compacto.
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php`. **Verificación**: balance de sintaxis OK. Pendiente re-correr `db:seed` y confirmar que ya no tira el `QueryException`.
+
+**CORRECCIÓN (3ra vuelta, mismo día) — ajuste de estilo, no de largo técnico**: el subtítulo de la 2da vuelta (185 caracteres, ya entraba en la columna) tenía forma de descripción — dos puntos + enumeración ("...genuino: escuchamos primero y actuamos con..."). El Tech Lead marcó el problema real: "recuerda que los subtitulos tampoco deberian ser una descripcion, son subtitulos, largo pero no muy largos". Se reemplaza por una sola oración corta (58 caracteres): "Cercanía real, transparencia total y compromiso genuino." — alineado al largo típico de los demás subtítulos de este seeder (55-60 caracteres). `title` sin cambios en esta vuelta. **Archivos**: `database/seeders/Cliente0ContentSeeder.php`. **Verificación**: balance OK. Pendiente `db:seed` + confirmación visual.
+
+**CORRECCIÓN (4ta vuelta, mismo día, con captura en vivo tras el `db:seed`)**: "un poco mas de texto en el subtitulo creo que exageraste" — la 3ra vuelta (58 caracteres) se pasó de corta en la dirección contraria a la 2da. Se sube a 86 caracteres, punto medio entre ambas correcciones: "Con cercanía y transparencia genuinas, acompañamos tu crecimiento con compromiso real." — una sola oración fluida, sin dos puntos ni enumeración, más larga que el resto de los subtítulos del seeder pero sin sonar a descripción. `title` sin cambios. **Archivos**: `database/seeders/Cliente0ContentSeeder.php`. **Verificación**: balance OK. Pendiente `db:seed` + confirmación visual.
+
+## 2026-09-07 — Corrección: `features.content_format` (por item) → `properties.list_style` (por bloque) + renombre — amplía ADR-047
+
+- **Pedido en vivo del Tech Lead**, revisando el formulario resultante del rediseño anterior (misma fecha, ver entrada de abajo): "El nombre no es el adecuado 'Contenido adicional' si no deberia ser Estilo, Formato, presentacion, algo asi, y tambein es mejor pasar a properties como parte del estilo si desea las caracteristicas tipo grid, list o ninguna" + "otra cosa los campos de las properties sus opciones o selectores como estilo de tarjeta, me imagino que estan en un ENUM por que crearlas hardcode generaran problemas despues, cuidar eso."
+- **Qué se hizo**:
+  1. `app/Enums/FeatureContentFormatEnum.php` eliminado; reemplazado por `app/Enums/FeatureListStyleEnum.php` (mismo backing string `none|list|grid`, nombre y labels más claros). PSR-4 obliga archivo nuevo + borrado del viejo (no es un rename in-place de clase).
+  2. `PropertiesSchema.php`: nuevo componente reusable `'list_style'` (Select, `FeatureListStyleEnum::class`, default `None`), con su `use` import correspondiente.
+  3. `PageResource.php` (bloque `features`): se quita el `Select::make('content_format')` por item y su `use App\Enums\FeatureContentFormatEnum` (clase ya no existe — sin este cambio, fatal error `Class "App\Enums\FeatureContentFormatEnum" not found` al abrir/guardar la página, confirmado en `storage/logs/laravel.log`). El `TagsInput::make('items')` queda siempre visible (antes su `->visible()` dependía del selector eliminado). `list_style` se agrega a la `Section` "Personalización de estilos" (`PropertiesSchema::make([...])`, junto a `feature_style`/`card_rounded`).
+  4. `Cliente0ContentSeeder.php`: se quita `content_format` de los 3 items (Misión/Visión/Valores); se agrega `'list_style' => 'list'` a `properties` del bloque (Valores es el único item con `items[]` cargado, así que es el único que se ve afectado).
+  5. `Features.astro` (cica360): `FeatureItem.content_format` eliminado de la interfaz; `FeaturesProperties.list_style` agregado; la lista/grid de puntos ahora se decide con `properties.list_style` (nivel bloque) en vez de `item.content_format` (nivel item) — cada item sigue decidiendo implícitamente si tiene algo que mostrar según si trae `items[]`.
+- **Auditoría de enums (2do pedido)**: confirmado — `feature_style` (`FeatureCardStyleEnum`) y `list_style` (`FeatureListStyleEnum`), los 2 selectores nuevos de este bloque, usan enums backed con `HasLabel`, no arrays hardcodeados. **Nota honesta pendiente de decisión del Tech Lead**: varios campos PREEXISTENTES de `PropertiesSchema.php` (no tocados en este bloque ni en el anterior) siguen con `->options([...])` hardcodeado en vez de enum: `background_type`, `content_width`, `padding_y`, `text_align`, `link_radius`, `link_size`, `gradient_direction`, `media_radius`. Es deuda preexistente, no introducida por `features` — queda pendiente confirmar si se quiere ese refactor más amplio como tarea aparte.
+- **Archivos**: `app/Enums/FeatureListStyleEnum.php` (nuevo, reemplaza `FeatureContentFormatEnum.php`, eliminado), `app/Filament/Schemas/PropertiesSchema.php`, `app/Filament/Resources/PageResource.php`, `database/seeders/Cliente0ContentSeeder.php`. Del lado cica360: `src/components/blocks/Features.astro`.
+- **Verificación**: balance de sintaxis (tokenizer Python) OK en los 4 archivos PHP + `Features.astro`. Sin runtime PHP/Node en este sandbox — pendiente confirmación del Tech Lead corriendo Studio.
+- **Siguiente**: confirmar con el Tech Lead si quiere el refactor de los 8 campos hardcodeados preexistentes a enum (fuera de alcance de este cambio puntual).
+- **Corrección de copy (mismo día, feedback posterior del Tech Lead)**: el `helperText` del `TagsInput::make('items')` decía "El formato (lista/grid/ninguno) se elige abajo en 'Personalización de estilos'" — referencia a la ubicación interna del formulario, no útil para quien está cargando contenido. Regla recordada explícitamente: los `helperText` deben pensarse en UX para el usuario final (qué hace el campo, qué efecto tiene en el resultado), no como instrucciones de navegación de la interfaz. Reemplazado por: "Puntos breves para esta característica (uno por Enter o coma). Ej: Profesionalismo, Empatía, Transparencia. Si lo dejás vacío, la tarjeta muestra solo el campo Descripción."
+- **Confirmación del diseño (Tech Lead, mismo día)**: "el campo 'Ítems de la lista' me gusta como está por si alguien quiere unas una lista de subcaracteristicas, y que el selector de Estilo de lista en properties quede ahi" — confirma explícitamente el diseño final de ADR-048 sin cambios: `content.items[].items` (por item, `TagsInput`, uso libre para sub-características) queda como está, y `properties.list_style` (por bloque, controla el formato de presentación) queda en "Personalización de estilos". Sin cambios de código, solo se documenta la confirmación.
+- **Fix real de contenido (Tech Lead, mismo día)**: "en este diseño no se usa ningun heading, no te diste cuenta?" — el `title: 'Misión, visión y valores'` que se le había agregado al bloque `features` de "Sobre CICA" NO estaba en la captura de referencia (Figma "Desktop - ABOUT-US"): el diseño va directo del párrafo introductorio a las 3 tarjetas, sin heading de sección entre medio. Se agregó sin base real; se saca. Sirve de paso como caso de prueba real del fix de espaciado del mismo día en `Features.astro` (cica360): sin ningún campo de heading, el cluster no se renderiza y el grid arranca sin gap fantasma. Archivo: `database/seeders/Cliente0ContentSeeder.php`.
+- **Fix real (Tech Lead, mismo día)**: "te diste cuenta que falta el tipo de fondo color?" — el seeder tenía `background_type: 'solid'` sin `background_color` cargado. `resolveBackgroundStyle()` (cica360) devuelve `''` sin un color base, así que la sección quedaba transparente pese a decir "Sólido". Se agrega `background_color: '#F6F6F6'` (mismo tono off-white que usan los `rich_text` "¿Qué hacemos?" del Home vía `text_background_color`, por consistencia) al bloque `features` de `upsertSobreCicaPage()`. Valor razonable, pendiente confirmación visual del Tech Lead. Archivo: `database/seeders/Cliente0ContentSeeder.php`.
+
+## 2026-09-07 — "Sobre CICA": agregados los bloques `testimonials` ("Casos de éxito") y `logos` ("Empresas con las que trabajamos"), clonados de la home
+
+- **Pedido en vivo del Tech Lead**, con captura de referencia (Figma "Desktop - ABOUT-US") y captura del panel "Editar Página" mostrando solo 4 secciones (Heading, Texto Enriquecido, Características/Grid, Footer): "hay que aplicr los bloques necesarios... falta los bloques Testimonios y logos / Socios con todo lo que tienen en home, practicamente clonarlos antes del footer".
+- **Qué se hizo**: se agregan 2 bloques nuevos a `upsertSobreCicaPage()`, entre `features` y el `footer` (auto-agregado por `appendFooterBlock()`):
+  - `testimonials` — clon exacto de la config de `upsertHomePage()` (`content: {limit: 5, order: desc}`, `properties` con los colores `cicagreen-500`/`400` del sistema de diseño, link "Más casos de éxito" → página `casos-de-exito`). Mismo patrón visual que la captura (3 tarjetas + botón "MÁS CASOS DE ÉXITO").
+  - `logos` — mismos 10 items + mismo filtro grayscale/opacidad que la home (mismo carousel, misma data). `title`/`subtitle` SÍ cambian respecto a la home: se usa el texto tal cual aparece en la captura de "Sobre CICA" ("Empresas con las que trabajamos" / "Soluciones integrales diseñadas para impulsar tu negocio"), distinto al subtítulo que usa la home para el mismo bloque.
+- **Nota importante — el CTA NO se agregó por separado**: la captura de referencia muestra un bloque "¿Listo para transformar tu negocio?" justo antes del footer, pero ESE bloque ya viene incluido automáticamente en toda página vía el bloque `footer` compartido (`appendFooterBlock()` → `upsertFooterPage()`, que tiene ese CTA sembrado desde 2026-09-01) — agregarlo de nuevo en `upsertSobreCicaPage()` lo hubiera duplicado. Por eso la lista de "bloques faltantes" reportada acá son solo 2 (Testimonials, Logos), no 3.
+- **Cambio de orden en `run()`**: el bloque `testimonials` nuevo necesita el id de la página `casos-de-exito` para el link "Más casos de éxito" (mismo patrón `$this->link('...', 'page', $pages['casos-de-exito']->id, ...)` que usa `upsertHomePage()`). Como antes `sobre-cica` se creaba ANTES que `casos-de-exito` en el array `$pages` de `run()`, se reordenó: `servicios`/`casos-de-exito` (sin dependencias entre sí) pasan a crearse primero, `sobre-cica` ahora recibe `$pages` como 2do parámetro (mismo patrón que ya usan `upsertFooterPage()`/`upsertHomePage()`).
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (`run()` reordenado, `upsertSobreCicaPage()` con nueva firma `(Tenant $tenant, array $pages)` + 2 bloques nuevos).
+- **Verificación**: balance de sintaxis (tokenizer Python) — OK. Sin runtime PHP en este sandbox — pendiente `php artisan db:seed` + confirmación visual del Tech Lead (orden de secciones: Heading → Texto Enriquecido → Características → Casos de éxito → Empresas → footer con CTA).
+- **Pendiente sin resolver**: el Tech Lead también mencionó "por ejemplo Texto enriquecido no hay" en el mismo pedido — pero el bloque `rich_text` YA existe como 2do bloque de esta página (ver captura del panel "Editar Página": "Texto Enriquecido 2"). No se identificó ningún gap real asociado a ese comentario puntual; se documenta acá por si el Tech Lead se refería a otra página o a un criterio distinto que no quedó claro.
+
+## 2026-09-07 — Rediseño completo del bloque `features` (Filament + seeder + frontend) — ver ADR-047
+
+- **Pedido en vivo del Tech Lead** (2 capturas: mockup real "Misión/Visión/Valores" con foto real, y árbol de archivos con las 3 imágenes ya subidas a `storage/app/public/media/`): sembrar el contenido real, y aplicar UX completa al formulario del bloque — imagen a la izquierda/ícono+título+descripción a la derecha por item (ambos opcionales), selector nuevo por item (ninguno/lista/grid), properties de fondo unificadas (solid/gradient/image, reusando los componentes ya existentes de `PropertiesSchema`), TODAS las properties opcionales, y 2 properties nuevas específicas del bloque: `feature_style` (simple/formas/tarjeta sin sombra/**tarjeta con sombra**, esta última la del diseño) y, en un mensaje inmediato posterior, `card_rounded` ("otra property especifica para este tipo de bloque sería el campo de rounded activo"). También preguntó explícitamente si se estaba usando el MCP de Laravel Boost.
+- **Sobre Laravel Boost**: el paquete está instalado en el proyecto (`vendor/laravel/boost`), pero su servidor MCP no está conectado a esta sesión de Cowork — no aparece en las herramientas disponibles. Se trabajó vía edición directa de archivos + verificación de sintaxis con un tokenizer Python (sin runtime PHP en este sandbox), siguiendo el espíritu de las guías de Boost igual (convenciones del repo, Enums PHP, Filament 5 idiomático) sin poder usar sus herramientas (`search-docs`, `database-schema`, artisan interactivo, etc.).
+- **Ver detalle completo, incluyendo un bug latente encontrado (no de este cambio) en `cta`/`colophon`**: ADR-047 en `DECISIONS.md`.
+- **Archivos**: `app/Enums/FeatureCardStyleEnum.php` (nuevo), `app/Enums/FeatureContentFormatEnum.php` (nuevo), `app/Filament/Schemas/PropertiesSchema.php`, `app/Filament/Resources/PageResource.php`, `app/Http/Concerns/ResolvesPublicLinks.php`, `database/seeders/Cliente0MediaSeeder.php`, `database/seeders/Cliente0ContentSeeder.php`. Del lado cica360: `src/components/blocks/Features.astro` (reescrito completo — ver PROGRESS.md de cica360, mismo día, incluye el fix real de `item.subtitle`→`item.description`).
+- **Verificación**: balance de sintaxis (tokenizer Python string/comment-aware) — OK en los 6 archivos PHP tocados. Sin runtime PHP/Node en este sandbox — pendiente `php artisan db:seed` + `npm run dev`/`astro build` y confirmación visual completa del Tech Lead.
+- **Siguiente**: auditar/corregir el bug latente de `cta`/`colophon` (`background_image_id` sin prefijo `content.`, nunca se guarda) en un cambio aparte, no mezclado con este. Si más adelante se instala el set de íconos Heroicons (`@iconify-json/heroicons`) en cica360, mapear `icon` a un ícono real en `Features.astro` (hoy usa un avatar con inicial como fallback).
+
+## 2026-09-06 — "Sobre CICA": 2do bloque reemplazado por `rich_text` simple sin heading (con captura de referencia)
+
+- **Pedido en vivo del Tech Lead** (captura: párrafo centrado gris, sin título, con el cierre en negrita "asesorar con compromiso, transparencia y visión estratégica."): reemplazar el 2do bloque de la página `sobre-cica` por un `rich_text` simple con el texto exacto que pasó ("En CICA creemos que cada persona, familia, emprendimiento o empresa tiene su propio camino. Por eso ofrecemos un enfoque integral, cercano y profesional..."). Explícito: "es sencillo no tiene heading, solo description", "considera el mismo padding de los demas bloques que hicimos en el home para que esté alineado", "no necesita decorator", y "el texto podria mejorarlo a lo uruguayo, pero sin cambiar el significado o el enfoque".
+- **Fix**: se reemplaza el bloque `rich_text` anterior ("Quiénes somos", con `title`, `content_width: narrow`, `padding_y: md` y decorador inferior tipo onda) por uno nuevo:
+  - Sin `title`/`pretitle`/`subtitle` — se omiten esas 3 keys directamente (no hay flag "ocultar heading"; `RichText.astro` ya renderiza cada uno condicionalmente solo si `block.title`/`block.pretitle`/`block.subtitle` tienen valor, así que no declararlos alcanza).
+  - Sin `decorator_top`/`decorator_bottom` — se dejan de declarar esas properties (mismo criterio que el bloque introductorio del Home, que tampoco las trae).
+  - `content_width: 'boxed'` + `padding_y: 'lg'` (antes `narrow`/`md`) — mismos 2 valores que usa el `rich_text` introductorio del Home (el que sigue al Hero, `upsertHomePage()`), para que el ancho de columna y el ritmo vertical queden alineados con "los demás bloques que hicimos en el home", en vez de un tercer valor sin relación.
+  - Copy: mismo significado/enfoque del texto pasado por el Tech Lead, con un giro leve a voseo rioplatense en 2ª persona ("te ofrecemos", "tus necesidades", "te acompaña", "asesorarte") — mismo criterio ya usado en los heading de páginas internas (ver "Contactame"), sin agregar ni quitar ningún concepto y en el mismo orden. El cierre queda en `<strong>` para reproducir el énfasis en negrita de la captura.
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (`upsertSobreCicaPage()`).
+- **Verificación**: balance de sintaxis (tokenizer Python string/comment-aware) — OK sobre el archivo completo. Sin runtime PHP en este sandbox — pendiente `db:seed` + confirmación visual del Tech Lead.
+- **Siguiente**: ninguno.
+
+## 2026-09-06 — Título de Servicios y Casos de Éxito revertido al corto del diseño (subtítulos quedan con voseo)
+
+- **Contexto**: la entrada de abajo (mismo día) reescribió título Y subtítulo del bloque `heading` de las 3 páginas nuevas con voseo rioplatense. Tras ver capturas a 500px y a 375px (mobile real), el Tech Lead reportó: "no son muy largos los titulos esa resolucion es de 500 en navegador pero en mobile de 375px (las 2 ultimas capturas) se formará 2 lineas" — y resolvió: "pero los titulos son muy largos, acortar o dejarlo como estaba en el diseño, solo el contactame que suena mas argento" + aclaración inmediata: "los subtitulos dejalos asi".
+- **Fix**: se revierte SOLO el `title` del bloque `heading` en 2 de las 3 páginas (Servicios y Casos de Éxito) a la versión corta original del diseño; "Contactame" queda como la única excepción con tono argento, tal como se pidió explícitamente. Los `subtitle` de las 3 páginas NO se tocan — quedan con el voseo sembrado en la entrada de abajo.
+  - Servicios: "Descubrí nuestros servicios" → **"Servicios"** (subtítulo sin cambios: "Te acompañamos en cada etapa de tu proyecto").
+  - Casos de Éxito: "Conocé nuestros casos de éxito" → **"Casos de éxito"** (subtítulo sin cambios: "Historias reales de quienes ya confiaron en nosotros").
+  - Contacto: sin cambios — "Contactame" / "Contanos en qué podemos ayudarte" se mantienen tal cual (es la excepción aprobada).
+- **Nota**: el ajuste de leading/tamaño del título y subtítulo en mobile (375px) que también pidió el Tech Lead en el mismo mensaje ("el subtitulo si puede formar 2 lineas pero el leading y tamaño ajustar en mobile") es un cambio de CSS en `Heading.astro` — ver `docs/context/PROGRESS.md` de cica360, mismo día, para el detalle (14ta vuelta: `leading-tight` en título, `text-base leading-snug sm:text-lg sm:leading-normal` en subtítulo).
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (`upsertServiciosPage()`, `upsertCasosDeExitoPage()`).
+- **Verificación**: balance de sintaxis (tokenizer Python string/comment-aware) — OK sobre el archivo completo. Sin runtime PHP en este sandbox — pendiente `db:seed` + confirmación visual/de tono del Tech Lead.
+- **Siguiente**: ninguno.
+
+## 2026-09-06 — Título/subtítulo de los 3 bloques `heading` nuevos con voseo rioplatense
+
+- **Pedido en vivo del Tech Lead**: "los titulos o subtitulos del hearings que sean mas uruguayos que es parecido al lexico argento" — con ejemplo puntual: "por ejemplo en contacto que diga 'Contactame'".
+- **Fix**: se reescribe el título/subtítulo del BLOQUE `heading` (no el título/subtítulo de la `Page` en `upsertPage()`, que queda neutro para SEO/listados) en las 3 páginas sembradas en la entrada de abajo, con voseo e imperativos rioplatenses:
+  - Contacto: "Contacto" → **"Contactame"** / "Conversemos sobre tu próximo paso" → **"Contanos en qué podemos ayudarte"**.
+  - Servicios: "Servicios" → **"Descubrí nuestros servicios"** / "Soluciones integrales para cada etapa de tu proyecto" → **"Te acompañamos en cada etapa de tu proyecto"**.
+  - Casos de Éxito: "Casos de éxito" → **"Conocé nuestros casos de éxito"** / "Historias reales de clientes que confiaron en nosotros" → **"Historias reales de quienes ya confiaron en nosotros"**.
+- **No se tocó**: el eslogan compartido "Conectamos conocimientos, potenciamos decisiones." (usado en 4 lugares del seeder — Hero, footer, "Sobre CICA", una card — ver grep) por ser tagline de marca transversal, no copy propio de un bloque puntual; tampoco los títulos/subtítulos de `upsertPage()` (esos alimentan SEO/breadcrumbs/listados, y divergir el banner del bloque de esos valores es intencional, no un descuido).
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (`upsertContactoPage()`, `upsertServiciosPage()`, `upsertCasosDeExitoPage()`).
+- **Verificación**: balance de sintaxis (tokenizer Python string/comment-aware) — OK sobre el archivo completo. Sin runtime PHP en este sandbox — pendiente `db:seed` + confirmación visual/de tono del Tech Lead.
+- **Siguiente**: ninguno.
+
+## 2026-09-06 — Bloque `heading` replicado a Contacto, Servicios y Casos de Éxito (mismo patrón que "Sobre CICA")
+
+- **Pedido en vivo del Tech Lead**: "lo mismo generar en seeder el contenido inicial, con el primer bloque heading para las paginas internas de servicios, casos de exito, contatos".
+- **Qué se hizo**: se agrega un bloque `heading` como PRIMER bloque de `upsertContactoPage()`, `upsertServiciosPage()` y `upsertCasosDeExitoPage()` — mismo patrón/properties que el ya seteado en `upsertSobreCicaPage()` (`background_type: image`, `overlay_color: #2D2C4D`, `overlay_opacity: 90`, `decorator_bottom: wave` blanco, `title_alignment: center`).
+- **Decisiones sin diseño propio para estas 3 páginas** (a diferencia de `sobre-cica`, que sí tenía `ABOUT.pdf` de referencia): se reutilizan las MISMAS 3 imágenes de encabezado ya sembradas (`header_desktop/tablet/mobile`, `Cliente0MediaSeeder`) como banner genérico compartido entre páginas internas — no se generaron fotos nuevas por página. Título/subtítulo del bloque son idénticos a los que cada página ya recibía en su propio `upsertPage()` (no se inventó copy nuevo): Contacto → "Contacto"/"Conversemos sobre tu próximo paso"; Servicios → "Servicios"/"Soluciones integrales para cada etapa de tu proyecto"; Casos de Éxito → "Casos de éxito"/"Historias reales de clientes que confiaron en nosotros".
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (`upsertContactoPage()`, `upsertServiciosPage()`, `upsertCasosDeExitoPage()`).
+- **Verificación**: balance de sintaxis (tokenizer Python string/comment-aware) — OK sobre el archivo completo. Sin runtime PHP en este sandbox — pendiente `php artisan db:seed` + confirmación visual del Tech Lead en las 3 páginas.
+- **Siguiente**: si más adelante aparecen imágenes de encabezado propias para alguna de estas páginas (no la genérica compartida), actualizar `content.image_*_id` de ese bloque puntual.
+
+## 2026-09-06 — Bloque `heading` de "Sobre CICA": `overlay_opacity` default sembrado en 90 (no 100)
+
+- **Pedido en vivo del Tech Lead** (captura del panel de Filament, campos "Color del overlay / filtro" y "Opacidad del overlay" con el slider en `90`): "el gradiente configurado en el seer que no sea al 100% que se regule al 90% inicial default".
+- **Fix**: `overlay_opacity` en `upsertSobreCicaPage()` pasa de `100` a `90` — deja un resquicio mínimo de transparencia incluso en el tramo "sólido" (0-35%) del degradado, en vez del 100% de intensidad literal del spec de Figma.
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (properties del bloque `heading`).
+- **Siguiente**: correr `php artisan db:seed` de nuevo para que `overlay_opacity: 90` llegue a la base.
+
+## 2026-09-06 — Bloque `heading` de "Sobre CICA": `overlay_opacity` revertido de 40 a 100 (el fix real era de altura, no de intensidad)
+
+- **Contexto**: la entrada de abajo (mismo día) bajó `overlay_opacity` de 100 a 40 pensando que la intensidad era el problema. El Tech Lead aclaró después el propósito real del degradado: "esto es para que en la parte de 100% quedará detras del navbar" — el tramo sólido (0%-35%) no está pensado para verse, debe quedar oculto detrás del `<header>` (`position: fixed`).
+- **Causa real**: el problema nunca fue la intensidad del color — era que el overlay en cica360 (`Heading.astro`) usaba `inset-0` (degradado a lo largo de TODA la sección, varios cientos de px), mucho más alto que el navbar real (~88px), así que gran parte del tramo sólido quedaba visible por debajo del navbar en vez de oculto detrás suyo.
+- **Fix**: `overlay_opacity` vuelve a `100` (valor literal del spec de Figma, sin atenuar) — el fix real se hizo del lado de cica360, dándole al overlay una altura fija (`h-64`, 256px) calculada contra el alto real del navbar (`pt-7` + `data-glass-bar` `h-[60px]` ≈ 88px en reposo), no proporcional a la sección completa. Ver `docs/context/PROGRESS.md` de cica360, mismo día, para el detalle completo del cálculo.
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (properties del bloque `heading` en `upsertSobreCicaPage()`).
+- **Siguiente**: correr `php artisan db:seed` de nuevo para que `overlay_opacity: 100` llegue a la base, y confirmar visualmente que el tramo sólido ya no asoma por debajo del navbar.
+
+## 2026-09-06 — Bloque `heading` de "Sobre CICA": `overlay_opacity` bajado de 100 a 40 (se veía "exagerado" en vivo)
+
+- **Pedido en vivo del Tech Lead** (2 capturas del resultado en vivo vs. la referencia de Figma, ya con el overlay renderizando por primera vez tras el `db:seed`): "creo que hemos exagerado por que se ve asi, en la segunda captura esta la espectativa".
+- **Causa real**: con `overlay_opacity: 100`, la zona "sólida" del degradado (0-35% de la sección, ver `Heading.astro`) tapaba la imagen de fondo casi por completo — resultado: un lavado parejo/oscuro en toda la franja superior, en vez del velo sutil de la referencia (donde la foto se ve vívida, con solo un oscurecimiento leve detrás del título).
+- **Fix**: `overlay_opacity` baja de `100` a `40` en `upsertSobreCicaPage()` — deja pasar la imagen de fondo incluso en la zona "sólida" del degradado. El color (`#2D2C4D`) y los stops porcentuales (0%/35%/100%) del degradado en sí no cambian, solo la intensidad general.
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (properties del bloque `heading` en `upsertSobreCicaPage()`).
+- **Siguiente**: correr `php artisan db:seed` de nuevo para que el nuevo valor llegue a la base, y confirmar visualmente si `40` ya calza con la referencia o necesita otro ajuste — es un valor estimado a partir de la comparación visual, no medido pixel a pixel contra el archivo de Figma.
+
+## 2026-09-06 — Bloque `heading` de "Sobre CICA": sembrado `overlay_color`/`overlay_opacity` (faltaban por completo)
+
+- **Contexto**: el Tech Lead compartió el spec exacto de Figma para una capa de degradado intermedia entre la imagen de fondo y el texto del banner "Sobre CICA" (`Heading.astro`, cica360). El componente frontend ya tenía el código del degradado implementado (`overlay_color`/`overlay_opacity` → `linear-gradient` + `color-mix()`, ver `docs/context/HOME_INTEGRATION.md` de cica360), pero el Tech Lead reportó que "no aparece esa capa".
+- **Causa real**: el bloque `heading` sembrado en `upsertSobreCicaPage()` (`Cliente0ContentSeeder.php`) nunca tuvo `overlay_color`/`overlay_opacity` en sus `properties` — solo `background_type`, `decorator_bottom`, `decorator_bottom_color` y `title_alignment`. En el frontend, `overlayOpacity` cae a 0 por default (`properties.overlay_opacity ?? 0`) y la condición `overlayOpacity > 0 && properties.overlay_color` fallaba en silencio: el código estaba bien, pero sin datos sembrados nunca se ejecutaba. El campo SÍ existe en el schema de Filament (`ColorPicker`/`Slider` en `PageResource.php`, bloque `heading`) — el gap era solo de dato sembrado, no de schema.
+- **Fix**: se agregan `overlay_color: '#2D2C4D'` y `overlay_opacity: 100` a las `properties` del bloque `heading` en `upsertSobreCicaPage()` — mismo color sólido que especifica el spec de Figma (0% a 35% de la franja, degradando a transparente hacia el 100%; el degradado en sí ya está resuelto en el componente frontend, `overlay_opacity: 100` solo multiplica la intensidad completa del degradado, no re-atenúa el fade).
+- **Archivos**: `database/seeders/Cliente0ContentSeeder.php` (properties del bloque `heading` en `upsertSobreCicaPage()`).
+- **Cruce con cica360**: ver `docs/context/PROGRESS.md` de cica360, mismo día — 2 vueltas adicionales del lado frontend ajustando cómo se renderiza ese degradado (de banda fija de 176px a `inset-0` proporcional al alto real de la sección).
+- **Siguiente**: correr `php artisan db:seed` (o el seeder específico) para que el dato llegue a la base — sin PHP en este sandbox, pendiente que lo ejecute el Tech Lead.
+
+## 2026-09-05 — Heading de "Sobre CICA" sembrado (contenido + imágenes + decorador) + fix real: mismatch `'waves'`/`'wave'` en el bloque `heading`
+
+- **Pedido en vivo del Tech Lead** (capturas: árbol de archivos con `cica360_media_header-desktop/tablet/mobile.webp` ya en `storage/app/public/media/`, y el modal "Editar Página" con un bloque "Heading (Sección de Títulos)" ya agregado a mano en Studio con título/subtítulo cargados): sembrar en el SEEDER el contenido inicial del heading de la página `sobre-cica` (título, subtítulo, las 3 imágenes) con `background_type: imagen` y decorador inferior tipo onda en blanco. Referencia visual: `cica360/docs/UX-UI-design/ABOUT.pdf`.
+- **Media**: `Cliente0MediaSeeder.php` — 3 entradas nuevas (`header_desktop`/`header_tablet`/`header_mobile`) apuntando a los 3 archivos ya commiteados, mismo patrón que el resto del catálogo (`firstOrCreate` por `tenant_id`+`path`).
+- **Fix real descubierto en el camino**: el bloque `heading` en `PageResource.php` tenía sus PROPIOS `Select` de `decorator_top`/`decorator_bottom` con opciones hardcodeadas a mano (`'none'/'curve'/'waves'/'triangle'/'diagonal'`) en vez de reusar `PropertiesSchema::makeComponents(['decorator_top', ...])` como ya hacía `rich_text`. El valor `'waves'` (plural) NUNCA coincidía con `DecoratorShapeEnum::Wave->value` (`'wave'`, singular) que consume el frontend (`DecoratorShape` en `cica360/src/lib/types.ts`) — elegir "Ondas" en Studio guardaba un valor que el sitio público nunca iba a reconocer, silenciosamente (sin error, el decorador simplemente no aparecería). Se reemplazan los 4 componentes ad-hoc por los canónicos compartidos — mismas opciones, mismo enum, ya sin el mismatch.
+- **Contenido**: `upsertSobreCicaPage()` gana un nuevo primer bloque `BlockTypeEnum::Heading` — `title: 'Sobre CICA'`, `subtitle: 'Conectamos conocimientos, potenciamos decisiones.'` (sin `pretitle`, el título grande del PDF ES el título del bloque), `content.image_desktop_id/image_tablet_id/image_mobile_id` resueltos vía `Cliente0MediaSeeder::mediaId()`, `properties.background_type: 'image'`, `properties.decorator_bottom: 'wave'` (ya con el valor correcto) + `decorator_bottom_color: '#ffffff'`, `title_alignment: 'center'`.
+- **Archivos**: `database/seeders/Cliente0MediaSeeder.php`, `database/seeders/Cliente0ContentSeeder.php`, `app/Filament/Resources/PageResource.php`.
+- **Verificación**: balance de sintaxis con un tokenizer Python que ahora respeta strings/comentarios PHP (el checker naive anterior daba falsos positivos con clases Tailwind arbitrarias tipo `w-[calc(...)]` dentro de un bloque `[...]` — corregido para esta y futuras verificaciones) — OK en los 3 archivos. Sin runtime PHP en este sandbox — pendiente `php artisan db:seed` (o `migrate:fresh --seed`) y confirmación visual del Tech Lead.
+- **Siguiente**: ver entrada de cica360 (mismo día) — el stub de `Heading.astro` no consumía ninguno de estos campos, así que también se reconstruyó para que esto se vea reflejado en el sitio.
+
+## 2026-09-05 — Fix real: picker de "Añadir bloque" (`Builder`) perdía las primeras opciones cuando la lista flipeaba hacia arriba
+
+- **Pedido en vivo del Tech Lead** (3 capturas del modal "Editar Página", tab Contenidos): con ~9-11 tipos de bloque disponibles, al abrir "Añadir bloque" con el botón cerca del borde inferior del modal, el dropdown se abre hacia arriba y las primeras opciones de la lista (arriba del todo, ej. "Imagen única", "Llamado a la Acción") quedan invisibles/inaccesibles, sin scroll para llegar a ellas. Se pidió elegir entre 2 soluciones: (1) duplicar el botón "Añadir bloque" arriba y abajo de la lista de secciones, o (2) limitar el alto del picker (~400px) con scroll interno.
+- **Investigación** (grounded en el código real, no solo por lectura del comportamiento): el `Builder` (`Filament\Forms\Components\Builder`, usado en `PageResource.php` sin ninguna customización propia todavía) usa el picker 100% stock de Filament 5. `vendor/filament/forms/resources/views/components/builder/block-picker.blade.php` envuelve `<x-filament::dropdown>` (paquete `filament-support`), que YA soporta flip/shift automático (`x-float`, floating-ui) y YA tiene la plumbing para un panel auto-limitado (`fi-scrollable` + `style="max-height: ..."`, condicionados a que se le pase la prop `maxHeight` o `size`) — pero `block-picker.blade.php` nunca le pasa ninguna de las dos. De ahí el bug: el panel flipea correctamente, pero no tiene tope de alto, así que si es más alto que el espacio disponible arriba del trigger, el exceso queda clippeado por el modal sin ningún scroll para compensar. `Builder.php` no expone ningún método fluido para esto (`blockPickerColumns()`/`blockPickerWidth()` solo tocan columnas/ancho).
+- **Decisión — opción 2, no la 1**: duplicar el trigger no tiene soporte nativo, requeriría forkear más superficie de Blade (todo el layout del picker, no solo el dropdown) y no resuelve la causa raíz (seguiría sin alto máximo). Fijar `max-height` sí es soportado de punta a punta por el componente compartido de Filament — solo faltaba conectarlo.
+- **Fix**: nuevo Blade override en `resources/views/vendor/filament-forms/components/builder/block-picker.blade.php` (namespace de vistas `filament-forms`, confirmado leyendo el `FormsServiceProvider`) — copia exacta del vendor con un único cambio: `:max-height="'400px'"` agregado al `<x-filament::dropdown>`. Esto activa `fi-scrollable` (clase CORE de Filament ya compilada en su CSS vendor — NO una clase Tailwind arbitraria de este proyecto, a diferencia del fix de `MenuTreeBuilder`, así que **no hace falta tocar el `@source` del theme custom del panel** esta vez) + el `max-height` inline. El panel ahora se autolimita a 400px con scroll propio, sin importar hacia qué lado haya flipeado.
+- **Archivos**: `resources/views/vendor/filament-forms/components/builder/block-picker.blade.php` (nuevo).
+- **Verificación**: balance de sintaxis (tokenizer Python, brackets/parens/llaves) — OK. Sin runtime PHP en este sandbox (no hay `php artisan tinker`/`serve`) — pendiente que el Tech Lead confirme visualmente que el picker abre con scroll interno y ninguna opción queda inaccesible, sin necesitar recompilar assets (el fix es puro Blade + una clase core de Filament, no requiere `npm run build`).
+- **Siguiente**: si Filament actualiza `block-picker.blade.php` en una futura versión del paquete, re-diffear este override contra el nuevo vendor y reaplicar solo el `:max-height`.
+
 ## 2026-09-02 — Mejoras de UX/UI en el módulo de Contenidos (Segmentación por tipo, modal headings, sticky footer z-index)
 
 - **Pedidos en vivo del Tech Lead**:

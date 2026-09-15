@@ -2,8 +2,8 @@
     @if ($plainTextToken)
         <div x-data="{ token: @js($plainTextToken) }" class="gnss-token-reveal">
             <div style="flex:1;">
-                <p class="gnss-token-reveal-title">Guardá este token ahora — no se va a volver a mostrar</p>
-                <p class="gnss-token-reveal-body">Sanctum solo guarda el hash. Si lo perdés, tenés que revocarlo y crear uno nuevo.</p>
+                <p class="gnss-token-reveal-title">Guardar este token ahora — no se va a volver a mostrar</p>
+                <p class="gnss-token-reveal-body">Sanctum solo guarda el hash. Si se pierde, hay que revocarlo y crear uno nuevo.</p>
                 <code class="gnss-token-value">{{ $plainTextToken }}</code>
             </div>
             <div class="gnss-token-actions">

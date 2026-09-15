@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\PageController;
 use App\Http\Controllers\Api\V1\PostController;
 use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\SiteSettingsController;
 use App\Http\Controllers\Api\V1\SliderController;
 use App\Http\Controllers\Api\V1\TestimonialController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,12 @@ use Illuminate\Support\Facades\Route;
 | tenant → 403 (ver `ResolvesTenant`). Los endpoints de lectura exigen la
 | ability `content:read`; el submit de forms exige `forms:submit`.
 |
+| `validate-origin` (ADR-059) corre en el grupo padre, después de
+| `auth:sanctum` — aplica a TODAS las rutas de acá abajo por igual, no solo
+| a `forms/submit`: es una protección de PLATAFORMA (el token declara su
+| propio origen permitido al crearse en Filament), no de un endpoint
+| puntual. No-op para tokens sin `platform` seteado o `platform = 'app'`.
+|
 | Solo contenido publicado/activo, `lang_iso = es` fijo (sin selector).
 |
 */
@@ -40,7 +47,7 @@ use Illuminate\Support\Facades\Route;
 Route::domain(parse_url(config('stamless.urls.api'), PHP_URL_HOST))->group(function () {
     Route::prefix('v1/{tenant_slug}')
         ->name('api.v1.')
-        ->middleware('auth:sanctum')
+        ->middleware(['auth:sanctum', 'validate-origin'])
         ->group(function () {
             Route::middleware('abilities:content:read')->group(function () {
                 Route::get('pages', [PageController::class, 'index'])->name('pages.index');
@@ -69,6 +76,13 @@ Route::domain(parse_url(config('stamless.urls.api'), PHP_URL_HOST))->group(funct
                 Route::get('sliders/{slug}', [SliderController::class, 'show'])->name('sliders.show');
 
                 Route::get('media/{uuid}', [MediaController::class, 'show'])->name('media.show');
+
+                // 2026-09-13, ver ADR-066: config de SITIO completo (no de
+                // una página/post/servicio puntual) — hoy solo IDs de
+                // tracking (Meta Pixel / GTM), whitelist explícito en
+                // `SiteSettingsController` (nunca un dump genérico de
+                // `Setting`).
+                Route::get('settings/tracking', [SiteSettingsController::class, 'tracking'])->name('settings.tracking');
             });
 
             Route::post('forms/{slug}/submit', [FormSubmissionController::class, 'store'])
