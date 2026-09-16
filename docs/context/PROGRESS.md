@@ -18,8 +18,10 @@
   1. **Base de Datos & Modelo (`users`):**
      - Migración `database/migrations/2026_09_16_185246_add_must_change_password_to_users_table.php` agregando columna booleana `must_change_password` (default `false`).
      - En `app/Models/User.php`: agregada a `#[Fillable]` y cast `'boolean'`.
-  2. **Seeder de Cliente 0 (`Cliente0Seeder.php`):**
-     - Actualizado el usuario Owner de `cica360` a `goncalvez.isaac@gmail.com`, nombre `Isaac Goncalvez`, contraseña segura inicial `'Cica360#Secure!2026'` y `must_change_password => true`.
+  2. **Seeder de Cliente 0 (`Cliente0Seeder.php` & `Cliente0ContentSeeder.php`):**
+     - Actualizado el usuario Owner de `cica360` exclusivamente a `goncalvez.isaac@gmail.com`, nombre `Isaac Goncalvez`, contraseña segura inicial `'Cica360#Secure!2026'` y `must_change_password => true`.
+     - Removidas por completo las constantes y fallbacks de correos heredados (`owner@cica360.com` / `admin@cliente0.com`).
+     - Actualizado el correo de notificación del formulario de contacto principal a `goncalvez.isaac@gmail.com`.
   3. **Middleware de Intercepción (`EnsurePasswordIsNotExpired.php`):**
      - Creado `app/Http/Middleware/EnsurePasswordIsNotExpired.php` y registrado en `authMiddleware` de `PanelCmsProvider`.
      - Si el usuario logueado tiene `must_change_password === true`, bloquea la navegación hacia cualquier otra área o recurso de Studio y lo redirige forzosamente a la página `ChangePassword` (`/cica360/change-password`).

@@ -122,7 +122,7 @@ class Cliente0ContentSeeder extends Seeder
             [
                 'name' => 'Contacto principal',
                 'description' => 'Formulario de contacto general del sitio de CICA360.',
-                'notification_email' => 'owner@cica360.com',
+                'notification_email' => 'goncalvez.isaac@gmail.com',
                 'notification_subject' => 'Nuevo contacto desde el sitio web',
                 'send_copy_to_submitter' => false,
                 'success_message' => 'Gracias por escribirnos. Te contactaremos a la brevedad.',

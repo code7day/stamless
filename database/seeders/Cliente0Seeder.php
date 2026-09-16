@@ -32,11 +32,9 @@ class Cliente0Seeder extends Seeder
 
     private const string OWNER_EMAIL = 'goncalvez.isaac@gmail.com';
 
-    private const string LEGACY_OWNER_EMAIL = 'owner@cica360.com';
-
-    private const string OLD_LEGACY_OWNER_EMAIL = 'admin@cliente0.com';
-
     private const string OWNER_NAME = 'Isaac Goncalvez';
+
+    private const string OWNER_PASSWORD = 'Cica360#Secure!2026';
 
     private static function consoleDomain(): string
     {
@@ -110,14 +108,13 @@ class Cliente0Seeder extends Seeder
      */
     private function upsertOwner(Tenant $tenant): void
     {
-        $owner = User::where('email', self::OWNER_EMAIL)->first()
-            ?? User::where('email', self::LEGACY_OWNER_EMAIL)->first()
-            ?? User::where('email', self::OLD_LEGACY_OWNER_EMAIL)->first();
+        $owner = User::where('email', self::OWNER_EMAIL)->first();
 
         if ($owner) {
             $owner->fill([
                 'name' => self::OWNER_NAME,
                 'email' => self::OWNER_EMAIL,
+                'password' => self::OWNER_PASSWORD,
                 'tenant_id' => $tenant->id,
                 'must_change_password' => true,
             ])->save();
@@ -125,7 +122,7 @@ class Cliente0Seeder extends Seeder
             $owner = User::create([
                 'name' => self::OWNER_NAME,
                 'email' => self::OWNER_EMAIL,
-                'password' => 'Cica360#Secure!2026',
+                'password' => self::OWNER_PASSWORD,
                 'must_change_password' => true,
                 'tenant_id' => $tenant->id,
                 'email_verified_at' => now(),
