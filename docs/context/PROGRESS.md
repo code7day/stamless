@@ -11,6 +11,25 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-16 — Auth / Studio & Platform: Redirección inteligente de Super Admin a Platform si no posee tenant cliente
+- **Pedido del Tech Lead:** "al loguearme en studio con el superadmin con google, entre a la cuenta de cica360 (cliente0), cuanto deberia buscr si yo como superadmin tengo un proyecto o cuenta como cliente, si no redireccionar a platform por ser superadmin".
+- **Causa raíz:** `User::getTenants()` devolvía `Tenant::all()` para superadmins, lo que causaba que Filament tomara el primer tenant de la BD (`cica360`) como tenant por defecto al autenticarse en Studio.
+- **Implementación:**
+  1. En `app/Models/User.php`, se implementó `Filament\Models\Contracts\HasDefaultTenant` y se ajustaron `getDefaultTenant()` y `getTenants()` para devolver estrictamente `$this->tenant` (su propio proyecto como cliente si lo tiene, o null/vacío si es superadmin global sin tenant asignado).
+  2. En `app/Http/Responses/FilamentLoginResponse.php` y `app/Providers/AppServiceProvider.php`, se vinculó una respuesta de login personalizada que evalúa si el usuario es superadmin: si tiene tenant propio entra a su tenant en Studio, si no tiene tenant propio lo redirige automáticamente a **Platform** (`config('stamless.urls.platform')`).
+  3. En `app/Http/Middleware/RedirectSuperAdminWithoutTenantToPlatform.php` y `PanelCmsProvider.php`, se añadió middleware que redirige al superadmin sin tenant hacia Platform cuando navega a la raíz de Studio (`/`), preservando el acceso directo a URLs específicas de tenants (`/{tenant}/...`) para supervisión o soporte.
+  4. En `PanelCmsProvider.php` y `PanelPlatformProvider.php`, se configuró `->redirectAfterLoginUsing(...)` en `FilamentSocialitePlugin` para aplicar la misma regla de redirección al ingresar vía Google / Socialite.
+  5. En `tests/Feature/Filament/SuperAdminLoginRedirectionTest.php`, se crearon tests que validan todos los casos de uso (Super Admin sin tenant -> Platform, Super Admin con tenant -> su tenant, Super Admin inspeccionando tenant ajeno por URL -> permitido, Cliente regular -> su tenant).
+- **Archivos:**
+  - `app/Models/User.php`
+  - `app/Http/Responses/FilamentLoginResponse.php`
+  - `app/Http/Middleware/RedirectSuperAdminWithoutTenantToPlatform.php`
+  - `app/Providers/AppServiceProvider.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `tests/Feature/Filament/SuperAdminLoginRedirectionTest.php`
+- **Verificación:** Pint ejecutado; 117 tests pasando (539 assertions).
+
 ## 2026-09-16 — Auth / Seguridad: Implementación de `FilamentUser` y `canAccessPanel()` para acceso en producción
 - **Pedido del Tech Lead:** "solo en production me sale para studio y platform 403 despues de login".
 - **Causa raíz:** En entornos no-locales (`APP_ENV=production`), Filament exige que el modelo `User` implemente `Filament\Models\Contracts\FilamentUser` con el método `canAccessPanel(Panel $panel): bool`. De lo contrario, el middleware `Authenticate` de Filament deniega el acceso con `403 Forbidden`.

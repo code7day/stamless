@@ -8,6 +8,7 @@ use App\Traits\HasUuid;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasAvatar;
+use Filament\Models\Contracts\HasDefaultTenant;
 use Filament\Models\Contracts\HasTenants;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -22,7 +23,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password', 'tenant_id', 'uuid', 'locale', 'timezone', 'is_super_admin', 'provider', 'provider_id', 'avatar_url'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements FilamentUser, HasAvatar, HasTenants
+class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaultTenant, HasTenants
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, HasTenant, HasUuid, Notifiable;
@@ -62,14 +63,18 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasTenant
     }
 
     /**
+     * Get the default tenant for the user.
+     */
+    public function getDefaultTenant(Panel $panel): ?Model
+    {
+        return $this->tenant;
+    }
+
+    /**
      * Get the tenants the user belongs to.
      */
     public function getTenants(Panel $panel): array|Collection
     {
-        if ($this->is_super_admin) {
-            return Tenant::all();
-        }
-
         return $this->tenant ? collect([$this->tenant]) : collect();
     }
 

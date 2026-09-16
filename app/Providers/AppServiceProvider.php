@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Http\Responses\FilamentLoginResponse;
 use App\Services\SettingService;
 use App\Services\TenantManager;
+use Filament\Auth\Http\Responses\Contracts\LoginResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
@@ -26,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SettingService::class, function ($app) {
             return new SettingService($app->make(TenantManager::class));
         });
+
+        $this->app->singleton(LoginResponse::class, FilamentLoginResponse::class);
     }
 
     /**

@@ -7,6 +7,7 @@ use Caresome\FilamentAuthDesigner\AuthDesignerPlugin;
 use Caresome\FilamentAuthDesigner\Data\AuthPageConfig;
 use Caresome\FilamentAuthDesigner\Enums\MediaPosition;
 use DutchCodingCompany\FilamentSocialite\FilamentSocialitePlugin;
+use DutchCodingCompany\FilamentSocialite\Models\Contracts\FilamentSocialiteUser as FilamentSocialiteUserContract;
 use DutchCodingCompany\FilamentSocialite\Provider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -125,7 +126,10 @@ class PanelPlatformProvider extends PanelProvider
                             ->stateless(true)
                             ->visible(fn (): bool => ! empty(config('services.microsoft.client_id')) && ! empty(config('services.microsoft.client_secret'))),
                     ])
-                    ->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null),
+                    ->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null)
+                    ->redirectAfterLoginUsing(function (string $provider, FilamentSocialiteUserContract $socialiteUser, FilamentSocialitePlugin $plugin) {
+                        return redirect()->intended($plugin->getPanel()->getUrl());
+                    }),
             ])
             ->discoverResources(in: app_path('Filament/Platform/Resources'), for: 'App\Filament\Platform\Resources')
             ->discoverPages(in: app_path('Filament/Platform/Pages'), for: 'App\Filament\Platform\Pages')

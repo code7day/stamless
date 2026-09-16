@@ -9,6 +9,7 @@ use App\Filament\Widgets\PlanStatusWidget;
 use App\Filament\Widgets\PlanUsageWidget;
 use App\Filament\Widgets\RecentContactsWidget;
 use App\Filament\Widgets\WelcomeWidget;
+use App\Http\Middleware\RedirectSuperAdminWithoutTenantToPlatform;
 use App\Http\Middleware\SyncTenantManagerWithFilament;
 use App\Models\Tenant;
 use App\Models\User;
@@ -16,6 +17,7 @@ use Caresome\FilamentAuthDesigner\AuthDesignerPlugin;
 use Caresome\FilamentAuthDesigner\Data\AuthPageConfig;
 use Caresome\FilamentAuthDesigner\Enums\MediaPosition;
 use DutchCodingCompany\FilamentSocialite\FilamentSocialitePlugin;
+use DutchCodingCompany\FilamentSocialite\Models\Contracts\FilamentSocialiteUser as FilamentSocialiteUserContract;
 use DutchCodingCompany\FilamentSocialite\Provider;
 use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
@@ -284,7 +286,26 @@ class PanelCmsProvider extends PanelProvider
                             ->stateless(true)
                             ->visible(fn (): bool => ! empty(config('services.microsoft.client_id')) && ! empty(config('services.microsoft.client_secret'))),
                     ])
-                    ->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null),
+                    ->registration(fn (string $provider, mixed $oauthUser, ?User $user): bool => $user !== null)
+                    ->redirectAfterLoginUsing(function (string $provider, FilamentSocialiteUserContract $socialiteUser, FilamentSocialitePlugin $plugin) {
+                        /** @var User $user */
+                        $user = $socialiteUser->getUser();
+                        $panel = $plugin->getPanel();
+
+                        if ($user->is_super_admin) {
+                            if ($user->tenant) {
+                                return redirect()->intended($panel->getUrl($user->tenant));
+                            }
+
+                            return redirect()->to(config('stamless.urls.platform'));
+                        }
+
+                        if ($panel->hasTenancy() && $user->tenant) {
+                            return redirect()->intended($panel->getUrl($user->tenant));
+                        }
+
+                        return redirect()->intended($panel->getUrl());
+                    }),
             ])
             ->userMenuItems([
                 MenuItem::make()
@@ -339,6 +360,7 @@ class PanelCmsProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                RedirectSuperAdminWithoutTenantToPlatform::class,
             ])
             // 2026-09-02, fix bug real en vivo (tenant_id NOT NULL al crear
             // submenús anidados): puentea `Filament::getTenant()` hacia
