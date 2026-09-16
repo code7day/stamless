@@ -4,14 +4,16 @@
 # SCRIPT DE DESPLIEGUE AUTOMATIZADO - STAMLESS (STAGE / SERVIDOR)
 # ==============================================================================
 
-# 1. Parsear argumentos de consola (Detectar modo verbose -v y migrate:fresh -m)
+# 1. Parsear argumentos de consola (Detectar modo verbose -v, migrate:fresh -m, sync storage -s)
 VERBOSE=false
 MIGRATE_FRESH=false
-while getopts "vm" opt; do
+SYNC_STORAGE=false
+while getopts "vms" opt; do
     case $opt in
         v) VERBOSE=true ;;
         m) MIGRATE_FRESH=true ;;
-        *) echo "Uso: $0 [-v] [-m]" && exit 1 ;;
+        s) SYNC_STORAGE=true ;;
+        *) echo "Uso: $0 [-v] [-m] [-s]" && exit 1 ;;
     esac
 done
 
@@ -235,8 +237,32 @@ fi
 if [ $? -ne 0 ]; then
     echo -e "\033[1;31m❌ [ERROR RSYNC]: Falló la sincronización física de archivos con el servidor.\033[0m"
     exit 1
+fi
+
+# 3.1 Sincronización condicional de storage (solo una vez en setup inicial, o forzado con flag -s o -m)
+NEED_STORAGE_SYNC=false
+if [ "$SYNC_STORAGE" = true ] || [ "$MIGRATE_FRESH" = true ]; then
+    NEED_STORAGE_SYNC=true
 else
-    echo "   ✅ Sincronización de archivos finalizada con éxito."
+    REMOTE_MEDIA_EXISTS=$(ssh -T -q $SERVER_ALIAS "[ -d '${REMOTE_PATH}storage/app/public/media' ] && echo 'yes' || echo 'no'")
+    if [ "$REMOTE_MEDIA_EXISTS" != "yes" ]; then
+        NEED_STORAGE_SYNC=true
+    fi
+fi
+
+if [ "$NEED_STORAGE_SYNC" = true ]; then
+    echo "🖼️  3.1 Sincronizando assets y media base (storage/app/public)..."
+    ssh -T -q $SERVER_ALIAS "sudo mkdir -p '${REMOTE_PATH}storage/app/public'"
+    if [ "$VERBOSE" = true ]; then
+        rsync -av --no-perms --no-owner --no-group --rsync-path="sudo rsync" \
+            ./storage/app/public/ $SERVER_ALIAS:${REMOTE_PATH}storage/app/public/
+    else
+        rsync -a --no-perms --no-owner --no-group --rsync-path="sudo rsync" \
+            ./storage/app/public/ $SERVER_ALIAS:${REMOTE_PATH}storage/app/public/
+    fi
+    echo "   ✅ Sincronización de storage/app/public completada."
+else
+    echo "⏭️  3.1 Sincronización de storage omitida (ya existe en servidor. Usa -s para forzarla)."
 fi
 
 # 6. Configuración y optimización remota

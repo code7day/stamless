@@ -4,12 +4,14 @@
 # SCRIPT DE PROMOCIÓN A PRODUCCIÓN - STAMLESS (STAGE -> PROD EN SERVIDOR)
 # ==============================================================================
 
-# 1. Parsear argumentos de consola (Detectar modo verbose -v y migrate:fresh -m)
+# 1. Parsear argumentos de consola (Detectar modo verbose -v y sync storage -s)
 VERBOSE=false
-while getopts "v" opt; do
+SYNC_STORAGE=false
+while getopts "vs" opt; do
     case $opt in
         v) VERBOSE=true ;;
-        *) echo "Uso: $0 [-v]" && exit 1 ;;
+        s) SYNC_STORAGE=true ;;
+        *) echo "Uso: $0 [-v] [-s]" && exit 1 ;;
     esac
 done
 
@@ -60,6 +62,7 @@ STAGE_PATH="${STAGE_PATH}"
 PROD_PATH="${PROD_PATH}"
 PROD_FOLDER="${PROD_FOLDER}"
 WWW_USER="${WWW_USER}"
+SYNC_STORAGE=${SYNC_STORAGE}
 
 if [ ! -d "\$STAGE_PATH" ]; then
     echo "❌ Error: El directorio de stage \$STAGE_PATH no existe."
@@ -77,6 +80,17 @@ sudo rsync -a --no-perms --no-owner --no-group --delete \
     --exclude='/public/hot' \
     --exclude='/bootstrap/cache/*.php' \
     "\$STAGE_PATH" "\$PROD_PATH"
+
+# Sincronización condicional de storage (solo si se pasa -s o si aún no existe media/ en producción)
+if [ "$SYNC_STORAGE" = true ] || [ ! -d "\${PROD_PATH}storage/app/public/media" ]; then
+    echo "🖼️  Sincronizando archivos multimedia de Stage a Producción..."
+    sudo mkdir -p "\${PROD_PATH}storage/app/public"
+    sudo rsync -a --no-perms --no-owner --no-group \
+        "\${STAGE_PATH}storage/app/public/" "\${PROD_PATH}storage/app/public/"
+    echo "   ✅ Sincronización de storage de producción completada."
+else
+    echo "⏭️  Sincronización de storage omitida (ya existe en Producción. Usa -s para forzarla)."
+fi
 
 cd "\$PROD_PATH"
 

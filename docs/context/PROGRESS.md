@@ -11,6 +11,20 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-15 — DevOps / Storage: Sincronización condicional de storage (flag `-s` y primer despliegue) en `deploy.sh` y `production.sh`
+- **Pedido del Tech Lead:** "solo deberia ser una vez, o condicionada a un flag para forzar la subida".
+- **Implementación:**
+  1. En `deploy.sh`, se agregó el flag `-s` (`SYNC_STORAGE=true`) y se condicionó la sincronización de `storage/app/public/` para ejecutarse:
+     - Cuando se especifica explícitamente `-s`.
+     - Cuando se usa `-m` (`migrate:fresh --seed`).
+     - Automáticamente en el primer despliegue si el directorio remoto `storage/app/public/media` no existe aún en el servidor.
+     - En despliegues subsecuentes cotidianos (sin `-s`), la sincronización de storage se omite rápidamente (`⏭️ Sincronización de storage omitida`).
+  2. En `production.sh`, se incorporó idéntico flag `-s` y chequeo de existencia para promover storage hacia Producción solo en primera instancia o bajo demanda forzada.
+- **Archivos:**
+  - `deploy.sh`
+  - `production.sh`
+- **Verificación:** `bash -n` verificado; Pint ejecutado; 108 tests pasando (520 assertions).
+
 ## 2026-09-15 — DevOps / Infraestructura: Alineación de scripts de despliegue `deploy.sh` y `production.sh` para Stamless
 - **Pedido del Tech Lead:** "podri alinear el deploy.sh al proyecto stamless, siguiendo la convencion que tienen este archivo, ya cuento con server-webapps que tiene configurado mi llave, necesito que todo esté listo para desplegar en stage que viene a ser como produccion solo para revision de cambios pero para produccion solo será un copy rsync en el mismo servidor y se publicará los cambios. nos basamos en deploy.sh a stage".
 - **Implementación:**
