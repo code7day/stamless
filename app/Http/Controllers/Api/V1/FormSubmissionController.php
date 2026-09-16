@@ -8,6 +8,7 @@ use App\Models\Form;
 use App\Services\ContactSubmissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -23,6 +24,16 @@ class FormSubmissionController extends Controller
     {
         $tenant = $this->resolveTenant($tenant_slug);
 
+        // Protección anti-bot Honeypot: si un bot completa campos trampa invisibles,
+        // se responde 201 exitoso sin persistir spam ni disparar emails.
+        if ($request->filled('honeypot') || $request->filled('_hp_check') || $request->filled('_gotcha')) {
+            return $this->success(
+                data: ['uuid' => (string) Str::uuid()],
+                message: 'Formulario enviado correctamente.',
+                status: 201,
+            );
+        }
+
         $form = Form::where('tenant_id', $tenant->id)->where('slug', $slug)->where('is_active', true)->first();
 
         if (! $form) {
@@ -32,7 +43,7 @@ class FormSubmissionController extends Controller
         try {
             $contact = $this->contactSubmissionService->submit(
                 $form,
-                $request->except(['page_url']),
+                $request->except(['page_url', 'honeypot', '_hp_check', '_gotcha']),
                 [
                     'source' => $request->header('Referer'),
                     'page_url' => $request->input('page_url'),

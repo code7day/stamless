@@ -183,6 +183,18 @@ class MediaResource extends Resource
                             ->disk(fn () => config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public'))
                             ->directory('media')
                             ->visibility('public')
+                            ->acceptedFileTypes([
+                                'image/jpeg',
+                                'image/png',
+                                'image/webp',
+                                'image/gif',
+                                'image/svg+xml',
+                                'video/mp4',
+                                'video/webm',
+                                'video/quicktime',
+                                'application/pdf',
+                            ])
+                            ->maxSize(51200)
                             ->imageEditor()
                             ->storeFileNamesIn('file_name')
                             ->getUploadedFileNameForStorageUsing(function (TemporaryUploadedFile $file) {

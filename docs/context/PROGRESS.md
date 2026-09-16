@@ -11,6 +11,32 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-15 — DevOps / Infraestructura: Alineación de scripts de despliegue `deploy.sh` y `production.sh` para Stamless
+- **Pedido del Tech Lead:** "podri alinear el deploy.sh al proyecto stamless, siguiendo la convencion que tienen este archivo, ya cuento con server-webapps que tiene configurado mi llave, necesito que todo esté listo para desplegar en stage que viene a ser como produccion solo para revision de cambios pero para produccion solo será un copy rsync en el mismo servidor y se publicará los cambios. nos basamos en deploy.sh a stage".
+- **Implementación:**
+  1. En `deploy.sh`, se adaptaron todas las variables institucionales al proyecto Stamless (`STAMLESS_DEPLOY_SERVER`, `STAMLESS_DEPLOY_DOMAIN`, `STAMLESS_DEPLOY_SUBDOMAIN`), configurando `server-webapps` como servidor predeterminado y `stage_stamless` (`/var/www/vhosts/stage_stamless/`) como destino de staging.
+  2. Se optimizó la sincronización `rsync` excluyendo dependencias, tests, documentación y storage local, ejecutando la compilación frontend previa con Vite.
+  3. En la ejecución remota, se incluyeron pasos para permisos (`fix-perms`), dependencias Composer, `storage:link`, cachés de configuración/rutas/vistas, optimización de Filament (`filament:optimize`) y migraciones automáticas (`php artisan migrate --force` y soporte de `-m` para fresh/seed).
+  4. Se creó `production.sh` para promover de Stage a Producción mediante `rsync` local en `server-webapps` (`/var/www/vhosts/stage_stamless/` -> `/var/www/vhosts/stamless/`) sin volver a subir archivos desde la máquina local.
+  5. En `.env.example`, se añadió el bloque de variables de infraestructura de Stamless.
+- **Archivos:**
+  - `deploy.sh`
+  - `production.sh`
+  - `.env.example`
+- **Verificación:** Scripts con permisos de ejecución `+x`; suite de tests: **108 passed, 520 assertions**.
+
+## 2026-09-15 — Seguridad / Hardening: Protección Honeypot, restricción de tipos de media y rate limiting inteligente
+- **Pedido del Tech Lead:** "ejecuta las mejoras pero si no hay cambios en codigo procedemos desplegar, confirmame ahora".
+- **Implementación:**
+  1. **Honeypot Anti-Bot:** En `app/Http/Controllers/Api/V1/FormSubmissionController.php`, se añadió trampa honeypot (`honeypot`, `_hp_check`, `_gotcha`) que descarta envíos de bots automatizados de forma silenciosa (201 simulado) sin saturar la base de datos ni consumir cuota de emails transaccionales.
+  2. **Blindaje de Subida de Archivos:** En `app/Filament/Resources/MediaResource.php`, se agregaron `acceptedFileTypes` explícitos (imágenes, videos web seguros, PDF) y `maxSize(51200)` para bloquear cualquier intento de subir ejecutables (`.php`, `.phtml`, `.exe`, `.sh`, `.phar`).
+  3. **Rate Limiting Inteligente por Tenant:** En `app/Providers/AppServiceProvider.php`, se mejoró `RateLimiter::for('api')` para limitar por `tenant_id` cuando la solicitud está autenticada y por `ip` para tráfico no autenticado.
+- **Archivos:**
+  - `app/Http/Controllers/Api/V1/FormSubmissionController.php`
+  - `app/Filament/Resources/MediaResource.php`
+  - `app/Providers/AppServiceProvider.php`
+- **Verificación:** Pint limpio; suite de tests: **108 passed, 520 assertions**.
+
 ## 2026-09-15 — Platform & Auth: Retiro de FilamentInfoWidget y corrección de nombre de Super Admin a "Eduardo Flores"
 - **Pedido del Tech Lead:** "genial, quitar widget filament" y "corrige el nombre del usuario: soy Eduardo Flores o Edu. Flores" con capturas del panel Platform.
 - **Implementación:**
