@@ -83,7 +83,7 @@ class PanelPlatformProvider extends PanelProvider
             ->plugins([
                 AuthDesignerPlugin::make()
                     ->login(fn (AuthPageConfig $config) => $config
-                        ->media(asset('images/auth/stamless-login-cover.jpg'))
+                        ->media(asset('images/auth/stamless-platform-login-cover.jpg'))
                         ->mediaPosition(MediaPosition::Right)
                         ->themeToggle()
                     ),
