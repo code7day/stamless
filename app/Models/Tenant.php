@@ -12,7 +12,16 @@ class Tenant extends Model
 {
     use HasUuid;
 
-    protected $fillable = ['name', 'slug', 'uuid', 'short_hash', 'is_active', 'plan'];
+    protected $fillable = [
+        'name',
+        'slug',
+        'uuid',
+        'short_hash',
+        'is_active',
+        'plan',
+        'slug_changes_count',
+        'slug_changes_allowed',
+    ];
 
     /**
      * The "booted" method of the model.
@@ -38,7 +47,27 @@ class Tenant extends Model
     {
         return [
             'is_active' => 'boolean',
+            'slug_changes_count' => 'integer',
+            'slug_changes_allowed' => 'integer',
         ];
+    }
+
+    /**
+     * Indica si el tenant tiene disponible el permiso para modificar su slug.
+     * Se permite 1 cambio inicial por defecto, o los cambios que se habiliten
+     * desde Platform Manager en el futuro.
+     */
+    public function canChangeSlug(): bool
+    {
+        return ($this->slug_changes_count ?? 0) < ($this->slug_changes_allowed ?? 1);
+    }
+
+    /**
+     * Cantidad de cambios de slug restantes.
+     */
+    public function remainingSlugChanges(): int
+    {
+        return max(0, ($this->slug_changes_allowed ?? 1) - ($this->slug_changes_count ?? 0));
     }
 
     /**

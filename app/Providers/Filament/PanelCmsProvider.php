@@ -9,6 +9,8 @@ use App\Filament\Widgets\PlanStatusWidget;
 use App\Filament\Widgets\PlanUsageWidget;
 use App\Filament\Widgets\RecentContactsWidget;
 use App\Filament\Widgets\WelcomeWidget;
+use App\Http\Middleware\EnsurePasswordIsNotExpired;
+use App\Http\Middleware\EnsureUserAccessesOwnTenant;
 use App\Http\Middleware\FilamentAuthenticate;
 use App\Http\Middleware\RedirectSuperAdminWithoutTenantToPlatform;
 use App\Http\Middleware\SyncTenantManagerWithFilament;
@@ -240,6 +242,12 @@ class PanelCmsProvider extends PanelProvider
                     ])->render());
                 }
             )
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): HtmlString => new HtmlString(view('filament.components.panel-switch-button', [
+                    'targetPanel' => 'platform',
+                ])->render())
+            )
             ->plugins([
                 AuthDesignerPlugin::make()
                     ->login(fn (AuthPageConfig $config) => $config
@@ -309,13 +317,18 @@ class PanelCmsProvider extends PanelProvider
             ])
             ->userMenuItems([
                 MenuItem::make()
+                    ->label('Ir a Platform Manager')
+                    ->icon('heroicon-o-squares-2x2')
+                    ->url(fn (): string => config('stamless.urls.platform'))
+                    ->visible(fn (): bool => auth()->user()?->is_super_admin ?? false),
+                MenuItem::make()
                     ->label('Preferencias')
                     ->icon('heroicon-o-adjustments-horizontal')
-                    ->url(fn (): string => Preferences::getUrl()),
+                    ->url(fn (): string => Preferences::getUrl(['tenant' => Filament::getTenant() ?? auth()->user()?->tenant])),
                 MenuItem::make()
                     ->label('Cambiar contraseña')
                     ->icon('heroicon-o-lock-closed')
-                    ->url(fn (): string => ChangePassword::getUrl()),
+                    ->url(fn (): string => ChangePassword::getUrl(['tenant' => Filament::getTenant() ?? auth()->user()?->tenant])),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
@@ -361,6 +374,8 @@ class PanelCmsProvider extends PanelProvider
             ->authMiddleware([
                 FilamentAuthenticate::class,
                 RedirectSuperAdminWithoutTenantToPlatform::class,
+                EnsureUserAccessesOwnTenant::class,
+                EnsurePasswordIsNotExpired::class,
             ])
             // 2026-09-02, fix bug real en vivo (tenant_id NOT NULL al crear
             // submenús anidados): puentea `Filament::getTenant()` hacia

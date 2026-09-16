@@ -7,9 +7,11 @@ use App\Models\Plan;
 use App\Models\PlanFeature;
 use App\Models\Subscription;
 use App\Models\Tenant;
+use App\Models\User;
 use Database\Seeders\Cliente0Seeder;
 use Database\Seeders\ModuleSeeder;
 use Database\Seeders\PlanSeeder;
+use Database\Seeders\PlatformSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -94,5 +96,24 @@ class PlanSeederTest extends TestCase
         $this->assertNotNull($subscription);
         $this->assertSame($sponsorshipPlan->id, $subscription->plan_id);
         $this->assertSame('sponsorship', $tenant->currentSubscription()?->plan?->slug);
+    }
+
+    public function test_platform_seeder_creates_master_tenant_with_sponsorship_plan(): void
+    {
+        $this->seed(PlanSeeder::class);
+        $this->seed(ModuleSeeder::class);
+        $this->seed(PlatformSeeder::class);
+
+        $masterTenant = Tenant::where('slug', 'stamless')->firstOrFail();
+        $this->assertSame('sponsorship', $masterTenant->plan);
+        $this->assertSame('Eduardo Flores', $masterTenant->name);
+
+        $masterUser = User::where('email', 'zedu77@gmail.com')->firstOrFail();
+        $this->assertTrue($masterUser->is_super_admin);
+        $this->assertSame($masterTenant->id, $masterUser->tenant_id);
+
+        $subscription = Subscription::where('tenant_id', $masterTenant->id)->first();
+        $this->assertNotNull($subscription);
+        $this->assertSame('sponsorship', $subscription->plan->slug);
     }
 }

@@ -30,9 +30,13 @@ class Cliente0Seeder extends Seeder
 
     private const string TENANT_NAME = 'CICA360';
 
-    private const string OWNER_EMAIL = 'owner@cica360.com';
+    private const string OWNER_EMAIL = 'goncalvez.isaac@gmail.com';
 
-    private const string LEGACY_OWNER_EMAIL = 'admin@cliente0.com';
+    private const string LEGACY_OWNER_EMAIL = 'owner@cica360.com';
+
+    private const string OLD_LEGACY_OWNER_EMAIL = 'admin@cliente0.com';
+
+    private const string OWNER_NAME = 'Isaac Goncalvez';
 
     private static function consoleDomain(): string
     {
@@ -100,31 +104,29 @@ class Cliente0Seeder extends Seeder
     }
 
     /**
-     * Usuario OWNER del tenant. El plan Free permite `max_users = 1`, así
-     * que se reutiliza/renombra el usuario admin legado en vez de crear
-     * uno nuevo. La asignación formal de rol OWNER queda pendiente hasta
-     * que exista el módulo de roles/permissions (ver ADR-013 / TASK.md #12);
-     * por ahora es, funcionalmente, el único usuario del tenant.
-     *
-     * La contraseña de desarrollo solo se setea al crear el usuario por
-     * primera vez, nunca al renombrar uno existente.
+     * Usuario OWNER del tenant (Isaac Goncalvez).
+     * Se crea con contraseña temporal segura y flag `must_change_password = true`
+     * para obligar a actualizar la contraseña en su primer login.
      */
     private function upsertOwner(Tenant $tenant): void
     {
         $owner = User::where('email', self::OWNER_EMAIL)->first()
-            ?? User::where('email', self::LEGACY_OWNER_EMAIL)->first();
+            ?? User::where('email', self::LEGACY_OWNER_EMAIL)->first()
+            ?? User::where('email', self::OLD_LEGACY_OWNER_EMAIL)->first();
 
         if ($owner) {
             $owner->fill([
-                'name' => 'CICA360 Owner',
+                'name' => self::OWNER_NAME,
                 'email' => self::OWNER_EMAIL,
                 'tenant_id' => $tenant->id,
+                'must_change_password' => true,
             ])->save();
         } else {
             $owner = User::create([
-                'name' => 'CICA360 Owner',
+                'name' => self::OWNER_NAME,
                 'email' => self::OWNER_EMAIL,
-                'password' => 'password123',
+                'password' => 'Cica360#Secure!2026',
+                'must_change_password' => true,
                 'tenant_id' => $tenant->id,
                 'email_verified_at' => now(),
             ]);

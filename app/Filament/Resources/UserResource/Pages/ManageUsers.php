@@ -23,7 +23,7 @@ class ManageUsers extends ManageRecords
                 ->modalHeading('Crear nuevo colaborador')
                 ->modalDescription('Asigna un nuevo usuario al proyecto con sus respectivas credenciales y rol.')
                 ->modalIcon('heroicon-o-user-plus')
-                ->modalWidth('lg')
+                ->modalWidth('2xl')
                 ->disabled(fn (): bool => UserResource::isUserLimitReached())
                 ->tooltip(fn (): ?string => UserResource::isUserLimitReached() ? UserResource::userLimitMessage() : null)
                 ->before(function (CreateAction $action) {

@@ -17,6 +17,7 @@ use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
@@ -165,6 +166,12 @@ class UserResource extends Resource
                             })
                             ->dehydrated(false)
                             ->columnSpanFull(),
+
+                        Toggle::make('must_change_password')
+                            ->label('Obligar al usuario a cambiar su contraseña en el próximo inicio de sesión')
+                            ->helperText('Se le solicitará actualizar su clave temporal de forma obligatoria apenas ingrese.')
+                            ->default(true)
+                            ->columnSpanFull(),
                     ]),
             ]);
     }
@@ -218,7 +225,7 @@ class UserResource extends Resource
                     ->modalHeading(fn (User $record): string => "Cambiar contraseña de {$record->name}")
                     ->modalDescription('Establece una nueva contraseña de acceso para este usuario en el panel.')
                     ->modalIcon('heroicon-o-key')
-                    ->modalWidth('md')
+                    ->modalWidth('lg')
                     ->form([
                         TextInput::make('password')
                             ->label('Nueva contraseña')
@@ -238,10 +245,16 @@ class UserResource extends Resource
                             ->revealable()
                             ->required()
                             ->dehydrated(false),
+
+                        Toggle::make('must_change_password')
+                            ->label('Obligar al usuario a cambiar su contraseña en el próximo inicio de sesión')
+                            ->helperText('Se le solicitará actualizar su clave temporal de forma obligatoria apenas ingrese.')
+                            ->default(true),
                     ])
                     ->action(function (User $record, array $data): void {
                         $record->update([
                             'password' => $data['password'],
+                            'must_change_password' => $data['must_change_password'] ?? false,
                         ]);
 
                         Notification::make()
@@ -253,7 +266,7 @@ class UserResource extends Resource
                 EditAction::make()
                     ->slideOver()
                     ->modalHeading('Editar usuario')
-                    ->modalWidth('lg')
+                    ->modalWidth('2xl')
                     ->action(function (User $record, array $data): void {
                         $roleName = $data['role'] ?? UserRoleEnum::Editor->value;
                         unset($data['role']);

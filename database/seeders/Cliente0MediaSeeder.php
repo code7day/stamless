@@ -297,6 +297,8 @@ class Cliente0MediaSeeder extends Seeder
     private function seedFile(Tenant $tenant, string $file, string $name, string $alt): void
     {
         $path = "media/{$file}";
+        $defaultDisk = config('filesystems.default');
+        $targetDisk = $defaultDisk === 'r2' ? MediaDiskEnum::R2->value : MediaDiskEnum::Public->value;
 
         if (! Storage::disk('public')->exists($path)) {
             $this->command?->warn("Cliente0MediaSeeder: falta storage/app/public/{$path}, se omite.");
@@ -304,7 +306,23 @@ class Cliente0MediaSeeder extends Seeder
             return;
         }
 
-        Media::firstOrCreate(
+        if ($targetDisk === MediaDiskEnum::R2->value) {
+            try {
+                if (! Storage::disk('r2')->exists($path)) {
+                    $mime = Storage::disk('public')->mimeType($path) ?: 'image/webp';
+                    Storage::disk('r2')->put($path, Storage::disk('public')->get($path), [
+                        'visibility' => 'public',
+                        'mimetype' => $mime,
+                        'ContentType' => $mime,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                $this->command?->warn("Cliente0MediaSeeder: no se pudo subir {$path} a R2 ({$e->getMessage()}), sembrando como disco public.");
+                $targetDisk = MediaDiskEnum::Public->value;
+            }
+        }
+
+        Media::updateOrCreate(
             [
                 'tenant_id' => $tenant->id,
                 'path' => $path,
@@ -314,7 +332,7 @@ class Cliente0MediaSeeder extends Seeder
                 'file_name' => $file,
                 'mime_type' => Storage::disk('public')->mimeType($path) ?: 'image/webp',
                 'size' => Storage::disk('public')->size($path),
-                'disk' => MediaDiskEnum::Public->value,
+                'disk' => $targetDisk,
                 'alt_text' => $alt,
             ]
         );

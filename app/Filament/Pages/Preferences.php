@@ -4,17 +4,24 @@ namespace App\Filament\Pages;
 
 use App\Enums\LanguageEnum;
 use App\Filament\Schemas\MediaUpload;
+use App\Models\Tenant;
 use App\Models\User;
+use App\Services\TenantManager;
 use BackedEnum;
 use DateTimeZone;
 use Filament\Actions;
+use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 use UnitEnum;
 
 /**
@@ -40,15 +47,11 @@ use UnitEnum;
  *
  * 2026-09-13, misma vuelta: se suma "Integraciones" (Meta Pixel ID / Google
  * Tag Manager ID) — mismo mecanismo (`Setting`, tenant-wide), mismo criterio
- * de ubicación. A diferencia de SEO/OG (fallback de CONTENIDO por página),
- * estos 2 IDs son de configuración de SITIO completo (se inyectan en el
- * `<head>`/`<body>` de TODAS las páginas del frontend) — no hay noción de
- * "por página" que pueda pisarlos, así que no aplica el patrón fallback de
- * `attachResolvedSeoMeta()`. **Guardado únicamente en esta vuelta**: la
- * exposición pública (dónde/cómo los consume `cica360`, si vía un endpoint
- * nuevo `GET /v1/{tenant}/site` o embebido en otro recurso existente) queda
- * fuera de alcance — no pedida todavía, evitar inventar un endpoint sin
- * consumidor confirmado.
+ * de ubicación.
+ *
+ * 2026-09-16 (pedido explícito del Tech Lead): se suma "Identidad del Proyecto (Tenant)"
+ * permitiendo personalizar nombre y slug del tenant, restringido a 1 cambio
+ * (o cuando se le habilite desde Platform Manager).
  */
 class Preferences extends Page implements HasForms
 {
@@ -67,7 +70,7 @@ class Preferences extends Page implements HasForms
 
     protected static ?string $title = 'Preferencias';
 
-    protected ?string $subheading = 'Cómo se muestran las fechas y los textos en Console, los valores de SEO/Open Graph por defecto del sitio y las integraciones de analytics.';
+    protected ?string $subheading = 'Identidad del proyecto, cómo se muestran las fechas y textos en Console, valores de SEO/Open Graph por defecto e integraciones.';
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
@@ -84,8 +87,15 @@ class Preferences extends Page implements HasForms
     {
         /** @var User $user */
         $user = auth()->user();
+        $tenant = Filament::getTenant() ?? $user?->tenant;
+
+        if ($tenant instanceof Tenant && ! app(TenantManager::class)->hasTenant()) {
+            app(TenantManager::class)->setTenant($tenant);
+        }
 
         $this->form->fill([
+            'tenant_name' => $tenant?->name,
+            'tenant_slug' => $tenant?->slug,
             'locale' => $user->locale,
             'timezone' => $user->timezone,
             // Tenant-wide, vía `setting()` — no columnas de `User` (ver
@@ -105,23 +115,83 @@ class Preferences extends Page implements HasForms
 
     public function form(Schema $schema): Schema
     {
+        $tenant = Filament::getTenant() ?? auth()->user()?->tenant;
+
         return $schema
             ->statePath('data')
-            // 2026-09-13 (ADR-065): antes esta página completa vivía metida a
-            // mano dentro de un `<div class="gnss-card" style="max-width:
-            // 32rem">` (ver `preferences.blade.php`) — tenía sentido cuando
-            // solo eran 2 campos sueltos (idioma/zona horaria), pero con las
-            // Sections nuevas (bastante más contenido: SEO + OG con
-            // imágenes, integraciones) todo quedaba apretado en una sola
-            // columna angosta, en vez de leer como tarjetas independientes
-            // tipo el resto de Studio (`PageResource`, etc.). El wrapper
-            // angosto se sacó del blade; acá se arma el layout real: 4
-            // `Section` en un `Grid` de 2 columnas — "Cuenta" e
-            // "Integraciones" lado a lado arriba, "Metadata SEO" y "Open
-            // Graph" lado a lado abajo (se apilan solas en mobile, el `Grid`
-            // de Filament ya es responsive).
             ->columns(2)
             ->components([
+                Section::make('Identidad del Proyecto (Tenant)')
+                    ->description('Nombre visible e identificador web único (slug / permalink) de tu proyecto.')
+                    ->collapsible()
+                    ->columns(2)
+                    ->columnSpanFull()
+                    ->schema([
+                        Forms\Components\Placeholder::make('slug_info_banner')
+                            ->hiddenLabel()
+                            ->content(function () use ($tenant): HtmlString {
+                                if ($tenant?->canChangeSlug()) {
+                                    $currentSlug = e($tenant->slug ?? '');
+
+                                    return new HtmlString('
+                                        <div class="rounded-lg border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300">
+                                            <div class="flex items-start gap-2.5">
+                                                <svg class="w-4 h-4 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clip-rule="evenodd" />
+                                                </svg>
+                                                <div>
+                                                    <span class="font-semibold">Personalización de Identificador (1 cambio disponible):</span>
+                                                    <p class="mt-0.5 text-amber-700/90 dark:text-amber-300/90 leading-relaxed">
+                                                        Puedes personalizar el nombre y slug de tu proyecto <strong>1 sola vez</strong>. Ten en cuenta que modificar el slug actualizará de inmediato la dirección de acceso a tu Studio (<code>/'.$currentSlug.'</code>) y las rutas de tu API pública. Al guardar serás redirigido a la nueva URL.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ');
+                                }
+
+                                return new HtmlString('
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50/80 p-3.5 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-300">
+                                        <div class="flex items-start gap-2.5">
+                                            <svg class="w-4 h-4 mt-0.5 text-gray-500 dark:text-gray-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd" />
+                                            </svg>
+                                            <div>
+                                                <span class="font-semibold">Identificador de proyecto permanente (1/1 cambios utilizados):</span>
+                                                <p class="mt-0.5 text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                    El slug actual está fijado para proteger tus enlaces web y la integración con la API. Si necesitas una actualización adicional, puedes solicitar una habilitación especial a través de Platform Manager.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ');
+                            })
+                            ->columnSpanFull(),
+
+                        Forms\Components\TextInput::make('tenant_name')
+                            ->label('Nombre del proyecto')
+                            ->helperText('Nombre visible de tu proyecto en el encabezado y reportes.')
+                            ->required()
+                            ->maxLength(100)
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Set $set, Get $get, ?string $state) use ($tenant) {
+                                if ($tenant?->canChangeSlug()) {
+                                    $set('tenant_slug', Str::slug($state ?? ''));
+                                }
+                            }),
+
+                        Forms\Components\TextInput::make('tenant_slug')
+                            ->label('Identificador (Slug / Permalink)')
+                            ->helperText(fn () => $tenant?->canChangeSlug()
+                                ? 'Identificador en minúsculas y guiones. Se usa en la URL de Studio y en la API.'
+                                : '🔒 Modificación bloqueada (se requiere habilitación desde Platform Manager).')
+                            ->prefix(rtrim(config('stamless.urls.studio'), '/').'/')
+                            ->required()
+                            ->maxLength(50)
+                            ->disabled(fn () => ! ($tenant?->canChangeSlug() ?? false))
+                            ->dehydrated(),
+                    ]),
+
                 Section::make('Cuenta')
                     ->description('Cómo se muestran las fechas y los textos en Console.')
                     ->collapsible()
@@ -143,10 +213,6 @@ class Preferences extends Page implements HasForms
                             ->required(),
                     ]),
 
-                // 2026-09-13, misma vuelta que SEO/OG (ver docblock de la
-                // clase): configuración de SITIO completo, no fallback de
-                // contenido — sin `->required()`, un tenant puede no usar
-                // ninguna de las 2 integraciones.
                 Section::make('Integraciones')
                     ->description('IDs de medición para el sitio público. Se dejan vacíos si el tenant no usa Meta Pixel o Google Tag Manager.')
                     ->collapsible()
@@ -164,12 +230,6 @@ class Preferences extends Page implements HasForms
                             ->maxLength(20),
                     ]),
 
-                // 2026-09-13 (ADR-065): mismos campos/labels que el tab "SEO /
-                // Enlaces" de Page/Post/Service (ver `PageResource::form()`) —
-                // acá son el valor POR DEFECTO del tenant, no de una página
-                // puntual. Sin `->required()`: es válido no definir ningún
-                // default (la página/publicación/servicio simplemente no
-                // recibe fallback, `meta.seo_*` sale `null` como hasta ahora).
                 Section::make('Metadata SEO (por defecto del sitio)')
                     ->description('Se usa cuando una página, publicación o servicio no define su propio título/descripción SEO.')
                     ->collapsible()
@@ -216,16 +276,52 @@ class Preferences extends Page implements HasForms
 
                     /** @var User $user */
                     $user = auth()->user();
+                    $tenant = Filament::getTenant() ?? $user?->tenant;
+                    $oldSlug = $tenant?->slug;
+                    $slugChanged = false;
 
+                    if ($tenant instanceof Tenant && ! app(TenantManager::class)->hasTenant()) {
+                        app(TenantManager::class)->setTenant($tenant);
+                    }
+
+                    // 1. Actualización de Tenant (Nombre y Slug)
+                    if ($tenant instanceof Tenant) {
+                        $newName = trim($data['tenant_name'] ?? '');
+                        $newSlug = Str::slug(trim($data['tenant_slug'] ?? ''));
+
+                        if (filled($newName) && $newName !== $tenant->name) {
+                            $tenant->name = $newName;
+                            setting(['site_name' => $newName]);
+                        }
+
+                        if ($tenant->canChangeSlug() && filled($newSlug) && $newSlug !== $oldSlug) {
+                            // Validar unicidad
+                            $exists = Tenant::where('slug', $newSlug)->where('id', '!=', $tenant->id)->exists();
+                            if ($exists) {
+                                Notification::make()
+                                    ->title('El identificador (slug) ya está en uso')
+                                    ->danger()
+                                    ->body("El slug '{$newSlug}' ya pertenece a otro proyecto. Por favor elige otro.")
+                                    ->send();
+
+                                return;
+                            }
+
+                            $tenant->slug = $newSlug;
+                            $tenant->slug_changes_count = ($tenant->slug_changes_count ?? 0) + 1;
+                            $slugChanged = true;
+                        }
+
+                        $tenant->save();
+                    }
+
+                    // 2. Actualización de Usuario
                     $user->update([
                         'locale' => $data['locale'],
                         'timezone' => $data['timezone'],
                     ]);
 
-                    // `setting([...])` = `SettingService::setMany()` — un
-                    // `updateOrCreate()` por clave, tenant-scoped por
-                    // `HasTenant`, invalida el cache del tenant vía
-                    // `SettingObserver` (ver docblock de la clase).
+                    // 3. Configuración del Sitio (Settings)
                     setting([
                         'seo.default_title' => $data['seo_default_title'] ?? null,
                         'seo.default_keywords' => $data['seo_default_keywords'] ?? null,
@@ -237,6 +333,18 @@ class Preferences extends Page implements HasForms
                         'tracking.meta_pixel_id' => $data['tracking_meta_pixel_id'] ?? null,
                         'tracking.gtm_id' => $data['tracking_gtm_id'] ?? null,
                     ]);
+
+                    if ($slugChanged && $tenant instanceof Tenant) {
+                        Notification::make()
+                            ->title('Identificador y preferencias actualizados')
+                            ->body("El proyecto ahora tiene el slug '{$tenant->slug}'. Redirigiendo a la nueva URL...")
+                            ->success()
+                            ->send();
+
+                        $this->redirect(Filament::getPanel('cms')->getUrl($tenant));
+
+                        return;
+                    }
 
                     Notification::make()
                         ->title('Preferencias guardadas')

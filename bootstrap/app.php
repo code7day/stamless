@@ -3,7 +3,10 @@
 use App\Exceptions\Api\MissingRequiredFieldsException;
 use App\Http\Middleware\ResolveTenant;
 use App\Http\Middleware\ValidateTokenOrigin;
+use App\Models\Tenant;
+use App\Models\User;
 use App\Support\Api\ErrorEnvelope;
+use Filament\Facades\Filament;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -72,6 +75,29 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->getHost() === parse_url(config('stamless.urls.api'), PHP_URL_HOST) || $request->expectsJson(),
         );
+
+        // Si un usuario autenticado en Studio accede a una ruta 404 / tenant inválido,
+        // redirigirlo automáticamente a su propio tenant Studio (o Platform si es superadmin sin tenant).
+        $exceptions->render(function (NotFoundHttpException|ModelNotFoundException $e, Request $request) {
+            $studioHost = parse_url(config('stamless.urls.studio'), PHP_URL_HOST);
+            if ($request->getHost() === $studioHost && ! $request->expectsJson()) {
+                $user = auth()->user();
+                if ($user instanceof User) {
+                    $cmsPanel = Filament::getPanel('cms', isStrict: false);
+                    if ($cmsPanel) {
+                        if ($user->tenant instanceof Tenant) {
+                            return redirect()->to($cmsPanel->getUrl($user->tenant));
+                        }
+
+                        if ($user->is_super_admin) {
+                            return redirect()->to(config('stamless.urls.platform'));
+                        }
+                    }
+                }
+            }
+
+            return null;
+        });
 
         // Envelope de error uniforme (ADR-009, formalizado en ADR-024) para
         // toda excepción no manejada explícitamente por un controller

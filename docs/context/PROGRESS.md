@@ -11,6 +11,202 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-16 — Auth / Seguridad: Owner de CICA360 (`goncalvez.isaac@gmail.com`) y mecanismo de cambio obligatorio de contraseña (`must_change_password`)
+- **Pedido del Tech Lead:**
+  - "el owner del sitio cica360 es: tenant o proyecto: cica360, usuario: goncalvez.isaac@gmail.com, clave: que sea una clave mas segura y que cada vez que se cambie de clave a cualquier usuario se le puda dar un check indicando que obligue a cambiarla en el proximo login, entonces esta clave temporal para el owner seria necesario cambiarla, asi es asegura su cuenta".
+- **Implementación:**
+  1. **Base de Datos & Modelo (`users`):**
+     - Migración `database/migrations/2026_09_16_185246_add_must_change_password_to_users_table.php` agregando columna booleana `must_change_password` (default `false`).
+     - En `app/Models/User.php`: agregada a `#[Fillable]` y cast `'boolean'`.
+  2. **Seeder de Cliente 0 (`Cliente0Seeder.php`):**
+     - Actualizado el usuario Owner de `cica360` a `goncalvez.isaac@gmail.com`, nombre `Isaac Goncalvez`, contraseña segura inicial `'Cica360#Secure!2026'` y `must_change_password => true`.
+  3. **Middleware de Intercepción (`EnsurePasswordIsNotExpired.php`):**
+     - Creado `app/Http/Middleware/EnsurePasswordIsNotExpired.php` y registrado en `authMiddleware` de `PanelCmsProvider`.
+     - Si el usuario logueado tiene `must_change_password === true`, bloquea la navegación hacia cualquier otra área o recurso de Studio y lo redirige forzosamente a la página `ChangePassword` (`/cica360/change-password`).
+     - Permite peticiones de logout y llamadas AJAX de Livewire sobre el formulario de cambio de contraseña.
+  4. **Página de Cambio de Contraseña (`ChangePassword.php`):**
+     - Alerta visual en banner ámbar informando que se ha iniciado sesión con una clave temporal y que es obligatorio actualizarla.
+     - Al guardar exitosamente la nueva contraseña, desactiva la bandera (`must_change_password = false`) y redirige al dashboard del proyecto.
+  5. **Gestión de Usuarios (`UserResource.php` / `ManageUsers.php`):**
+     - Reemplazado el checkbox clásico por un componente moderno **Switch Toggle** (`Toggle::make('must_change_password')`) tanto en el formulario de creación de usuario como en el modal de acción `changePassword` (con valor por defecto `true`).
+  6. **Feature Test:**
+     - Creado `tests/Feature/Filament/MustChangePasswordTest.php` validando redirección forzada, acceso al formulario, actualización de contraseña, reseteo del flag a `false` y generación en el seeder.
+- **Archivos:**
+  - `database/migrations/2026_09_16_185246_add_must_change_password_to_users_table.php`
+  - `app/Models/User.php`
+  - `database/seeders/Cliente0Seeder.php`
+  - `app/Http/Middleware/EnsurePasswordIsNotExpired.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Filament/Pages/ChangePassword.php`
+  - `app/Filament/Resources/UserResource.php`
+  - `app/Filament/Resources/UserResource/Pages/ManageUsers.php`
+  - `tests/Feature/Filament/MustChangePasswordTest.php`
+- **Verificación:** Pint ejecutado; 136 tests pasando (621 aserciones, 100% pasando).
+
+## 2026-09-16 — DB / PostgreSQL: Fix `QueryException` (invalid input syntax for type bigint) en `EnsureUserAccessesOwnTenant`
+- **Pedido del Tech Lead:** Reporte con captura de pantalla: `SQLSTATE[22P02]: Invalid text representation: 7 ERROR: invalid input syntax for type bigint: "stamless" (SQL: select exists(select * from "tenants" where "slug" = stamless or "id" = stamless))`.
+- **Causa raíz:** En PostgreSQL (estrictamente tipado), la columna `id` de `tenants` es de tipo `bigint`. La cláusula `orWhere('id', $requestedSlug)` intentaba comparar directamente el string `"stamless"` contra la columna numérica `id`, disparando un error 22P02.
+- **Implementación:**
+  1. En `app/Http/Middleware/EnsureUserAccessesOwnTenant.php`:
+     - Se condicionó la cláusula `orWhere('id', (int) $requestedSlug)` exclusivamente a cuando `$requestedSlug` es numérico (`is_numeric()`), consultando únicamente por `slug` cuando se recibe un string alfanumérico.
+- **Archivos:**
+  - `app/Http/Middleware/EnsureUserAccessesOwnTenant.php`
+- **Verificación:** 132 tests pasando (607 aserciones), Pint OK.
+
+
+## 2026-09-16 — Auth / Sesión Multi-Dominio: Compartición automática de cookies de sesión entre Platform y Studio (`SESSION_DOMAIN` y `SESSION_COOKIE`)
+- **Pedido del Tech Lead:** "si me autentico en platform, intento cambiar a studio por que ya tengo tenant, pero al cambiar a studio me carga el login de studio y tengo que autenticarme de nuevo, deberia ser compatible la session abierta de platform a ese nivel" con captura del botón de Studio.
+- **Causa raíz:** `config/session.php` utilizaba `SESSION_DOMAIN=null` por defecto cuando no estaba explícitamente configurado en `.env`. Los navegadores marcan las cookies de sesión como "host-only" (solo para `platform.stamless.host`), impidiendo que `studio.stamless.host` reciba la cookie de sesión al cambiar de panel. Al cambiar la configuración de dominio, la cookie anterior host-only generaba colisión en el navegador invalidando la verificación de CSRF en el login.
+- **Implementación:**
+  1. En `config/session.php`:
+     - Se implementó la resolución automática de `domain` para cookies de sesión: si `SESSION_DOMAIN` no está definido en `.env`, deduce el dominio raíz común (ej. `.stamless.host` o `.stamless.com`) a partir de `APP_URL_STUDIO` / `APP_URL_PLATFORM` / `APP_URL`, excluyendo `localhost` o IPs.
+     - Se actualizó el nombre predeterminado de la cookie a `stamless_session` para evitar colisiones con cookies huérfanas previas del navegador.
+  2. En `.env.example`:
+     - Se documentó `SESSION_DOMAIN=.stamless.host` y `SESSION_COOKIE=stamless_session` por defecto.
+  3. En `tests/Feature/Filament/PanelSwitcherTest.php`:
+     - Se añadió test verificando que el dominio de la cookie de sesión cubre los subdominios con punto inicial.
+- **Archivos:**
+  - `config/session.php`
+  - `.env.example`
+  - `tests/Feature/Filament/PanelSwitcherTest.php`
+- **Verificación:** 132 tests pasando (607 aserciones), Pint OK.
+
+
+## 2026-09-16 — Studio / UX: Ampliación de ancho de slideOver (`modalWidth('2xl')`) en gestión de usuarios
+- **Pedido del Tech Lead:** "en usuarios el oversider hacer mas amplio, un poco mas" con captura mostrando recorte en campo de correo electrónico.
+- **Implementación:**
+  1. En `app/Filament/Resources/UserResource.php`:
+     - `EditAction::make()->slideOver()->modalWidth('2xl')` (ampliado de `'lg'` a `'2xl'`, otorgando 672px de ancho para que los campos en 2 columnas y roles tengan amplio espacio).
+     - `Action::make('changePassword')->slideOver()->modalWidth('lg')` (ampliado de `'md'` a `'lg'`).
+  2. En `app/Filament/Resources/UserResource/Pages/ManageUsers.php`:
+     - `CreateAction::make()->slideOver()->modalWidth('2xl')` (ampliado de `'lg'` a `'2xl'`).
+- **Archivos:**
+  - `app/Filament/Resources/UserResource.php`
+  - `app/Filament/Resources/UserResource/Pages/ManageUsers.php`
+- **Verificación:** 131 tests pasando (604 aserciones), Pint OK.
+
+
+## 2026-09-16 — Studio / Tenancy: Redirección automática al tenant propio del usuario autenticado ante URLs no autorizadas o 404
+- **Pedido del Tech Lead:** "ingrese como cliente 0 (cica360/ ) y como me quedé con el tenant stamless-landing/ con el tenant del super usuario, pero como no tengo acceso deberia cargar mi tenant cica360/" (con captura de `https://studio.stamless.host/stamless-landing/sliders 404 Not Found`).
+- **Causa raíz:** Si un usuario de tenant inicia sesión teniendo en el historial/pestaña una URL con el slug de otro tenant (o un slug viejo no existente como `stamless-landing`), la resolución de tenant de Filament/Laravel abortaba con `404 Not Found` en vez de cargar el tenant que sí le pertenece.
+- **Implementación:**
+  1. Middleware `EnsureUserAccessesOwnTenant` (`app/Http/Middleware/EnsureUserAccessesOwnTenant.php`) registrado en `authMiddleware` de `PanelCmsProvider`:
+     - Si el usuario es un cliente (`! $user->is_super_admin`) y la URL solicita un tenant distinto a su `user->tenant->slug`, lo redirige suavemente a la URL de su propio Studio (`$panel->getUrl($user->tenant)`).
+     - Si el usuario es superadmin y accede a un slug que no existe en BD, lo redirige a su propio tenant o Platform.
+  2. En `bootstrap/app.php`:
+     - Captura de excepciones `NotFoundHttpException` y `ModelNotFoundException` en el host de Studio para usuarios autenticados: si la ruta no existe o el slug no es válido, se redirige inmediatamente a la URL del tenant propio del usuario (`$cmsPanel->getUrl($user->tenant)`) sin mostrar pantalla de 404.
+  3. Feature test `tests/Feature/Filament/TenantAccessRedirectTest.php` cubriendo todos los casos.
+- **Archivos:**
+  - `app/Http/Middleware/EnsureUserAccessesOwnTenant.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `bootstrap/app.php`
+  - `tests/Feature/Filament/TenantAccessRedirectTest.php`
+- **Verificación:** 131 tests pasando (604 aserciones), Pint OK.
+
+
+## 2026-09-16 — Studio / Preferencias: Personalización de Tenant (Nombre y Slug) en 2 columnas con límite de 1 cambio y limpieza de demo en Master Seeder
+- **Pedido del Tech Lead:** "en el contenido inicial cuando se creo un tenant para mi cuenta super usuario, deberia pedir el nombre del tenant para que a partir de ahi se genere y no debe inyectar contenido como slider principal, eso es parte del contenido inicial del cliente 0 (cica360). el usuario deberia poder en preferencias tener una seccion para poder personalizar su tenant, si cambia titulo se cambiará el slug o permalink del tenant, permitir cambio solo 1 vez o cuando se le permita... en 2 columnas"
+- **Implementación:**
+  1. En `database/seeders/PlatformSeeder.php`: Se removió la inyección de sliders demo para el Master Tenant.
+  2. En `database/migrations/2026_09_16_174924_add_slug_change_tracking_to_tenants_table.php` y `app/Models/Tenant.php`:
+     - Agregadas columnas `slug_changes_count` y `slug_changes_allowed` (default 1).
+     - Métodos helper `canChangeSlug(): bool` y `remainingSlugChanges(): int`.
+  3. En `app/Filament/Pages/Preferences.php`:
+     - Sección "Identidad del Proyecto (Tenant)" en 2 columnas (`->columns(2)`): Nombre del proyecto e Identificador (Slug / Permalink) con prefijo de URL de Studio.
+     - Callouts amigables de advertencia (1 cambio disponible) y bloqueo permanente (1/1 cambios utilizados).
+     - Actualización reactiva con `Str::slug` en `afterStateUpdated`.
+     - Validaciones de unicidad, incremento de contador y redirección a la nueva URL de Studio tras modificar el slug.
+- **Archivos:**
+  - `app/Filament/Pages/Preferences.php`
+  - `app/Models/Tenant.php`
+  - `database/migrations/2026_09_16_174924_add_slug_change_tracking_to_tenants_table.php`
+  - `database/seeders/PlatformSeeder.php`
+  - `tests/Feature/Filament/PreferencesTenantCustomizationTest.php`
+- **Verificación:** 126 tests pasando (596 aserciones), Pint OK.
+
+
+## 2026-09-16 — UI / UX: Rediseño visual del switcher "Manager" ↔ "Studio" alineado a la identidad de marca
+- **Pedido del Tech Lead:** "arreglar el boton, mas ux/UI mas estilo acorde a la identidad de cada ambiente" con capturas del botón plano.
+- **Implementación:**
+  1. En `resources/views/filament/components/panel-switch-button.blade.php`:
+     - Rediseñado en formato pill de alta fidelidad (`.fi-panel-switcher-btn`) con icono micro-grid de 4 cuadrados para Platform Manager y pluma de edición para Studio.
+     - Tipografía semibold, espaciado equilibrado (`gap-1.5`, altura 30px alineada al avatar) e icono de flecha sutil con micro-animación en hover (`translateX`).
+  2. En `public/css/filament/api-console.css` y `resources/css/filament/cms/theme.css`:
+     - **En Studio hacia Platform Manager**: paleta **Teal** (`#0F766E` en claro / `#2DD4BF` en oscuro) con fondo de cristal sutil (`rgba(15, 118, 110, 0.08)` / `rgba(45, 212, 191, 0.12)`), bordes suaves y brillo en hover.
+     - **En Platform hacia Studio**: paleta **Ámbar** (`#B45309` en claro / `#FBBF24` en oscuro) con fondo de cristal sutil (`rgba(217, 119, 6, 0.08)` / `rgba(251, 191, 36, 0.12)`), bordes suaves y brillo en hover.
+  3. En `app/Providers/Filament/PanelPlatformProvider.php`:
+     - Registrado `api-console.css` en `HEAD_END` con cache-busting `filemtime()` para carga inmediata sin depender de paso de build.
+- **Archivos:**
+  - `resources/views/filament/components/panel-switch-button.blade.php`
+  - `public/css/filament/api-console.css`
+  - `resources/css/filament/cms/theme.css`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+- **Verificación:** 124 tests pasando (566 aserciones), Pint ejecutado limpiamente.
+
+## 2026-09-16 — Multi-Tenant / Seeder & UX: Tenant propio "Eduardo Flores" (`stamless`) con Plan Auspicio para el Master y resolución de URL cross-domain
+- **Pedido del Tech Lead:** "entre como master desde platform y cambie a studio y como no tengo proyecto o tenant como master me sale por default el tenant del client 0 cica360/ y eso no es bueno, el master deberia tener un tenant como contenido inicial tambien en el seeder, uno como plan auspicio tambien" + Captura de pantalla con `https://platform.stamless.host/cica360 404 Not Found`.
+- **Causa raíz del 404:** `Filament::getPanel('cms')->getUrl($tenant)` generaba una ruta relativa `/cica360` en el contexto del panel de origen (`platform.stamless.host`), provocando que el navegador buscara la ruta en Platform en lugar de navegar hacia el dominio de Studio. Además, el superadmin master no tenía un tenant propio asignado en el seeder inicial.
+- **Implementación:**
+  1. En `database/seeders/PlatformSeeder.php`:
+     - Se siembra un tenant propio inicial para el Super Admin: `name => 'Eduardo Flores'`, `slug => 'stamless'`, `plan => 'sponsorship'` (Plan Auspicio / Convenio).
+     - Se le crea su suscripción activa a `sponsorship`, se activan los módulos core, configuración de sitio (`site_name => 'Eduardo Flores'`) y slider inicial.
+     - El super-admin master `zedu77@gmail.com` queda formalmente vinculado con `tenant_id => $masterTenant->id` y rol `Admin`.
+  2. En `resources/views/filament/components/panel-switch-button.blade.php` y `app/Providers/Filament/PanelPlatformProvider.php`:
+     - La URL hacia Studio se construye siempre como URL absoluta con el dominio de Studio (`config('stamless.urls.studio') . '/' . $tenant->slug`), resolviendo el 404 cross-domain.
+     - Redirección apunta al tenant propio del usuario (`$user->tenant->slug`), llevando al master a su propio Studio (`https://studio.stamless.host/stamless`).
+  3. En `tests/Feature/PlanSeederTest.php`:
+     - Test `test_platform_seeder_creates_master_tenant_with_sponsorship_plan` verificando la creación del tenant, plan `sponsorship` y vinculación del usuario master.
+- **Archivos:**
+  - `database/seeders/PlatformSeeder.php`
+  - `resources/views/filament/components/panel-switch-button.blade.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `tests/Feature/PlanSeederTest.php`
+- **Verificación:** 124 tests pasando (566 aserciones), Pint validado.
+
+## 2026-09-16 — UI / UX: Switcher de paneles "Studio" ↔ "Manager" en topbar y menú para Super Admins
+- **Pedido del Tech Lead:** "colocar un boton si es super admin o tiene permisos a platform para que pueda entrar a studio y volver de studio a platform, pero si es solo cliente con acceso a studio, entonces ahi si no deberia visualizar ese boton de cambiar de panel 'Manager' > 'Studio' ó 'Studio' > 'Manager' podria ser el boton a lado del dropdown de perfil".
+- **Implementación:**
+  1. Componente Blade `resources/views/filament/components/panel-switch-button.blade.php`:
+     - Renderiza un botón badge junto al menú de perfil (hook `PanelsRenderHook::USER_MENU_BEFORE`).
+     - Si el usuario logueado **no** es Super Admin (`! is_super_admin`), no renderiza nada (HTML vacío).
+     - Desde **Studio**: muestra badge estilo Teal `Manager →` con icono de cuadrícula enlazando al dominio de Platform (`config('stamless.urls.platform')`).
+     - Desde **Platform**: muestra badge estilo Amber `Studio →` con icono de edición enlazando a la URL del tenant asignado o primer tenant (`/cica360`).
+  2. En `app/Providers/Filament/PanelCmsProvider.php`:
+     - Registrado render hook `USER_MENU_BEFORE` con `panel-switch-button` (`targetPanel => 'platform'`).
+     - Añadido item de menú `MenuItem::make()->label('Ir a Platform Manager')` visible únicamente para Super Admins (`is_super_admin === true`).
+  3. En `app/Providers/Filament/PanelPlatformProvider.php`:
+     - Registrado render hook `USER_MENU_BEFORE` con `panel-switch-button` (`targetPanel => 'cms'`).
+     - Añadido item de menú `MenuItem::make()->label('Ir a Studio')` visible únicamente para Super Admins (`is_super_admin === true`).
+  4. En `tests/Feature/Filament/PanelSwitcherTest.php`:
+     - Test de visibilidad para Super Admin tanto en Studio como en Platform.
+     - Test de invisibilidad absoluta para usuarios regulares / clientes.
+- **Archivos:**
+  - `resources/views/filament/components/panel-switch-button.blade.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `tests/Feature/Filament/PanelSwitcherTest.php`
+- **Verificación:** 123 tests pasando (560 assertions), Pint ejecutado limpiamente.
+
+## 2026-09-16 — Storage / Cloudflare R2: Comando `media:sync-r2` y soporte dinámico de R2 en seeders
+- **Pedido del Tech Lead:** "ya tengo configurado R2 en produccion como subo o actualizo todos los aassets del primero contenido a R2".
+- **Implementación:**
+  1. En `app/Console/Commands/SyncMediaToR2Command.php`, se implementó el comando Artisan `php artisan media:sync-r2` (`--disk=r2`, `--force`, `--dry-run`) que:
+     - Escanea todos los assets y archivos multimedia físicos en `storage/app/public/media/` y `storage/app/public/assets/`.
+     - Sube cada archivo a Cloudflare R2 con visibilidad pública y headers MIME correspondientes.
+     - Actualiza en masa todos los registros de la tabla `media` para cambiar `disk` a `r2`.
+     - Presenta tabla resumen con métricas y URL de ejemplo generada por el CDN.
+  2. En `database/seeders/Cliente0MediaSeeder.php`, se adaptó el método `seedFile` para detectar si el disco activo es `r2` (o si `FILESYSTEM_DISK=r2` en producción), subiendo automáticamente los archivos faltantes a R2 y sembrando con `disk: 'r2'`.
+  3. En `config/filesystems.php`, se añadieron alias `R2_*` (además de los tradicionales `AWS_*`) para el disco `r2`.
+  4. En `.env.example`, se documentaron las variables `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT` y `R2_URL`.
+  5. En `tests/Feature/Console/SyncMediaToR2CommandTest.php`, se crearon pruebas unitarias para la ejecución normal y modo `--dry-run`.
+- **Archivos:**
+  - `app/Console/Commands/SyncMediaToR2Command.php`
+  - `database/seeders/Cliente0MediaSeeder.php`
+  - `config/filesystems.php`
+  - `.env.example`
+  - `tests/Feature/Console/SyncMediaToR2CommandTest.php`
+- **Verificación:** Pint ejecutado; 121 tests pasando (552 assertions).
+
 ## 2026-09-16 — Auth / Middleware: Redirección automática de usuarios no autorizados entre Platform y Studio sin error 403
 - **Pedido del Tech Lead:** "en studio se solucionó pero en platform, cuando no tiene permiso, el cliente que se logueó en studio y si cambia a platform, en lugar de redireccionar studio, se queda con 403 en platform".
 - **Causa raíz:** En `PanelPlatformProvider`, el middleware de autenticación base `Filament\Http\Middleware\Authenticate` lanzaba un `abort(403)` cuando el usuario logueado en la sesión no tenía permiso en Platform (`! $user->canAccessPanel($platform)`).

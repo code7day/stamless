@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Http\Middleware\FilamentAuthenticate;
+use App\Models\Tenant;
 use App\Models\User;
 use Caresome\FilamentAuthDesigner\AuthDesignerPlugin;
 use Caresome\FilamentAuthDesigner\Data\AuthPageConfig;
@@ -13,6 +14,7 @@ use DutchCodingCompany\FilamentSocialite\Provider;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\MenuItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -73,13 +75,33 @@ class PanelPlatformProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): HtmlString => new HtmlString(
-                    '<link rel="icon" type="image/png" href="'.asset('favicon/favicon-96x96.png').'" sizes="96x96">'
+                    '<link rel="stylesheet" href="'.asset('css/filament/api-console.css').'?v='.filemtime(public_path('css/filament/api-console.css')).'">'
+                    .'<link rel="icon" type="image/png" href="'.asset('favicon/favicon-96x96.png').'" sizes="96x96">'
                     .'<link rel="icon" type="image/svg+xml" href="'.asset('favicon/favicon.svg').'">'
                     .'<link rel="shortcut icon" href="'.asset('favicon.ico').'">'
                     .'<link rel="apple-touch-icon" sizes="180x180" href="'.asset('favicon/apple-touch-icon.png').'">'
                     .'<meta name="theme-color" content="#0F766E">'
                 )
             )
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): HtmlString => new HtmlString(view('filament.components.panel-switch-button', [
+                    'targetPanel' => 'cms',
+                ])->render())
+            )
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label('Ir a Studio')
+                    ->icon('heroicon-o-pencil-square')
+                    ->url(function (): string {
+                        $user = auth()->user();
+                        $tenant = $user?->tenant;
+                        $baseUrl = rtrim(config('stamless.urls.studio'), '/');
+
+                        return $tenant ? "{$baseUrl}/{$tenant->slug}" : $baseUrl;
+                    })
+                    ->visible(fn (): bool => auth()->user()?->is_super_admin ?? false),
+            ])
             ->plugins([
                 AuthDesignerPlugin::make()
                     ->login(fn (AuthPageConfig $config) => $config

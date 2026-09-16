@@ -1,7 +1,5 @@
 <?php
 
-use Illuminate\Support\Str;
-
 return [
 
     /*
@@ -129,7 +127,7 @@ return [
 
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
+        'stamless_session'
     ),
 
     /*
@@ -156,7 +154,28 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => (function (): ?string {
+        $configured = env('SESSION_DOMAIN');
+        if ($configured !== null && $configured !== '') {
+            return $configured;
+        }
+
+        $sampleUrl = (string) (env('APP_URL_STUDIO') ?? env('APP_URL_PLATFORM') ?? env('APP_URL') ?? '');
+        $host = parse_url($sampleUrl, PHP_URL_HOST);
+
+        if (! $host || $host === 'localhost' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return null;
+        }
+
+        $parts = explode('.', $host);
+        if (count($parts) >= 2) {
+            $domainParts = count($parts) > 2 ? array_slice($parts, 1) : $parts;
+
+            return '.'.ltrim(implode('.', $domainParts), '.');
+        }
+
+        return null;
+    })(),
 
     /*
     |--------------------------------------------------------------------------
