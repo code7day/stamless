@@ -6,6 +6,7 @@ namespace App\Models;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasAvatar;
 use Filament\Models\Contracts\HasTenants;
 use Filament\Panel;
@@ -21,10 +22,30 @@ use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password', 'tenant_id', 'uuid', 'locale', 'timezone', 'is_super_admin', 'provider', 'provider_id', 'avatar_url'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements HasAvatar, HasTenants
+class User extends Authenticatable implements FilamentUser, HasAvatar, HasTenants
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, HasTenant, HasUuid, Notifiable;
+
+    /**
+     * Determine if the user can access the given Filament panel.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        if ($this->is_super_admin) {
+            return true;
+        }
+
+        if ($panel->getId() === 'platform') {
+            return false;
+        }
+
+        if ($panel->getId() === 'cms') {
+            return $this->tenant_id !== null;
+        }
+
+        return false;
+    }
 
     /**
      * Get the attributes that should be cast.

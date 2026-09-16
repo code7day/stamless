@@ -11,6 +11,22 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-16 — Auth / Seguridad: Implementación de `FilamentUser` y `canAccessPanel()` para acceso en producción
+- **Pedido del Tech Lead:** "solo en production me sale para studio y platform 403 despues de login".
+- **Causa raíz:** En entornos no-locales (`APP_ENV=production`), Filament exige que el modelo `User` implemente `Filament\Models\Contracts\FilamentUser` con el método `canAccessPanel(Panel $panel): bool`. De lo contrario, el middleware `Authenticate` de Filament deniega el acceso con `403 Forbidden`.
+- **Implementación:**
+  1. En `app/Models/User.php`, se implementó `FilamentUser` y el método `canAccessPanel(Panel $panel): bool`:
+     - Super Admins (`is_super_admin === true`): acceso total e irrestricto tanto a `platform` como a `cms` (Studio).
+     - Usuarios de Tenant (`tenant_id !== null`): acceso permitido a `cms` (Studio) y bloqueado a `platform`.
+     - Usuarios huérfanos / anónimos (`is_super_admin === false && tenant_id === null`): acceso bloqueado a ambos paneles.
+  2. En `tests/Feature/Filament/PanelAccessProductionTest.php`, se añadieron tests unitarios/feature que cubren todas las combinaciones de acceso por tipo de usuario y panel.
+- **Archivos:**
+  - `app/Models/User.php`
+  - `tests/Feature/Filament/PanelAccessProductionTest.php`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **111 tests, 526 assertions (100% pasando)**.
+
 ## 2026-09-15 — DevOps / Storage: Sincronización condicional de storage (flag `-s` y primer despliegue) en `deploy.sh` y `production.sh`
 - **Pedido del Tech Lead:** "solo deberia ser una vez, o condicionada a un flag para forzar la subida".
 - **Implementación:**
