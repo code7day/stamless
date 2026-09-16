@@ -9,6 +9,7 @@ use App\Filament\Widgets\PlanStatusWidget;
 use App\Filament\Widgets\PlanUsageWidget;
 use App\Filament\Widgets\RecentContactsWidget;
 use App\Filament\Widgets\WelcomeWidget;
+use App\Http\Middleware\FilamentAuthenticate;
 use App\Http\Middleware\RedirectSuperAdminWithoutTenantToPlatform;
 use App\Http\Middleware\SyncTenantManagerWithFilament;
 use App\Models\Tenant;
@@ -20,7 +21,6 @@ use DutchCodingCompany\FilamentSocialite\FilamentSocialitePlugin;
 use DutchCodingCompany\FilamentSocialite\Models\Contracts\FilamentSocialiteUser as FilamentSocialiteUserContract;
 use DutchCodingCompany\FilamentSocialite\Provider;
 use Filament\Facades\Filament;
-use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
@@ -359,7 +359,7 @@ class PanelCmsProvider extends PanelProvider
                 DispatchServingFilamentEvent::class,
             ])
             ->authMiddleware([
-                Authenticate::class,
+                FilamentAuthenticate::class,
                 RedirectSuperAdminWithoutTenantToPlatform::class,
             ])
             // 2026-09-02, fix bug real en vivo (tenant_id NOT NULL al crear

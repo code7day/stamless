@@ -11,6 +11,26 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-16 — Auth / Middleware: Redirección automática de usuarios no autorizados entre Platform y Studio sin error 403
+- **Pedido del Tech Lead:** "en studio se solucionó pero en platform, cuando no tiene permiso, el cliente que se logueó en studio y si cambia a platform, en lugar de redireccionar studio, se queda con 403 en platform".
+- **Causa raíz:** En `PanelPlatformProvider`, el middleware de autenticación base `Filament\Http\Middleware\Authenticate` lanzaba un `abort(403)` cuando el usuario logueado en la sesión no tenía permiso en Platform (`! $user->canAccessPanel($platform)`).
+- **Implementación:**
+  1. Se creó `app/Http/Middleware/FilamentAuthenticate.php` extendiendo el middleware base de Filament.
+  2. Al verificar los permisos:
+     - Si el usuario accede a **Platform** (`platform.stamless.com`) sin ser Super Admin, pero tiene acceso a **Studio / CMS**, se le redirige automáticamente y de forma suave hacia Studio (`config('stamless.urls.studio')`) en vez de lanzar `403`.
+     - Si el usuario accede a **Studio** sin permisos de tenant pero tiene acceso a **Platform** (Super Admin), se le redirige a Platform (`config('stamless.urls.platform')`).
+     - Si el usuario carece de acceso a ambos paneles, se responde `403 Forbidden`.
+  3. En `PanelPlatformProvider.php` y `PanelCmsProvider.php`, se registró `FilamentAuthenticate` en sus respectivos `authMiddleware`.
+  4. En `tests/Feature/Filament/PanelAccessProductionTest.php`, se agregaron tests automatizados verificando la redirección de usuarios de tenant hacia Studio y el 403 para usuarios huérfanos.
+- **Archivos:**
+  - `app/Http/Middleware/FilamentAuthenticate.php`
+  - `app/Providers/Filament/PanelPlatformProvider.php`
+  - `app/Providers/Filament/PanelCmsProvider.php`
+  - `tests/Feature/Filament/PanelAccessProductionTest.php`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **119 tests, 542 assertions (100% pasando)**.
+
 ## 2026-09-16 — Auth / Studio & Platform: Redirección inteligente de Super Admin a Platform si no posee tenant cliente
 - **Pedido del Tech Lead:** "al loguearme en studio con el superadmin con google, entre a la cuenta de cica360 (cliente0), cuanto deberia buscr si yo como superadmin tengo un proyecto o cuenta como cliente, si no redireccionar a platform por ser superadmin".
 - **Causa raíz:** `User::getTenants()` devolvía `Tenant::all()` para superadmins, lo que causaba que Filament tomara el primer tenant de la BD (`cica360`) como tenant por defecto al autenticarse en Studio.

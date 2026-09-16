@@ -68,4 +68,47 @@ class PanelAccessProductionTest extends TestCase
         $this->assertFalse($orphanUser->canAccessPanel($platformPanel));
         $this->assertFalse($orphanUser->canAccessPanel($cmsPanel));
     }
+
+    public function test_logged_in_tenant_user_accessing_platform_is_redirected_to_studio(): void
+    {
+        $tenant = Tenant::create([
+            'name' => 'CICA360',
+            'slug' => 'cica360',
+            'is_active' => true,
+            'plan' => 'free',
+        ]);
+
+        $tenantUser = User::create([
+            'name' => 'Tenant Owner',
+            'email' => 'owner@cica360.com',
+            'password' => 'password123',
+            'tenant_id' => $tenant->id,
+            'is_super_admin' => false,
+        ]);
+
+        $platformHost = parse_url(config('stamless.urls.platform'), PHP_URL_HOST);
+
+        $response = $this->actingAs($tenantUser)
+            ->get("http://{$platformHost}/");
+
+        $response->assertRedirect(config('stamless.urls.studio'));
+    }
+
+    public function test_orphan_user_accessing_platform_receives_403(): void
+    {
+        $orphanUser = User::create([
+            'name' => 'Orphan User',
+            'email' => 'orphan@example.com',
+            'password' => 'password123',
+            'tenant_id' => null,
+            'is_super_admin' => false,
+        ]);
+
+        $platformHost = parse_url(config('stamless.urls.platform'), PHP_URL_HOST);
+
+        $response = $this->actingAs($orphanUser)
+            ->get("http://{$platformHost}/");
+
+        $response->assertForbidden();
+    }
 }
