@@ -21,6 +21,20 @@ class Tenant extends Model
         'plan',
         'slug_changes_count',
         'slug_changes_allowed',
+        'deploy_repo',
+    ];
+
+    /**
+     * `deploy_token` (PAT de GitHub, ver migración de deploy webhook) queda
+     * fuera de `$fillable` a propósito — es una credencial de infraestructura
+     * que solo el operador de la plataforma setea (`forceFill()` vía tinker
+     * o seeder), nunca un campo que un formulario de Studio deba poder
+     * llenar en masa. `$hidden` es la segunda defensa: aunque el modelo
+     * `Tenant` no se expone hoy en ninguna API Resource, cualquier futuro
+     * `toArray()`/`toJson()` accidental no lo filtra.
+     */
+    protected $hidden = [
+        'deploy_token',
     ];
 
     /**
@@ -49,6 +63,9 @@ class Tenant extends Model
             'is_active' => 'boolean',
             'slug_changes_count' => 'integer',
             'slug_changes_allowed' => 'integer',
+            // Mismo criterio que `Contact::email/phone/company` — el PAT de
+            // GitHub es un secreto, no un dato de negocio, se cifra at-rest.
+            'deploy_token' => 'encrypted',
         ];
     }
 
@@ -210,6 +227,25 @@ class Tenant extends Model
     public function canAccessMediaLibrary(): bool
     {
         return ! $this->isFreeTier();
+    }
+
+    /**
+     * Gate del mecanismo de "deploy webhook" (2026-09-17, Fase 6 post-MVP
+     * adelantada — ver ADR nuevo en DECISIONS.md): indica si este tenant
+     * tiene configurado el disparo automático de rebuild+deploy de su front
+     * headless al guardar contenido (`deploy_repo` + `deploy_token`, ambos
+     * seteados solo por el operador de la plataforma vía tinker/seeder, ver
+     * migración `add_deploy_webhook_fields_to_tenants_table`).
+     *
+     * `false` por defecto para CUALQUIER tenant (ambos campos nulos) — el
+     * mecanismo es opt-in explícito, no un comportamiento nuevo silencioso
+     * para tenants que no tengan un pipeline de CI propio conectado todavía.
+     * `DeployTriggerObserver`/`TriggerFrontendDeploy` consultan este gate
+     * antes de encolar o disparar nada.
+     */
+    public function hasDeployWebhookConfigured(): bool
+    {
+        return filled($this->deploy_repo) && filled($this->deploy_token);
     }
 
     /**

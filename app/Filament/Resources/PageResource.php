@@ -313,7 +313,75 @@ class PageResource extends Resource
             }
         }
 
+        /**
+         * Fix real (2026-09-17, reporte del Tech Lead): las columnas de
+         * `colophon` (y cualquier Repeater/Builder anidado dentro de
+         * `content` — sub-bloques de columna, items de `social_links`,
+         * etc.) se reordenaban solas al guardar, y un reordenamiento manual
+         * (drag-and-drop) tampoco se mantenía tras recargar.
+         *
+         * Causa raíz: `$state` en `saveRelationshipsUsing()` es el estado
+         * CRUDO del Builder de nivel página (`getState()`/`getRawState()`,
+         * sin pasar por `dehydrateState()` — ver
+         * `vendor/filament/schemas/src/Components/Concerns/HasState.php`).
+         * Ese estado crudo keyea cada ítem de Repeater/Builder por su ID
+         * interno de Livewire (string tipo UUID), no por posición 0..n-1.
+         * El nivel superior (`blocks`) ya se reindexaba correctamente vía
+         * `array_values($state)` en `saveRelationshipsUsing` (ver más abajo)
+         * — pero `content` (guardado tal cual, solo pasando por acá) nunca
+         * recibía el mismo tratamiento en sus arrays ANIDADOS.
+         *
+         * Un array PHP con keys no-secuenciales se serializa a JSON como
+         * OBJETO, no como ARRAY. Postgres `jsonb` NO garantiza preservar el
+         * orden de las keys de un objeto al guardarlo (a diferencia del tipo
+         * `json`) — reordena las keys según su propio criterio interno de
+         * almacenamiento. Resultado: el orden visual/de arrastre que el
+         * usuario dejó en pantalla se perdía silenciosamente en cada
+         * guardado, reemplazado por el orden "canónico" que Postgres le dio
+         * al objeto — percibido como "se reordena solo" y "no se mantiene el
+         * reordenamiento manual".
+         *
+         * Fix: cualquier array cuyas keys sean TODAS UUID-like (la firma de
+         * un array de ítems de Repeater/Builder de Livewire, nunca de un
+         * objeto de datos real como `properties`/`content.columns[n]`, que
+         * usan nombres de campo) se reindexa a 0..n-1 con `array_values()`
+         * — preservando el orden real (ya correcto en el array de Livewire),
+         * pero forzando la serialización como ARRAY JSON en vez de objeto.
+         * Ver `ResolvesPublicLinks::transformBlockContent()` (mismo
+         * síntoma, ya parchado ahí del lado de LECTURA de la API pública
+         * con el mismo `array_values()` defensivo) — este fix cierra el
+         * mismo agujero del lado de ESCRITURA en Studio.
+         */
+        if (self::isUuidKeyedArray($value)) {
+            return array_values($value);
+        }
+
         return $value;
+    }
+
+    /**
+     * Detecta un array cuyas keys son TODAS strings con formato UUID — la
+     * firma exacta de un array de ítems crudo de un Repeater/Builder de
+     * Livewire (cada ítem se identifica por un UUID interno, no por
+     * posición). Un array vacío no cuenta (nada que reindexar) para no
+     * gastar el chequeo de más, y para no confundir "sin ítems" con "sí es
+     * un array de ítems". Ver `unwrapFileUploadState()` para el porqué.
+     *
+     * @param  array<array-key, mixed>  $value
+     */
+    private static function isUuidKeyedArray(array $value): bool
+    {
+        if ($value === []) {
+            return false;
+        }
+
+        foreach (array_keys($value) as $key) {
+            if (! is_string($key) || ! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $key)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

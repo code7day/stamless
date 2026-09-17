@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\LanguageEnum;
 use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
+use App\Observers\DeployTriggerObserver;
 use App\Services\TenantManager;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
@@ -57,6 +58,13 @@ class Page extends Model
      */
     protected static function booted(): void
     {
+        // Fase 6 (post-MVP) adelantada, 2026-09-17 — ver ADR nuevo en
+        // DECISIONS.md: cualquier página guardada/borrada dispara (con
+        // debounce) el rebuild del front del tenant, si tiene el webhook
+        // configurado. Mismo observer en Post/Service/Slider/Menu/MenuItem/
+        // Testimonial — ver `DeployTriggerObserver`.
+        static::observe(DeployTriggerObserver::class);
+
         static::saving(function (Page $page): void {
             if (! $page->is_home) {
                 return;

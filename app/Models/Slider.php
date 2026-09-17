@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LanguageEnum;
+use App\Observers\DeployTriggerObserver;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,6 +14,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Slider extends Model
 {
     use HasTenant, HasUuid;
+
+    /**
+     * Fase 6 (post-MVP) adelantada, 2026-09-17 — ver `Page::booted()` para
+     * el docblock completo de por qué existe este observer. `Slide` (items
+     * de este slider) tiene su PROPIO `booted()`/observer — un cambio ahí
+     * también debe disparar el rebuild, no alcanza con cubrir solo `Slider`.
+     */
+    protected static function booted(): void
+    {
+        static::observe(DeployTriggerObserver::class);
+    }
 
     /**
      * Get the attributes that should be cast.

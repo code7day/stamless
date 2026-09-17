@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\LanguageEnum;
 use App\Enums\LinkTargetEnum;
 use App\Enums\MenuItemTypeEnum;
+use App\Observers\DeployTriggerObserver;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -66,6 +67,10 @@ class MenuItem extends Model
      */
     protected static function booted(): void
     {
+        // Fase 6 (post-MVP) adelantada, 2026-09-17 — ver `Page::booted()`
+        // para el docblock completo de por qué existe este observer.
+        static::observe(DeployTriggerObserver::class);
+
         static::creating(function (self $item): void {
             if ($item->menu_id || ! $item->parent_id) {
                 return;
