@@ -100,7 +100,13 @@ class ValidateTokenOrigin
         $allowedHost = strtolower((string) $token->allowed_origin);
 
         if (! config('stamless.security.strict_origin_check')) {
-            if ($claimedHost === null || in_array($claimedHost, ['localhost', '127.0.0.1', '[::1]'], true)) {
+            if (
+                $claimedHost === null
+                || in_array($claimedHost, ['localhost', '127.0.0.1', '[::1]'], true)
+                || str_ends_with($claimedHost, '.host')
+                || str_ends_with($claimedHost, '.test')
+                || str_ends_with($claimedHost, '.local')
+            ) {
                 return $next($request);
             }
         }

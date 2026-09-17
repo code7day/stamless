@@ -61,15 +61,19 @@ class AppServiceProvider extends ServiceProvider
     private function configureApiRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request) {
-            $key = $request->user('sanctum')?->tenant_id
-                ? 'tenant:'.$request->user('sanctum')->tenant_id
-                : 'ip:'.$request->ip();
+            $bearer = $request->bearerToken();
+            if ($bearer !== null || ($user = $request->user('sanctum'))) {
+                // Tokens autenticados de build time / API: amplio margen para SSG build
+                $key = $bearer ? 'bearer:'.hash('sha256', $bearer) : 'token:'.($user?->id ?? 'auth');
 
-            return Limit::perMinute(60)->by($key);
+                return Limit::perMinute(2400)->by($key);
+            }
+
+            return Limit::perMinute(60)->by('ip:'.$request->ip());
         });
 
         RateLimiter::for('forms', function (Request $request) {
-            return Limit::perMinute(10)->by($request->ip());
+            return Limit::perMinute(20)->by($request->ip());
         });
     }
 }

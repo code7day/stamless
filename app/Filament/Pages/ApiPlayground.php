@@ -91,10 +91,12 @@ class ApiPlayground extends Page implements HasForms
         'menus.show' => ['group' => 'Menus', 'label' => 'Menú principal', 'method' => 'GET', 'path' => 'menus/menu-principal', 'body' => ''],
         'sliders.show' => ['group' => 'Sliders', 'label' => 'Slider home', 'method' => 'GET', 'path' => 'sliders/home', 'body' => ''],
         'media.show' => ['group' => 'Media', 'label' => 'Media por uuid', 'method' => 'GET', 'path' => 'media/{uuid}', 'body' => ''],
+        'forms.show' => ['group' => 'Forms', 'label' => 'Formulario por slug', 'method' => 'GET', 'path' => 'forms/contacto', 'body' => ''],
         'forms.submit' => [
             'group' => 'Forms', 'label' => 'Enviar formulario de contacto', 'method' => 'POST', 'path' => 'forms/contacto/submit',
             'body' => "{\n    \"name\": \"Juan Pérez\",\n    \"email\": \"juan@example.com\",\n    \"phone\": \"099123456\",\n    \"message\": \"Quiero más información.\"\n}",
         ],
+        'settings.tracking' => ['group' => 'Settings', 'label' => 'Tracking IDs (Meta Pixel / GTM)', 'method' => 'GET', 'path' => 'settings/tracking', 'body' => ''],
     ];
 
     public function mount(): void

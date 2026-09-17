@@ -7,11 +7,13 @@ use App\Enums\ContactStatusEnum;
 use App\Filament\Resources\ContactResource\Pages;
 use App\Models\Contact;
 use App\Models\Tenant;
+use App\Services\ContactSubmissionService;
 use App\Support\FriendlyDate;
 use Filament\Actions;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Facades\FilamentColor;
@@ -171,12 +173,93 @@ class ContactResource extends Resource
         return new HtmlString('<ul class="divide-y divide-gray-100 dark:divide-white/10">'.$items.'</ul>');
     }
 
+    /**
+     * Renderiza las respuestas del formulario como tabla HTML limpia y legible,
+     * soportando textos largos (como el mensaje/consulta) con saltos de línea
+     * y sin truncamiento visual.
+     */
+    private static function renderFormResponses(Contact $record): HtmlString
+    {
+        $data = app(ContactSubmissionService::class)->decryptData($record);
+
+        if (empty($data)) {
+            return new HtmlString('<p class="text-sm text-gray-500 dark:text-gray-400">Sin datos de formulario.</p>');
+        }
+
+        $formFields = $record->form?->fields?->keyBy('name') ?? collect();
+
+        $rows = '';
+        foreach ($data as $key => $value) {
+            $fieldDefinition = $formFields->get($key);
+            $fieldLabel = $fieldDefinition?->label ? e($fieldDefinition->label) : null;
+            $escapedKey = e($key);
+
+            $keyCell = $fieldLabel
+                ? "<div><span class=\"font-medium text-gray-900 dark:text-gray-100 text-sm\">{$fieldLabel}</span><div class=\"font-mono text-xs text-gray-500 dark:text-gray-400 mt-0.5\">{$escapedKey}</div></div>"
+                : "<span class=\"font-mono text-xs text-gray-600 dark:text-gray-300\">{$escapedKey}</span>";
+
+            if (is_array($value)) {
+                $displayValue = e(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                $valueContent = "<pre class=\"font-mono text-xs whitespace-pre-wrap break-words text-gray-800 dark:text-gray-200\">{$displayValue}</pre>";
+            } elseif (is_bool($value)) {
+                $displayValue = $value ? 'Sí' : 'No';
+                $valueContent = "<span class=\"text-sm text-gray-900 dark:text-gray-100\">{$displayValue}</span>";
+            } elseif ($value === null || $value === '') {
+                $valueContent = '<span class="text-sm text-gray-400 italic">—</span>';
+            } else {
+                $displayValue = e((string) $value);
+                $valueContent = "<div class=\"text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words leading-relaxed\">{$displayValue}</div>";
+            }
+
+            $rows .= <<<HTML
+                <tr class="transition-colors hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                    <td class="px-4 py-3 align-top w-1/3 min-w-[140px] border-b border-gray-100 dark:border-white/5">
+                        {$keyCell}
+                    </td>
+                    <td class="px-4 py-3 align-top border-b border-gray-100 dark:border-white/5">
+                        {$valueContent}
+                    </td>
+                </tr>
+            HTML;
+        }
+
+        return new HtmlString(<<<HTML
+            <div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900/40 shadow-xs">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-gray-200 bg-gray-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+                            <th class="px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider dark:text-gray-300 w-1/3">Campo</th>
+                            <th class="px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wider dark:text-gray-300">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-white/5">
+                        {$rows}
+                    </tbody>
+                </table>
+            </div>
+        HTML);
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
+            ->columns(1)
             ->components([
+                Section::make('Respuestas del formulario')
+                    ->collapsible()
+                    ->columnSpanFull()
+                    ->schema([
+                        Forms\Components\Placeholder::make('form_responses_table')
+                            ->label('')
+                            ->content(fn (?Contact $record): HtmlString => $record ? self::renderFormResponses($record) : new HtmlString(''))
+                            ->columnSpanFull(),
+                    ])
+                    ->visible(fn (?Contact $record): bool => filled($record?->data)),
+
                 Section::make('Datos del contacto')
+                    ->collapsible()
                     ->columns(2)
+                    ->columnSpanFull()
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->label('Nombre')
@@ -209,50 +292,44 @@ class ContactResource extends Resource
                             ->content(fn (?Contact $record): string => $record?->form?->name ?? '—'),
                     ]),
 
-                Section::make('Respuestas del formulario')
+                Grid::make(2)
+                    ->columnSpanFull()
                     ->schema([
-                        Forms\Components\KeyValue::make('data')
-                            ->label('')
-                            ->disabled()
-                            ->columnSpanFull(),
-                    ])
-                    ->visible(fn (?Contact $record): bool => filled($record?->data)),
+                        Section::make('Gestión')
+                            ->collapsible()
+                            ->columnSpan(1)
+                            ->schema([
+                                Forms\Components\Select::make('status')
+                                    ->label('Estado')
+                                    ->options(ContactStatusEnum::class)
+                                    ->required(),
 
-                Section::make('Gestión')
-                    ->columns(2)
-                    ->schema([
-                        Forms\Components\Select::make('status')
-                            ->label('Estado')
-                            ->options(ContactStatusEnum::class)
-                            ->required()
-                            ->columnSpan(1),
+                                Forms\Components\Select::make('assigned_to')
+                                    ->label('Asignado a')
+                                    ->relationship('assignedTo', 'name')
+                                    ->searchable()
+                                    ->preload()
+                                    ->placeholder('Sin asignar'),
 
-                        Forms\Components\Select::make('assigned_to')
-                            ->label('Asignado a')
-                            ->relationship('assignedTo', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->placeholder('Sin asignar')
-                            ->columnSpan(1),
+                                Forms\Components\DateTimePicker::make('last_contacted_at')
+                                    ->label('Último contacto')
+                                    ->native(false),
 
-                        Forms\Components\DateTimePicker::make('last_contacted_at')
-                            ->label('Último contacto')
-                            ->native(false)
-                            ->columnSpanFull(),
+                                Forms\Components\Textarea::make('notes')
+                                    ->label('Notas internas')
+                                    ->rows(3),
+                            ]),
 
-                        Forms\Components\Textarea::make('notes')
-                            ->label('Notas internas')
-                            ->rows(3)
-                            ->columnSpanFull(),
+                        Section::make('Actividad')
+                            ->collapsible()
+                            ->columnSpan(1)
+                            ->schema([
+                                Forms\Components\Placeholder::make('activities_timeline')
+                                    ->label('')
+                                    ->content(fn (?Contact $record): HtmlString => $record ? self::renderActivityTimeline($record) : new HtmlString('')),
+                            ])
+                            ->visible(fn (?Contact $record): bool => $record !== null),
                     ]),
-
-                Section::make('Actividad')
-                    ->schema([
-                        Forms\Components\Placeholder::make('activities_timeline')
-                            ->label('')
-                            ->content(fn (?Contact $record): HtmlString => $record ? self::renderActivityTimeline($record) : new HtmlString('')),
-                    ])
-                    ->visible(fn (?Contact $record): bool => $record !== null),
             ]);
     }
 
@@ -317,7 +394,7 @@ class ContactResource extends Resource
                     Actions\EditAction::make()
                         ->label('Ver / gestionar')
                         ->slideOver()
-                        ->modalWidth('2xl'),
+                        ->modalWidth('5xl'),
 
                     // Nota rápida (2026-09-13): registra un `ContactActivity`
                     // tipo `note` sin necesidad de abrir el modal completo de

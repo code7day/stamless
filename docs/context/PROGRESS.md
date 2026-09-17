@@ -11,6 +11,95 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-16 — Studio / Contactos: Visualización completa de mensajes largos en tabla de respuestas del formulario
+- **Pedido del Tech Lead:** "el mensaje no se visualiza completo, deberia mostrarse todo el mensaje".
+- **Causa Raíz:** En `ContactResource.php`, las respuestas del formulario se mostraban con el componente `KeyValue`, el cual renderiza cada valor dentro de un `<input type="text">` rígido de una sola línea, truncando visualmente consultas y mensajes largos.
+- **Solución Implementada:**
+  1. En `app/Filament/Resources/ContactResource.php`, se reemplazó `KeyValue` por el método `renderFormResponses(Contact $record): HtmlString`.
+  2. Dicho método construye una tabla HTML limpia y adaptada a temas claro/oscuro con clases `whitespace-pre-wrap`, `break-words` y `leading-relaxed`.
+  3. Muestra tanto el label legible del campo (ej. "Consulta", "Ciudad", "País") como la clave original del formulario, y formatea valores nulos, booleanos, arreglos JSON y textos multilínea en su totalidad sin ningún recorte ni scroll horizontal incómodo.
+- **Archivos:**
+  - `app/Filament/Resources/ContactResource.php`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **138 tests, 666 assertions (100% pasando)**.
+
+## 2026-09-16 — Frontend & API: Fix de Rate Limiting (429 "Demasiadas solicitudes") en `npm run build` y memoización SSG en `api.ts`
+- **Pedido del Tech Lead:** "al hacer npm run build sale esto: [api.ts] Demasiadas solicitudes. Intentá más tarde. Location: route-cache.js:32:17".
+- **Causa Raíz:**
+  1. Durante `astro build`, Astro ejecuta `getStaticPaths` y el renderizado estático de 18 páginas en paralelo. Cada página invocaba repetidamente `getSiteTracking()`, `getMenu('header-principal')`, `getMenu('footer-principal')`, `getMenu('footer-contactos')`, `getPage()`, etc., disparando más de 100 peticiones concurrentes en pocos segundos.
+  2. En el backend de Genesis (`AppServiceProvider.php`), el limiter `RateLimiter::for('api')` evaluaba `$request->user('sanctum')` antes de que el guard de Sanctum se autenticara en el router, cayendo al límite por IP de 60 req/minuto y respondiendo con HTTP 429 (`"Demasiadas solicitudes. Intentá más tarde."`).
+- **Solución Implementada:**
+  1. **Genesis Backend (`AppServiceProvider.php`):**
+     - Actualizado `RateLimiter::for('api')` para reconocer directamente el header `Authorization: Bearer <token>` por hash SHA-256 (`bearer:<hash>`) o usuario autenticado, asignando un límite holgado de 2400 req/minuto para procesos de compilación SSG e integraciones autenticadas.
+  2. **Astro Frontend (`cica360/src/lib/api.ts`):**
+     - Añadido mecanismo de memoización/deduplicación en memoria de peticiones GET durante el ciclo de build (`cachedRequest` / `ssgRequestCache`).
+     - Al renderizar 18 páginas concurrentes, menús, tracking y recursos comunes se solicitan exactamente una vez y se comparten en memoria entre todos los `.astro` concurrentes.
+     - El tiempo de build bajó de 16.3s a 7.5s y se eliminó el tráfico redundante.
+  3. **Verificación & Despliegue:**
+     - `npm run build` en `cica360`: 18 páginas compiladas con 0 errores en 7.55s.
+     - `./deploy.sh`: 73/73 archivos transferidos con éxito a cPanel / Ferozo (`https://cica360.com`).
+     - Tests en Genesis: **138 tests, 666 aserciones, 100% pasando**.
+
+## 2026-09-16 — Studio / Clientes: Fix de visualización/persistencia de campos de contacto (`email`, `phone`, `company`, `source`) y rediseño del modal de edición
+- **Pedido del Tech Lead:** "no ha sido guardado los datos de email, telefono, empresa, origen. el modal tiene que ser mas ancho, en el modal debe ser a 1 sola columna, cada seccion tiene que tener arriba Respuestas del formulario una sola columna a lo ancho del body del modal, debajo debe de estar la seccion Datos del contacto, luego la siguiente fila tiene que ser a 2 columnas Gestion y actividad en la misma fila. en cada section debe de ser collapsible".
+- **Implementación:**
+  1. **Fix de Campos en Modelo y Servicio (`genesis/`):**
+     - Retirado `#[Hidden(['email', 'phone', 'company'])]` del modelo `Contact` — en Livewire/Filament, `$hidden` causaba que `toArray()` omitiera estas propiedades durante la hidratación del formulario de edición en Studio, mostrándolos vacíos.
+     - Mapeo de alias de campos (`correo`, `telefono`, `whatsapp`, `empresa`, `origen`) en `ContactSubmissionService::splitPayload()` y fallbacks directos en `submit()`.
+     - Resolución de `source` y `page_url` ampliada en `FormSubmissionController` y reenviada desde `cica360/public/contacto.php` vía headers `Referer`/`Origin`.
+     - Descifrado dinámico en caliente en `KeyValue::make('data')` para campos encriptados de `Contact::data`.
+  2. **Rediseño del Modal en Studio (`ContactResource.php`):**
+     - Modal lateral ampliado a `modalWidth('5xl')` (`slideOver`).
+     - Layout a 1 sola columna a nivel raíz con secciones colapsables (`->collapsible()`):
+       - **Fila superior:** Sección `Respuestas del formulario` a 1 columna ocupando todo el ancho (`columnSpanFull`).
+       - **Segunda fila:** Sección `Datos del contacto` a 2 columnas (`name`, `email`, `phone`, `company`, `source`, `form.name`).
+       - **Tercera fila:** `Grid::make(2)` con las secciones `Gestión` y `Actividad` en la misma fila (2 columnas lado a lado).
+     - Suite completa: **138 tests, 666 aserciones, 100% pasando**.
+
+## 2026-09-16 — Preferencias / Formularios: Página de agradecimiento configurable, endpoint `GET forms/{slug}`, preset en API Playground y personalización en `POST forms/{slug}/submit`
+- **Pedido del Tech Lead:** "en preferencias agregar una seccion al final que sea para poner el titulo, descripcion wysywyg con solo herramientas de <strong> , campos de titulo de alerta y descripcion de la alerta y campo para el label del boton de volver al formulario de contacto. necesito que exista un endpoint dentro de forms con un atributo con todos los datos de la pagina de gracias que sea personalizado mediante una plantilla. ademas hay error al hacer build", y "y en el playground no esta el endpoint donde se comparte esos datos".
+- **Implementación:**
+  1. **Preferencias en Genesis (`app/Filament/Pages/Preferences.php`):**
+     - Nueva sección `'Página de Agradecimiento (Formularios)'` con:
+       - `thank_you_title`: Título configurable con soporte de comodín `{name}`.
+       - `thank_you_description`: `RichEditor` restringido con `->toolbarButtons(['bold'])` para únicamente etiquetas `<strong>`.
+       - `thank_you_alert_title`: Título del cuadro informativo/alerta (ej. `Tiempo de respuesta estimado:`).
+       - `thank_you_alert_description`: Descripción del cuadro informativo (ej. `Menos de 24 horas hábiles...`).
+       - `thank_you_button_label`: Etiqueta del botón de reinicio/vuelta (ej. `Enviar otra consulta`).
+     - Persistencia y lectura tenant-wide mediante `setting('thank_you.*')`.
+  2. **API REST v1 de Formularios y API Playground (`genesis/`):**
+     - Creado `FormResource` y `FormController::show` para `GET /v1/{tenant}/forms/{slug}` (bajo `abilities:content:read`), devolviendo la definición del formulario, campos y el objeto `thank_you`.
+     - Agregado el preset `'forms.show'` (`GET /v1/{tenant}/forms/contacto`) en `ApiPlayground.php` dentro del grupo **Forms** del sidebar del Playground.
+     - Actualizado `FormSubmissionController::store` para `POST /v1/{tenant}/forms/{slug}/submit`, devolviendo en `201 Created` el objeto `thank_you` personalizado dinámicamente con el primer nombre del remitente (o fallback limpio si no se envía nombre).
+     - Tests agregados en `FormSubmissionApiTest.php`. Suite completa: **138 tests, 666 aserciones, 100% pasando**.
+  3. **Frontend Astro (`cica360/`):**
+     - Corrección de 6 warnings/hints del compilador de Astro (`astro.config.mjs`, `Heading.astro`, `TestimonialsGrid.astro`, `BaseLayout.astro`) logrando **0 errors, 0 warnings, 0 hints**.
+     - Actualizado `src/lib/types.ts` con `ThankYouTemplate`, `FormData`, `FormFieldData`, `ContactFormSuccessData`.
+     - Agregada función `getForm(slug)` en `src/lib/api.ts`.
+     - Actualizado `ContactForm.tsx` para recibir y renderizar la plantilla `thank_you` en tiempo real tras el envío, con soporte de HTML sanitizado (`dangerouslySetInnerHTML`) para etiquetas `<strong>`.
+     - Build y despliegue exitoso con `./deploy.sh`.
+
+## 2026-09-16 — DevOps / Frontend: Script automatizado de despliegue FTP para cPanel/Ferozo (`deploy-ftp.sh`) con soporte de `.env`
+- **Pedido del Tech Lead:** "prepara el script .sh para desplegar el dist en la ruta adecuada del ftp del cpanel (home: c2701532) : Servidor: ftp://c2701532.ferozo.com Usuario: ftp@c2701532.ferozo.com" y "pudiendo en el .env configurar la contraseña y los datos necesarios para FTP".
+- **Implementación:**
+  1. Creado el script `deploy-ftp.sh` con permisos de ejecución (`chmod +x`).
+  2. Detección automática y lectura de credenciales desde `.env`, `.env.production` o `.env.local`:
+     - `FTP_HOST` (default: `c2701532.ferozo.com`)
+     - `FTP_USER` (default: `ftp@c2701532.ferozo.com`)
+     - `FTP_PASSWORD` / `FTP_PASS` (si no está definida en `.env`, la solicita de forma oculta e interactiva)
+     - `FTP_REMOTE_DIR` (default: `public_html`)
+     - `FTP_PORT` (default: `21`)
+  3. Soporte para compilación previa con `-b` (`npm run build`) y detección automática del directorio `dist/` local o de `cica360/dist/`.
+  4. Motor dual de transferencia:
+     - `lftp` con `mirror --reverse --delete` (rápido e incremental).
+     - Motor embebido de Python 3 (`ftplib`) nativo, con cero dependencias externas garantizando ejecución inmediata en cualquier Mac o Linux.
+  5. Variables documentadas en `.env.example`.
+- **Archivos:**
+  - `deploy-ftp.sh`
+  - `.env.example`
+- **Verificación:** Script probado con `bash -n` y `./deploy-ftp.sh -h`.
+
 ## 2026-09-16 — Auth / Seguridad: Owner de CICA360 (`goncalvez.isaac@gmail.com`) y mecanismo de cambio obligatorio de contraseña (`must_change_password`)
 - **Pedido del Tech Lead:**
   - "el owner del sitio cica360 es: tenant o proyecto: cica360, usuario: goncalvez.isaac@gmail.com, clave: que sea una clave mas segura y que cada vez que se cambie de clave a cualquier usuario se le puda dar un check indicando que obligue a cambiarla en el proximo login, entonces esta clave temporal para el owner seria necesario cambiarla, asi es asegura su cuenta".

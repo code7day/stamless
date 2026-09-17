@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\FormController;
 use App\Http\Controllers\Api\V1\FormSubmissionController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\MenuController;
@@ -83,6 +84,8 @@ Route::domain(parse_url(config('stamless.urls.api'), PHP_URL_HOST))->group(funct
                 // `SiteSettingsController` (nunca un dump genérico de
                 // `Setting`).
                 Route::get('settings/tracking', [SiteSettingsController::class, 'tracking'])->name('settings.tracking');
+
+                Route::get('forms/{slug}', [FormController::class, 'show'])->name('forms.show');
             });
 
             Route::post('forms/{slug}/submit', [FormSubmissionController::class, 'store'])

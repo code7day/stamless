@@ -315,6 +315,14 @@ class Cliente0ServicesSeeder extends Seeder
                 $record->properties = $props;
                 $record->save();
             }
+
+            // Asegura que image_id y image_detail_id queden asignados si estaban nulos
+            $mediaId = Cliente0MediaSeeder::mediaId($tenant, $service['image_file']);
+            if ($mediaId && (empty($record->image_id) || empty($record->image_detail_id))) {
+                $record->image_id = $record->image_id ?? $mediaId;
+                $record->image_detail_id = $record->image_detail_id ?? $mediaId;
+                $record->save();
+            }
         }
 
         // Poda el dataset de la 1ra vuelta (12 servicios de ejemplo con

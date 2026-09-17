@@ -28,7 +28,10 @@ class FormSubmissionController extends Controller
         // se responde 201 exitoso sin persistir spam ni disparar emails.
         if ($request->filled('honeypot') || $request->filled('_hp_check') || $request->filled('_gotcha')) {
             return $this->success(
-                data: ['uuid' => (string) Str::uuid()],
+                data: [
+                    'uuid' => (string) Str::uuid(),
+                    'thank_you' => $this->resolveThankYouData(),
+                ],
                 message: 'Formulario enviado correctamente.',
                 status: 201,
             );
@@ -40,13 +43,21 @@ class FormSubmissionController extends Controller
             return $this->error('Formulario no encontrado.', 404, ['code' => 'not_found']);
         }
 
+        $source = $request->input('source')
+            ?? $request->header('Referer')
+            ?? $request->header('Origin')
+            ?? ($request->header('X-Forwarded-Host') ? 'https://'.$request->header('X-Forwarded-Host') : null);
+
+        $pageUrl = $request->input('page_url')
+            ?? ($request->header('Referer') ? parse_url($request->header('Referer'), PHP_URL_PATH) : null);
+
         try {
             $contact = $this->contactSubmissionService->submit(
                 $form,
-                $request->except(['page_url', 'honeypot', '_hp_check', '_gotcha']),
+                $request->except(['page_url', 'source', 'honeypot', '_hp_check', '_gotcha']),
                 [
-                    'source' => $request->header('Referer'),
-                    'page_url' => $request->input('page_url'),
+                    'source' => $source,
+                    'page_url' => $pageUrl,
                     'ip_address' => $this->resolveClientIp($request),
                     'user_agent' => $request->userAgent(),
                     'geo_country_code' => $this->resolveOriginCountry($request),
@@ -66,11 +77,54 @@ class FormSubmissionController extends Controller
             return $this->error($e->getMessage(), 422, ['code' => 'validation']);
         }
 
+        $submitterName = $request->input('name') ?? $request->input('nombre') ?? $request->input('first_name');
+
         return $this->success(
-            data: ['uuid' => $contact->uuid],
+            data: [
+                'uuid' => $contact->uuid,
+                'thank_you' => $this->resolveThankYouData(is_string($submitterName) ? $submitterName : null),
+            ],
             message: 'Formulario enviado correctamente.',
             status: 201,
         );
+    }
+
+    /**
+     * @return array{title: string, description: ?string, alert_title: ?string, alert_description: ?string, button_label: ?string}
+     */
+    private function resolveThankYouData(?string $submitterName = null): array
+    {
+        $rawName = trim((string) $submitterName);
+        $firstName = filled($rawName) ? trim(explode(' ', $rawName)[0]) : '';
+
+        $rawTitle = setting('thank_you.title', '¡Muchas gracias, {name}!');
+        $title = filled($firstName)
+            ? str_replace('{name}', $firstName, $rawTitle)
+            : trim(str_replace(['{name}', ' ,', '  '], ['', '', ' '], $rawTitle));
+
+        $title = rtrim($title, ' ,');
+        if (str_starts_with($title, '¡') && ! str_ends_with($title, '!')) {
+            $title .= '!';
+        }
+
+        $rawDescription = setting(
+            'thank_you.description',
+            'Hemos recibido tu consulta correctamente. Un asesor especializado de <strong>CICA360</strong> revisará tu información y se pondrá en contacto contigo a la brevedad.'
+        );
+        $description = $this->renderRichContent($rawDescription);
+        if (filled($firstName)) {
+            $description = str_replace('{name}', e($firstName), (string) $description);
+        } else {
+            $description = str_replace([' {name}', '{name}'], '', (string) $description);
+        }
+
+        return [
+            'title' => $title,
+            'description' => $description,
+            'alert_title' => setting('thank_you.alert_title', 'Tiempo de respuesta estimado:'),
+            'alert_description' => setting('thank_you.alert_description', 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).'),
+            'button_label' => setting('thank_you.button_label', 'Enviar otra consulta'),
+        ];
     }
 
     /**

@@ -110,6 +110,12 @@ class Preferences extends Page implements HasForms
             // Integraciones de analytics — mismo mecanismo, ver docblock.
             'tracking_meta_pixel_id' => setting('tracking.meta_pixel_id'),
             'tracking_gtm_id' => setting('tracking.gtm_id'),
+            // Página de Agradecimiento (Formularios) — tenant-wide
+            'thank_you_title' => setting('thank_you.title', '¡Muchas gracias, {name}!'),
+            'thank_you_description' => setting('thank_you.description', 'Hemos recibido tu consulta correctamente. Un asesor especializado de <strong>CICA360</strong> revisará tu información y se pondrá en contacto contigo a la brevedad.'),
+            'thank_you_alert_title' => setting('thank_you.alert_title', 'Tiempo de respuesta estimado:'),
+            'thank_you_alert_description' => setting('thank_you.alert_description', 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).'),
+            'thank_you_button_label' => setting('thank_you.button_label', 'Enviar otra consulta'),
         ]);
     }
 
@@ -262,6 +268,40 @@ class Preferences extends Page implements HasForms
                         MediaUpload::make('og_default_image_rect_id', 'Imagen OG Rectangular (1200x630)'),
                         MediaUpload::make('og_default_image_square_id', 'Imagen OG Cuadrada (600x600)'),
                     ]),
+
+                Section::make('Página de Agradecimiento (Formularios)')
+                    ->description('Personaliza el mensaje y contenidos que ven los usuarios luego de enviar un formulario de contacto.')
+                    ->collapsible()
+                    ->columnSpanFull()
+                    ->schema([
+                        Forms\Components\TextInput::make('thank_you_title')
+                            ->label('Título de Agradecimiento')
+                            ->helperText('Puedes usar {name} como comodín para el nombre del remitente (ej: ¡Muchas gracias, {name}!).')
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+
+                        Forms\Components\RichEditor::make('thank_you_description')
+                            ->label('Descripción')
+                            ->helperText('Mensaje principal. Solo se permite formato en negrita (strong).')
+                            ->toolbarButtons(['bold'])
+                            ->columnSpanFull(),
+
+                        Forms\Components\TextInput::make('thank_you_alert_title')
+                            ->label('Título del Cuadro Informativo / Alerta')
+                            ->helperText('Ej: Tiempo de respuesta estimado:')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('thank_you_alert_description')
+                            ->label('Descripción del Cuadro Informativo / Alerta')
+                            ->helperText('Ej: Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('thank_you_button_label')
+                            ->label('Texto del Botón')
+                            ->helperText('Etiqueta del botón para reiniciar o volver a consultar (ej: Enviar otra consulta).')
+                            ->maxLength(100)
+                            ->columnSpanFull(),
+                    ]),
             ]);
     }
 
@@ -332,6 +372,11 @@ class Preferences extends Page implements HasForms
                         'og.default_image_square_id' => $data['og_default_image_square_id'] ?? null,
                         'tracking.meta_pixel_id' => $data['tracking_meta_pixel_id'] ?? null,
                         'tracking.gtm_id' => $data['tracking_gtm_id'] ?? null,
+                        'thank_you.title' => $data['thank_you_title'] ?? null,
+                        'thank_you.description' => $data['thank_you_description'] ?? null,
+                        'thank_you.alert_title' => $data['thank_you_alert_title'] ?? null,
+                        'thank_you.alert_description' => $data['thank_you_alert_description'] ?? null,
+                        'thank_you.button_label' => $data['thank_you_button_label'] ?? null,
                     ]);
 
                     if ($slugChanged && $tenant instanceof Tenant) {

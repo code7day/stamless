@@ -168,14 +168,14 @@
     </style>
 </head>
 <body>
-    <div class="main-content">
+    <main class="main-content">
         <h1 class="title titulo">Stamless</h1>
         <p class="subtitle linea">Una fuente. Todos los sitios.</p>
-    </div>
+    </main>
 
-    <div class="footer">
+    <footer class="footer">
         <div class="footer-left">{{ parse_url(config('app.url'), PHP_URL_HOST) }}</div>
         <div class="footer-right">Pronto</div>
-    </div>
+    </footer>
 </body>
 </html>

@@ -625,4 +625,72 @@ class FormSubmissionApiTest extends TestCase
 
         $response->assertStatus(201);
     }
+
+    public function test_get_form_returns_form_definition_with_fields_and_thank_you_template(): void
+    {
+        $tenant = $this->makeTenant('tenant-a');
+        $this->makeForm($tenant);
+
+        $user = User::create([
+            'name' => 'Test User',
+            'email' => 'test-'.uniqid().'@example.com',
+            'password' => 'password',
+            'tenant_id' => $tenant->id,
+        ]);
+
+        Sanctum::actingAs($user, ['content:read']);
+
+        $response = $this->getJson('/v1/tenant-a/forms/contacto');
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'success',
+            'data' => [
+                'uuid',
+                'slug',
+                'name',
+                'fields' => [
+                    '*' => ['uuid', 'name', 'label', 'type', 'is_required', 'sort_order'],
+                ],
+                'thank_you' => [
+                    'title',
+                    'description',
+                    'alert_title',
+                    'alert_description',
+                    'button_label',
+                ],
+            ],
+        ]);
+        $response->assertJsonPath('data.slug', 'contacto');
+        $response->assertJsonPath('data.thank_you.title', '¡Muchas gracias, {name}!');
+    }
+
+    public function test_submission_returns_personalized_thank_you_template(): void
+    {
+        $tenant = $this->makeTenant('tenant-a');
+        $this->makeForm($tenant);
+        $this->actingAsTenant($tenant);
+
+        $response = $this->postJson('/v1/tenant-a/forms/contacto/submit', [
+            'name' => 'Eduardo Perez Silva',
+            'email' => 'eduardo@example.com',
+            'message' => 'Hola, consulta.',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonStructure([
+            'success',
+            'data' => [
+                'uuid',
+                'thank_you' => [
+                    'title',
+                    'description',
+                    'alert_title',
+                    'alert_description',
+                    'button_label',
+                ],
+            ],
+        ]);
+        $response->assertJsonPath('data.thank_you.title', '¡Muchas gracias, Eduardo!');
+    }
 }

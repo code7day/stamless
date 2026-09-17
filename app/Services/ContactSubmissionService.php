@@ -98,12 +98,20 @@ class ContactSubmissionService
             $dynamicData['geo_country_code'] = $meta['geo_country_code'];
         }
 
+        // Extra fallback para core fields si vinieron en el payload directamente
+        $coreAttributes['name'] ??= $payload['name'] ?? $payload['nombre'] ?? null;
+        $coreAttributes['email'] ??= $payload['email'] ?? $payload['correo'] ?? $payload['correo_electronico'] ?? null;
+        $coreAttributes['phone'] ??= $payload['phone'] ?? $payload['telefono'] ?? $payload['whatsapp'] ?? null;
+        $coreAttributes['company'] ??= $payload['company'] ?? $payload['empresa'] ?? null;
+
+        $source = $meta['source'] ?? $payload['source'] ?? $payload['origen'] ?? $meta['page_url'] ?? null;
+
         $contact = Contact::create(array_merge($coreAttributes, [
             'tenant_id' => $form->tenant_id,
             'form_id' => $form->id,
             'data' => $dynamicData,
             'status' => ContactStatusEnum::New,
-            'source' => $meta['source'] ?? null,
+            'source' => $source,
             'page_url' => $meta['page_url'] ?? null,
             'ip_address' => $meta['ip_address'] ?? null,
             'user_agent' => $meta['user_agent'] ?? null,
@@ -181,8 +189,16 @@ class ContactSubmissionService
 
             $value = $payload[$field->name];
 
-            if (in_array($field->name, self::CORE_CONTACT_FIELDS, true)) {
-                $coreAttributes[$field->name] = $value;
+            $coreKey = match ($field->name) {
+                'name', 'nombre', 'full_name' => 'name',
+                'email', 'correo', 'correo_electronico' => 'email',
+                'phone', 'telefono', 'whatsapp', 'celular', 'movil' => 'phone',
+                'company', 'empresa', 'organizacion', 'negocio' => 'company',
+                default => in_array($field->name, self::CORE_CONTACT_FIELDS, true) ? $field->name : null,
+            };
+
+            if ($coreKey !== null) {
+                $coreAttributes[$coreKey] = $value;
 
                 continue;
             }
