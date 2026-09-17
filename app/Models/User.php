@@ -21,7 +21,7 @@ use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password', 'must_change_password', 'tenant_id', 'uuid', 'locale', 'timezone', 'is_super_admin', 'provider', 'provider_id', 'avatar_url'])]
+#[Fillable(['name', 'email', 'password', 'must_change_password', 'is_active', 'tenant_id', 'uuid', 'locale', 'timezone', 'is_super_admin', 'provider', 'provider_id', 'avatar_url'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaultTenant, HasTenants
 {
@@ -35,6 +35,10 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaul
     {
         if ($this->is_super_admin) {
             return true;
+        }
+
+        if (! ($this->is_active ?? true)) {
+            return false;
         }
 
         if ($panel->getId() === 'platform') {
@@ -60,6 +64,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasDefaul
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
             'must_change_password' => 'boolean',
+            'is_active' => 'boolean',
         ];
     }
 

@@ -359,13 +359,22 @@ class PropertiesSchema
                 ->decimalPlaces(0)
                 ->fillTrack()
                 ->tooltips(),
-            'animation' => Forms\Components\Select::make('properties.animation')
-                ->label('Animación de entrada')
-                ->options([
-                    'none' => 'Ninguna',
-                    'fade' => 'Desvanecimiento (Fade)',
-                    'slide-up' => 'Deslizar arriba (Slide Up)',
-                ]),
+            // 2026-09-17: `'animation'` (Select "Animación de entrada",
+            // Ninguna/Fade/Slide Up) SE ELIMINÓ — quedó como campo fantasma
+            // en TODO el proyecto: guardable desde Filament en 8 lugares
+            // (Hero/CTA/Features/Split/ServicesGrid/2 bloques más/nivel
+            // Página en `PageResource.php`, más `ServiceResource.php`) pero
+            // NINGÚN componente Astro de cica360 lo consumía (confirmado
+            // por auditoría), y los seeders nunca lo poblaron. Decisión
+            // explícita del Tech Lead: la animación de scroll-reveal deja
+            // de ser una property configurable por tenant — pasa a ser una
+            // implementación ESTÁTICA que cada desarrollador/cliente cablea
+            // directo en su propio frontend (ver `cica360/src/styles/
+            // global.css` + `BaseLayout.astro`, mecanismo `data-reveal`
+            // aplicado a mano en cada bloque). Si algún tenant ya guardó un
+            // valor viejo para esta clave, queda como JSON inerte en
+            // `properties` — no rompe nada, simplemente ya no tiene UI ni
+            // efecto.
             'decorator_top' => Forms\Components\Select::make('properties.decorator_top')
                 ->label('Decorador Superior')
                 ->options(DecoratorShapeEnum::class)

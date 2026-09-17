@@ -880,7 +880,7 @@ class PageResource extends Resource
                                                                     Grid::make(2)
                                                                         ->schema(PropertiesSchema::makeComponents(['text_align', 'padding_y'])),
                                                                     Grid::make(2)
-                                                                        ->schema(PropertiesSchema::makeComponents(['overlay_opacity', 'animation'])),
+                                                                        ->schema(PropertiesSchema::makeComponents(['overlay_opacity'])),
                                                                     Grid::make(1)
                                                                         ->schema(PropertiesSchema::makeComponents(['show_scroll_indicator'])),
                                                                 ])
@@ -1040,7 +1040,7 @@ class PageResource extends Resource
                                                             PropertiesSchema::make([
                                                                 'background_type', 'background_color',
                                                                 'background_color_secondary', 'gradient_direction',
-                                                                'padding_y', 'animation',
+                                                                'padding_y',
                                                             ])->columns(2),
                                                         ]),
                                                 ]),
@@ -1309,7 +1309,7 @@ class PageResource extends Resource
                                                         ->schema([
                                                             PropertiesSchema::make([
                                                                 'feature_style', 'card_rounded', 'list_style',
-                                                                'text_color', 'content_width', 'padding_y', 'animation',
+                                                                'text_color', 'content_width', 'padding_y',
                                                             ])->columns(2),
                                                             // 2026-09-10 (pedido del Tech Lead, front cica360): "no veo
                                                             // hasta ahora la flecha de invitacion a scrollear que ya
@@ -1601,7 +1601,7 @@ class PageResource extends Resource
                                                                         ->label('Color de fondo de la imagen'),
 
                                                                     ...PropertiesSchema::makeComponents([
-                                                                        'text_background_color', 'text_color', 'padding_y', 'content_width', 'animation',
+                                                                        'text_background_color', 'text_color', 'padding_y', 'content_width',
                                                                     ]),
                                                                 ]),
 
@@ -1703,7 +1703,7 @@ class PageResource extends Resource
                                                         ->description('Color de fondo (sólido, degradado o imagen) de la sección y de las tarjetas, color de texto, espaciado y animación de entrada.')
                                                         ->collapsed()
                                                         ->schema([
-                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'item_background_color', 'item_background_opacity', 'text_color', 'padding_y', 'animation'])
+                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'item_background_color', 'item_background_opacity', 'text_color', 'padding_y'])
                                                                 ->columns(2),
 
                                                             MediaUpload::make('content.background_image_id', 'Imagen de fondo')
@@ -1984,7 +1984,7 @@ class PageResource extends Resource
                                                         ->description('Color de fondo (sólido, degradado o imagen), color de texto, espaciado y animación de entrada.')
                                                         ->collapsed()
                                                         ->schema([
-                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'padding_y', 'animation'])
+                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'padding_y'])
                                                                 ->columns(2),
 
                                                             MediaUpload::make('content.background_image_id', 'Imagen de fondo')
@@ -2089,7 +2089,7 @@ class PageResource extends Resource
                                                         ->description('Color de fondo (sólido, degradado o imagen), color de texto, espaciado y animación de entrada.')
                                                         ->collapsed()
                                                         ->schema([
-                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'padding_y', 'animation'])
+                                                            PropertiesSchema::make(['background_type_image', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'padding_y'])
                                                                 ->columns(2),
 
                                                             MediaUpload::make('content.background_image_id', 'Imagen de fondo')
@@ -2766,7 +2766,7 @@ class PageResource extends Resource
                                     ->description('Color de fondo, color de texto y animación de entrada de la página.')
                                     ->collapsed()
                                     ->schema([
-                                        PropertiesSchema::make(['background_type', 'background_color', 'text_color', 'animation'])
+                                        PropertiesSchema::make(['background_type', 'background_color', 'text_color'])
                                             ->columns(2),
                                     ]),
                             ]),

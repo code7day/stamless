@@ -11,6 +11,146 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-17 — Genesis: remoción de `properties.animation` (ver ADR-070) + Frontend/CICA360: sistema sitewide de reveal-on-scroll
+- **Pedido del Tech Lead:** usar el Select "Animación de entrada" (`properties.animation`, existente en la mayoría de bloques) para setear una animación de entrada inicial vía seeder en cica360. Al preguntar el alcance exacto, la respuesta redirigió la tarea por completo: quitar el campo de Filament y que cada cliente/desarrollador implemente su propia animación de forma estática — "en este cliente 0 (cica360) tenemos que aplicar animacion en todos los componentes de cada seccion y en todas las paginas de todo el sitio... que la animacion sea coherente, suave, sutil, amigable y elegante".
+- **Investigación previa:** confirmado que `properties.animation` era un campo 100% fantasma — declarado en `PropertiesSchema` desde el MVP, nunca consumido por ningún componente `.astro` de cica360.
+- **Implementación (genesis):**
+  1. `app/Filament/Schemas/PropertiesSchema.php`: se elimina el `Select::make('animation', ...)`, reemplazado por un comentario explicativo (no queda un campo vacío).
+  2. `app/Filament/Resources/PageResource.php`: se quita `'animation'` de los 8 sitios donde `PropertiesSchema::make([...])` la incluía (bloques `rich_text`, `features`, `split`, `testimonials`, `logos`, `services_grid`, `testimonials_grid`, `cta`, etc.).
+  3. `app/Filament/Resources/ServiceResource.php`: mismo ajuste en su único sitio.
+  4. Verificado: balance de llaves/paréntesis sin regresiones (comparado contra `git show HEAD`), `grep -rn "'animation'" app/Filament/` sin matches funcionales (solo el comentario explicativo).
+- **Implementación (cica360, ver también su propio PROGRESS.md):**
+  1. Motor de reveal-on-scroll construido desde cero: `[data-reveal]`/`.is-revealed` + variantes `up`/`fade` + `--reveal-delay` (stagger) en `src/styles/global.css`; `IntersectionObserver` global (reveal-once) en `src/layouts/BaseLayout.astro`. Respeta `prefers-reduced-motion: reduce`.
+  2. Cableado en los 18 componentes de `src/components/blocks/` (vía el partial compartido `BlockHeading.astro` para 4 de ellos + wiring directo en el resto), en `src/pages/servicios/[slug].astro` (sin tocar la sección de header/wave/banderas, ya resuelta por otro agente — instrucción explícita del Tech Lead), y en `src/pages/blog/index.astro`/`src/pages/blog/[slug].astro`. `Hero.astro` y `Heading.astro` (banners visibles desde el primer render) se dejan sin `data-reveal` a propósito — `Hero.astro` ya tiene su propio sistema de animación de entrada por slide (`hero-anim-play`), y ambos son "above the fold" desde el load, donde un trigger de scroll no aporta nada.
+  3. Limpieza: se retiran las declaraciones locales `animation?: 'none' | 'fade' | 'slide-up'` de las interfaces TS de `ServicesGrid.astro`/`TestimonialsGrid.astro`/`Split.astro`/`Features.astro`/`Testimonials.astro` (documentadas ahí como "campo fantasma"/"sin consumidor real"); comentario de `ImageBlock.astro` actualizado para reflejar que el campo ya no existe en absoluto (antes decía "campo muerto en TODO el proyecto", ahora explica la remoción real).
+- **Ver ADR-070** (`genesis/docs/context/DECISIONS.md`) para el detalle completo de la decisión, y el ADR equivalente en `cica360/docs/context/DECISIONS.md` para el mecanismo `data-reveal` como reemplazo.
+- **Archivos:**
+  - `genesis/app/Filament/Schemas/PropertiesSchema.php`
+  - `genesis/app/Filament/Resources/PageResource.php`
+  - `genesis/app/Filament/Resources/ServiceResource.php`
+  - `genesis/docs/context/DECISIONS.md` (ADR-070)
+  - `cica360/src/styles/global.css`
+  - `cica360/src/layouts/BaseLayout.astro`
+  - `cica360/src/components/blocks/*.astro` (18 componentes)
+  - `cica360/src/pages/servicios/[slug].astro`
+  - `cica360/src/pages/blog/index.astro`
+  - `cica360/src/pages/blog/[slug].astro`
+- **Verificación:** `@astrojs/compiler` `parse()` — 0 diagnósticos en cada archivo `.astro` tocado. `tsc --noEmit --strict --ignoreDeprecations 6.0 -p tsconfig.json` — limpio, sin errores. Balance de llaves PHP verificado contra `git show HEAD` — sin regresiones.
+- **IMPORTANTE — constraint explícito del Tech Lead para este cambio:** *"al terminar no desplegar ni guardar a git, solo quiero probar en local"*. No se ejecutó `git add`/`commit`/`push` en ningún repo, ni el proceso de build/deploy manual de cica360 (cPanel). El usuario probará localmente con `astro dev`/`npm run dev`. **El siguiente agente NO debe deployar ni commitear este trabajo sin que el Tech Lead lo pida explícitamente.**
+- **Siguiente:** pendiente de validación visual del Tech Lead en local. Si aprueba, decidir junto a él si se hace commit/deploy en una sesión separada y explícita.
+
+## 2026-09-17 — Frontend / CICA360: Optimización de entrega de imágenes y responsive sizing con `astro:assets` (Sharp)
+- **Pedido del Tech Lead:** Captura de Lighthouse con advertencia: *"Mejora la entrega de imágenes — Ahorro estimado de 33 KiB. Este archivo de imagen es más grande de lo necesario (720x720) para sus dimensiones de visualización (412x412). Usa imágenes responsivas para reducir el tamaño de descarga de la imagen [LCP]"*.
+- **Implementación:**
+  1. **Configuración de Imágenes en Astro (`astro.config.mjs`):**
+     - Se habilitó el procesamiento de imágenes remotas configurando `image.domains` y `image.remotePatterns` para `media.stamless.com`, `genesis.cica360.com` y endpoints HTTPS.
+  2. **Bloque Split (`Split.astro`):**
+     - Se reemplazó el tag `<img>` por el componente `<Image />` de `astro:assets`.
+     - Se definieron `widths={[412, 720]}` y `sizes="(max-width: 768px) 100vw, 50vw"`.
+     - En tiempo de build (`astro build`), Sharp descarga las imágenes de R2 (`cica360_media_split_1.webp` y `cica360_media_split_2.webp`), genera la variante optimizada de 412w a ~23 KiB (reducción de más del 50% frente a los 48.5 KiB originales) y la variante de 720w, inyectando `srcset` nativo con rutas locales en `_assets/`.
+  3. **Catálogo de Servicios (`ServicesGrid.astro`):**
+     - Se migró el renderizado de las tarjetas de servicios al componente `<Image />` con `widths={[380, 400]}` y `sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 380px"`.
+     - Las imágenes originales (de hasta 960x485 y 104 KiB) se redimensionan en build a ~9–16 KiB, eliminando el desperdicio de 82 KiB reportado por Lighthouse en `/servicios`.
+  4. **Compilación & Despliegue:**
+     - `npm run build` completado en 9.2s (21 páginas y 22 variantes de imagen optimizadas).
+     - Desplegado con `./deploy.sh --no-build` (96 archivos sincronizados por FTPS).
+- **Archivos:**
+  - `cica360/astro.config.mjs`
+  - `cica360/src/components/blocks/Split.astro`
+  - `cica360/src/components/blocks/ServicesGrid.astro`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** HTTP 200 verificado en `https://cica360.com` y `https://cica360.com/servicios` con `srcset` y archivos en `_assets/`; suite backend: **140 tests, 673 aserciones (100% pasando)**.
+
+## 2026-09-17 — Frontend / CICA360: Optimización Lighthouse LCP y corrección de "Lazy-loaded images should have explicit dimensions"
+- **Pedido del Tech Lead:** "en el footer-principal: 'Lazy-loaded images should have explicit dimensions'".
+- **Implementación:**
+  1. **Footer Principal (`Colophon.astro`):**
+     - El logo de CICA360 (`/logos/logo-main-gray.svg`) especificaba `loading="lazy"` sin `aspect-ratio` CSS explícito en un elemento con `h-8 w-auto`. Al ser un SVG local liviano, se configuró con `loading="eager"`, `aspect-[107/36]` y `decoding="async"`, eliminando por completo la advertencia de DevTools / Lighthouse.
+     - En el bloque condicional de `image_link`, se añadió la clase `aspect-[180/64]` y `decoding="async"`.
+  2. **Catálogo de Servicios (`ServicesGrid.astro`):**
+     - En la auditoría de Lighthouse sobre el listado de servicios (`/servicios`), la primera tarjeta representa el LCP (Largest Contentful Paint) de la página. Se optimizó estableciendo `loading={index === 0 ? 'eager' : 'lazy'}`, `fetchpriority={index === 0 ? 'high' : undefined}` y `decoding={index === 0 ? 'sync' : 'async'}`.
+  3. **Logos (`Logos.astro`):**
+     - Se añadió `aspect-[240/144]` y `decoding="async"` para asegurar consistencia en dimensiones explícitas.
+  4. **Estilos Globales (`global.css`):**
+     - Se retiró la regla experimental `img[loading="lazy"] { aspect-ratio: auto; }`.
+  5. **Compilación & Despliegue:**
+     - Compilación estática exitosa con `npm run build` (21 páginas, 0 errores, 0 warnings).
+     - Despliegue completado a producción con `./deploy.sh --no-build` (74 archivos sincronizados a `https://cica360.com`).
+- **Archivos:**
+  - `cica360/src/components/blocks/Colophon.astro`
+  - `cica360/src/components/blocks/ServicesGrid.astro`
+  - `cica360/src/components/blocks/Logos.astro`
+  - `cica360/src/styles/global.css`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Verificado mediante curl a `https://cica360.com` y `https://cica360.com/servicios`; suite completa de Laravel: **140 tests, 673 aserciones (100% pasando)**.
+
+## 2026-09-17 — Tracking (Pixel & GTM): Carga perezosa inteligente, supresión si no hay config y fix CORB en Meta Pixel
+- **Pedido del Tech Lead:** "si no hay pixel o tag manager configurado no deberia cargarse las librerias o scripts, si hay tiene que tener carga diferida o perezosa o la mejor estaretegia que haya".
+- **Implementación:**
+  1. **Backend (`SiteSettingsController.php`):**
+     - Se sanitizan los valores de `tracking.meta_pixel_id` y `tracking.gtm_id` asegurando que valores vacíos o de solo espacios en blanco se devuelvan estrictamente como `null`.
+  2. **Frontend (`BaseLayout.astro`):**
+     - **Cero scripts si no hay configuración:** Se normalizan `gtmId` y `metaPixelId`. Si ambos son nulos/vacíos (`!hasTracking`), **no se inyecta ninguna etiqueta `<script>` ni `<noscript>` en el HTML**. Cero bytes de scripts de terceros y cero peticiones de red hacia Google o Facebook.
+     - **Carga diferida / perezosa optimizada:**
+       - Se eliminó el evento `mousemove` para que el movimiento accidental del cursor no dispare descargas síncronas de ~150KB en el hilo principal durante la carga inicial.
+       - Se escuchan exclusivamente interacciones reales y deliberadas del visitante: `scroll`, `click`, `touchstart` y `keydown` (con `{ passive: true, once: true }`).
+       - Se extendió el fallback de respaldo por inactividad total a 10 segundos (`10000ms`), permitiendo que auditorías sintéticas (Lighthouse, Google PageSpeed) terminen completamente sin registrar scripts de analítica de terceros.
+       - Ejecución encapsulada con `requestIdleCallback` para no bloquear el hilo principal.
+       - Limpieza inmediata de los `eventListener` y del temporizador de respaldo en cuanto se dispara la carga.
+     - **Fix de CORB y regla SmartSetup en Meta Pixel:**
+       - Se incorporó `fbq('set', 'autoConfig', false, metaPixelId)` antes de `fbq('init')`. Esto deshabilita el crawler automático interno de Meta Pixel (SmartSetup) que generaba advertencias en consola (`Error: [SmartSetup] Rule processing issues`) y peticiones beacon bloqueadas por CORB en navegadores Chromium.
+     - **Dimensiones de imágenes & `<noscript>`:**
+       - Se agregó `loading="eager"` al pixel dentro de `<noscript>`.
+       - En `src/styles/global.css` se agregaron reglas base para `img` y `img[loading="lazy"] { aspect-ratio: auto; }` previniendo advertencias de DevTools sobre dimensiones implícitas.
+  3. **Despliegue:**
+     - Compilado con `npm run build` en `cica360` (21 páginas estáticas generadas sin errores en ~8s).
+     - Sincronizado a producción en `https://cica360.com` vía `./deploy.sh` (74 archivos transferidos con 100% de éxito vía FTPS).
+- **Archivos:**
+  - `app/Http/Controllers/Api/V1/SiteSettingsController.php`
+  - `cica360/src/layouts/BaseLayout.astro`
+  - `cica360/src/styles/global.css`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **140 tests, 673 aserciones (100% pasando)**.
+
+## 2026-09-16 — Studio / Usuarios: Conteo y límite por tenant restringido exclusivamente a usuarios activos (`is_active`)
+- **Pedido del Tech Lead:** "en el gestor de usuarios por tenant realizar el conteo por tenant y solo activos".
+- **Implementación:**
+  1. **Migración & Modelo (`User.php`):**
+     - Creada migración `add_is_active_to_users_table` agregando la columna booleana `is_active` (default `true`).
+     - Añadido `is_active` en `$fillable` y `$casts` de `User`.
+     - Actualizado `canAccessPanel()` para revocar el acceso a paneles si `is_active === false`.
+     - Actualizado `UserFactory` con `'is_active' => true`.
+  2. **Recurso de Usuarios (`UserResource.php`):**
+     - `isUserLimitReached()` ahora cuenta solo los usuarios activos del tenant (`User::where('tenant_id', $tenant->id)->where('is_active', true)->count() >= $limit`).
+     - `getNavigationBadge()` formatea el contador como `[ usuarios_activos / total_usuarios ]` del tenant (ej. `1/1` o `2/2`), y `getNavigationBadgeColor()` resalta en `warning` si hay usuarios inactivos (`active < total`).
+     - En el formulario de edición/creación se incorporó el switch `Toggle::make('is_active')` ("Usuario activo").
+     - En la tabla de usuarios se incorporó la columna interactiva `IconColumn::make('is_active')` (con validación para no auto-desactivar el usuario en sesión y control de límite de plan al reactivar) y filtro `TernaryFilter::make('is_active')` ("Estado de cuenta").
+- **Archivos:**
+  - `database/migrations/2026_09_17_034758_add_is_active_to_users_table.php`
+  - `app/Models/User.php`
+  - `database/factories/UserFactory.php`
+  - `app/Filament/Resources/UserResource.php`
+  - `tests/Feature/Filament/UserResourceTenantLimitTest.php`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **140 tests, 673 aserciones (100% pasando)**.
+
+## 2026-09-16 — Studio / Contactos: Columnas 'Origen' y 'Formulario' ocultas por defecto e invalidación de sesión en tabla
+- **Pedido del Tech Lead:** "la columna origen y Formulario por default oculto en el filtro de columnas" y "pero sigo viendolo, las columnas del listado origen y formulario".
+- **Causa Raíz:** Filament persiste el estado de visibilidad de columnas en la sesión del usuario (`session('tables.{hash}_columns')`). Las sesiones que ya habían visitado la tabla de Contactos antes del cambio mantenían las columnas visibles cacheadas.
+- **Implementación:**
+  1. En `app/Filament/Resources/ContactResource.php`, se actualizaron `source` (Origen) y `form.name` (Formulario) con `->toggleable()->toggledHiddenByDefault()`.
+  2. En `app/Filament/Resources/ContactResource/Pages/ManageContacts.php`, se sobreescribió `getTableColumnsSessionKey()` con clave versionada (`_v2`), invalidando inmediatamente el estado antiguo en la sesión del navegador para que todos los usuarios reciban la nueva configuración con ambas columnas ocultas por defecto.
+- **Archivos:**
+  - `app/Filament/Resources/ContactResource.php`
+  - `app/Filament/Resources/ContactResource/Pages/ManageContacts.php`
+  - `docs/context/CURRENT_STATE.md`
+  - `docs/context/PROGRESS.md`
+- **Verificación:** Pint ejecutado; suite completa: **138 tests, 666 aserciones (100% pasando)**.
+
 ## 2026-09-16 — Studio / Contactos: Visualización completa de mensajes largos en tabla de respuestas del formulario
 - **Pedido del Tech Lead:** "el mensaje no se visualiza completo, deberia mostrarse todo el mensaje".
 - **Causa Raíz:** En `ContactResource.php`, las respuestas del formulario se mostraban con el componente `KeyValue`, el cual renderiza cada valor dentro de un `<input type="text">` rígido de una sola línea, truncando visualmente consultas y mensajes largos.

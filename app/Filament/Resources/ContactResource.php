@@ -359,11 +359,13 @@ class ContactResource extends Resource
                 Tables\Columns\TextColumn::make('source')
                     ->label('Origen')
                     ->toggleable()
+                    ->toggledHiddenByDefault()
                     ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('form.name')
                     ->label('Formulario')
                     ->toggleable()
+                    ->toggledHiddenByDefault()
                     ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('assignedTo.name')

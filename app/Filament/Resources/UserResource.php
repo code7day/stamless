@@ -24,7 +24,9 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Spatie\Permission\Models\Role;
@@ -51,7 +53,7 @@ class UserResource extends Resource
     protected static ?int $navigationSort = 10;
 
     /**
-     * Límite de usuarios por plan.
+     * Límite de usuarios por plan (solo usuarios activos del tenant).
      */
     public static function isUserLimitReached(): bool
     {
@@ -67,7 +69,7 @@ class UserResource extends Resource
             return false;
         }
 
-        return User::where('tenant_id', $tenant->id)->count() >= $limit;
+        return User::where('tenant_id', $tenant->id)->where('is_active', true)->count() >= $limit;
     }
 
     public static function userLimitMessage(): string
@@ -75,7 +77,7 @@ class UserResource extends Resource
         $tenant = Filament::getTenant();
         $limit = $tenant instanceof Tenant ? $tenant->maxUsers() : null;
 
-        return "El plan actual permite hasta {$limit} usuarios. Para delegar acceso a más colaboradores, mejorá tu plan.";
+        return "El plan actual permite hasta {$limit} usuarios activos. Para delegar acceso a más colaboradores, mejorá tu plan.";
     }
 
     public static function getNavigationBadge(): ?string
@@ -86,9 +88,10 @@ class UserResource extends Resource
             return null;
         }
 
-        $count = User::where('tenant_id', $tenant->id)->count();
+        $activeCount = User::where('tenant_id', $tenant->id)->where('is_active', true)->count();
+        $totalCount = User::where('tenant_id', $tenant->id)->count();
 
-        return self::formatUsageBadge($count, $tenant->maxUsers());
+        return "{$activeCount}/{$totalCount}";
     }
 
     public static function getNavigationBadgeColor(): ?string
@@ -99,9 +102,10 @@ class UserResource extends Resource
             return null;
         }
 
-        $count = User::where('tenant_id', $tenant->id)->count();
+        $activeCount = User::where('tenant_id', $tenant->id)->where('is_active', true)->count();
+        $totalCount = User::where('tenant_id', $tenant->id)->count();
 
-        return self::usageBadgeColor($count, $tenant->maxUsers());
+        return $activeCount < $totalCount ? 'warning' : 'gray';
     }
 
     public static function form(Schema $schema): Schema
@@ -167,6 +171,12 @@ class UserResource extends Resource
                             ->dehydrated(false)
                             ->columnSpanFull(),
 
+                        Toggle::make('is_active')
+                            ->label('Usuario activo')
+                            ->helperText('Los usuarios inactivos no pueden acceder al panel Studio ni cuentan contra el límite del plan.')
+                            ->default(true)
+                            ->columnSpanFull(),
+
                         Toggle::make('must_change_password')
                             ->label('Obligar al usuario a cambiar su contraseña en el próximo inicio de sesión')
                             ->helperText('Se le solicitará actualizar su clave temporal de forma obligatoria apenas ingrese.')
@@ -210,12 +220,53 @@ class UserResource extends Resource
                         return $record->roles()->first()?->name ?? 'Admin';
                     }),
 
+                IconColumn::make('is_active')
+                    ->label('Activo')
+                    ->boolean()
+                    ->trueIcon(Heroicon::OutlinedCheckCircle)
+                    ->falseIcon(Heroicon::OutlinedCheckCircle)
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->action(function (User $record): void {
+                        if ($record->id === auth()->id() && $record->is_active) {
+                            Notification::make()
+                                ->title('No podés desactivar tu propio usuario')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        if (! $record->is_active && self::isUserLimitReached()) {
+                            Notification::make()
+                                ->title('Límite del plan alcanzado')
+                                ->body(self::userLimitMessage())
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->update(['is_active' => ! $record->is_active]);
+
+                        Notification::make()
+                            ->title($record->is_active ? 'Usuario activado' : 'Usuario desactivado')
+                            ->success()
+                            ->send();
+                    }),
+
                 TextColumn::make('created_at')
                     ->label('Registrado')
                     ->formatStateUsing(fn ($state) => FriendlyDate::format($state) ?? '—')
                     ->sortable(),
             ])
-            ->filters([])
+            ->filters([
+                TernaryFilter::make('is_active')
+                    ->label('Estado de cuenta')
+                    ->placeholder('Todos los usuarios')
+                    ->trueLabel('Solo activos')
+                    ->falseLabel('Solo inactivos'),
+            ])
             ->recordActions([
                 Action::make('changePassword')
                     ->slideOver()

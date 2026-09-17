@@ -432,7 +432,7 @@ class ServiceResource extends Resource
                                         // properties a dos columnas o 3" — mismo `->columns(2)`
                                         // que ya tiene cada `PropertiesSchema::make()` de
                                         // `PageResource.php`, esta se había quedado sin.
-                                        PropertiesSchema::make(['background_type', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color', 'animation'])
+                                        PropertiesSchema::make(['background_type', 'background_color', 'background_color_secondary', 'gradient_direction', 'text_color'])
                                             ->columns(2),
                                     ]),
 

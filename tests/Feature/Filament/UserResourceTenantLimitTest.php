@@ -233,4 +233,40 @@ class UserResourceTenantLimitTest extends TestCase
         $this->assertSame('renamed@tenant-edit.test', $freshSubUser->email);
         $this->assertTrue(Hash::check('original-secure-pwd', $freshSubUser->password));
     }
+
+    public function test_inactive_users_do_not_count_towards_tenant_limit(): void
+    {
+        [$tenant, $owner] = $this->makeTenantWithUser('free', 'tenant-free-active');
+        $this->bootPanel($tenant, $owner);
+
+        // Owner is active => limit is reached (1/1)
+        $this->assertTrue(UserResource::isUserLimitReached());
+        $this->assertSame('1/1', UserResource::getNavigationBadge());
+
+        // Create an inactive user under the same tenant (1 active, 2 total)
+        $inactiveUser = User::create([
+            'name' => 'Inactive User',
+            'email' => 'inactive@tenant-free-active.test',
+            'password' => 'password',
+            'tenant_id' => $tenant->id,
+            'is_active' => false,
+        ]);
+
+        // Badge shows active/total => 1/2, limit is still reached because active users = 1
+        $this->assertTrue(UserResource::isUserLimitReached());
+        $this->assertSame('1/2', UserResource::getNavigationBadge());
+
+        // Deactivate owner => active count becomes 0/2, limit is no longer reached
+        $owner->update(['is_active' => false]);
+        $this->assertFalse(UserResource::isUserLimitReached());
+        $this->assertSame('0/2', UserResource::getNavigationBadge());
+    }
+
+    public function test_inactive_user_cannot_access_panel(): void
+    {
+        [$tenant, $user] = $this->makeTenantWithUser('free', 'tenant-inactive-panel');
+        $user->update(['is_active' => false]);
+
+        $this->assertFalse($user->canAccessPanel(Filament::getPanel('cms')));
+    }
 }

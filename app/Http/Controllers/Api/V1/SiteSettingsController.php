@@ -24,9 +24,15 @@ class SiteSettingsController extends Controller
     {
         $this->resolveTenant($tenant_slug);
 
+        $pixelId = setting('tracking.meta_pixel_id');
+        $gtmId = setting('tracking.gtm_id');
+
+        $cleanPixelId = is_string($pixelId) && trim($pixelId) !== '' ? trim($pixelId) : null;
+        $cleanGtmId = is_string($gtmId) && trim($gtmId) !== '' ? trim($gtmId) : null;
+
         return $this->success([
-            'meta_pixel_id' => setting('tracking.meta_pixel_id'),
-            'gtm_id' => setting('tracking.gtm_id'),
+            'meta_pixel_id' => $cleanPixelId,
+            'gtm_id' => $cleanGtmId,
         ]);
     }
 }
