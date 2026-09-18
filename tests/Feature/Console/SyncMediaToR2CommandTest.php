@@ -15,11 +15,15 @@ class SyncMediaToR2CommandTest extends TestCase
 
     public function test_sync_media_to_r2_command_uploads_files_and_updates_database(): void
     {
-        Storage::fake('public');
+        // 2026-09-18: 'local_public' (antes 'public') — el comando ahora lee
+        // los archivos LOCALES de ese disco fijo (ver docblock en
+        // SyncMediaToR2Command::handle()), ya que 'public' puede resolver a
+        // R2 según config/filesystems.php.
+        Storage::fake('local_public');
         Storage::fake('r2');
 
-        Storage::disk('public')->put('media/sample-slide.webp', 'fake-image-content');
-        Storage::disk('public')->put('assets/login-cover.jpg', 'fake-asset-content');
+        Storage::disk('local_public')->put('media/sample-slide.webp', 'fake-image-content');
+        Storage::disk('local_public')->put('assets/login-cover.jpg', 'fake-asset-content');
 
         $tenant = Tenant::create([
             'name' => 'CICA360',
@@ -46,15 +50,18 @@ class SyncMediaToR2CommandTest extends TestCase
         Storage::disk('r2')->assertExists('media/sample-slide.webp');
         Storage::disk('r2')->assertExists('assets/login-cover.jpg');
 
-        $this->assertEquals(MediaDiskEnum::R2, $media->fresh()->disk);
+        // 2026-09-18: el comando ahora siempre normaliza a
+        // MediaDiskEnum::Public (antes escribía el `--disk` literal, ej.
+        // R2) — ver docblock en SyncMediaToR2Command::handle().
+        $this->assertEquals(MediaDiskEnum::Public, $media->fresh()->disk);
     }
 
     public function test_sync_media_to_r2_dry_run_does_not_modify_storage_or_database(): void
     {
-        Storage::fake('public');
+        Storage::fake('local_public');
         Storage::fake('r2');
 
-        Storage::disk('public')->put('media/sample-slide.webp', 'fake-image-content');
+        Storage::disk('local_public')->put('media/sample-slide.webp', 'fake-image-content');
 
         $tenant = Tenant::create([
             'name' => 'CICA360',

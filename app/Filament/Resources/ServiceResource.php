@@ -498,19 +498,24 @@ class ServiceResource extends Resource
                 // funciona (`media.stamless.com/...`, confirmada por
                 // tinker). Causa: `ImageColumn::getVisibility()` infiere
                 // `'private'` cuando el disco NO se llama literalmente
-                // `'public'` (acá es `'r2'`) — dispara `$storage->
-                // temporaryUrl()` en vez de `$storage->url()`. La visibilidad
-                // real del archivo (pública, servible sin firma) vive en la
-                // config del disco/`MediaUpload` (`->visibility('public')`
-                // al subir), pero `ImageColumn` no la consulta — solo mira
-                // el string del nombre del disco. `->visibility('public')`
-                // explícito fuerza la rama correcta (`$storage->url()`,
-                // igual que `MediaUpload::previewUrl()`/`Media::url()`).
+                // `'public'` (acá era `'r2'`) — dispara `$storage->
+                // temporaryUrl()` en vez de `$storage->url()`.
+                //
+                // 2026-09-18, 4to fix (el de fondo): en vez de parchear cada
+                // columna con `->visibility('public')`, se corrigió en la
+                // raíz — `config/filesystems.php` ahora resuelve el disco
+                // `'public'` a local o R2 según `FILESYSTEM_DISK` (mismo
+                // nombre de disco en cualquier ambiente), y una migración de
+                // datos (`2026_09_18_080000_normalize_media_disk_to_public`)
+                // reescribió los registros `Media` viejos de `disk='r2'` a
+                // `disk='public'`. Con el disco SIEMPRE llamado `'public'`,
+                // Filament infiere la visibilidad correcta solo, sin
+                // overrides por columna — por eso ya no hace falta
+                // `->visibility('public')` acá.
                 Tables\Columns\ImageColumn::make('image.path')
                     ->label('')
                     ->getStateUsing(fn ($record) => $record?->image?->path)
                     ->disk(fn ($record) => $record?->image?->disk?->value ?? 'public')
-                    ->visibility('public')
                     ->checkFileExistence(false)
                     ->circular(),
 

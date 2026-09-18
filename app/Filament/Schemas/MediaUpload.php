@@ -177,9 +177,23 @@ class MediaUpload
         };
     }
 
+    /**
+     * 2026-09-18: simplificado a un literal fijo — antes ternariaba entre
+     * `config('filesystems.default')` (`local` en desarrollo, `r2` en
+     * producción). El disco `public` de `config/filesystems.php` ahora
+     * resuelve él mismo ese mismo switch (local vs R2, según
+     * `FILESYSTEM_DISK`) puertas adentro, así que llamarlo siempre por su
+     * nombre canónico es lo único que hace falta acá — y es justo lo que
+     * permite que `Filament\Tables\Columns\ImageColumn` infiera la
+     * visibilidad pública automáticamente (compara el NOMBRE del disco
+     * contra el string `'public'`, ver docblock extenso en
+     * `ServiceResource::table()` sobre el bug real de R2 corregido el
+     * 2026-09-18), sin necesitar `->visibility('public')` explícito en cada
+     * columna/campo que suba o muestre media.
+     */
     private static function diskName(): string
     {
-        return config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public');
+        return 'public';
     }
 
     /**

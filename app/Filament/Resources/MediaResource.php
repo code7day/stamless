@@ -180,7 +180,11 @@ class MediaResource extends Resource
                         Forms\Components\FileUpload::make('path')
                             ->label('Archivo')
                             ->required()
-                            ->disk(fn () => config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public'))
+                            // 2026-09-18: disco fijo `'public'` (antes
+                            // ternariaba `config('filesystems.default')`) —
+                            // ver docblock de `MediaUpload::diskName()`,
+                            // mismo criterio.
+                            ->disk('public')
                             ->directory('media')
                             ->visibility('public')
                             ->acceptedFileTypes([
@@ -209,10 +213,9 @@ class MediaResource extends Resource
                                     $filePath = is_array($state) ? reset($state) : $state;
                                     $set('name', pathinfo($filePath, PATHINFO_FILENAME));
 
-                                    $diskName = config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public');
-                                    $set('disk', $diskName);
+                                    $set('disk', 'public');
 
-                                    $disk = \Storage::disk($diskName);
+                                    $disk = \Storage::disk('public');
                                     if ($disk->exists($filePath)) {
                                         $set('mime_type', $disk->mimeType($filePath));
                                         $set('size', $disk->size($filePath));
@@ -234,7 +237,7 @@ class MediaResource extends Resource
                             ->columnSpanFull(),
 
                         Forms\Components\Hidden::make('disk')
-                            ->default(fn () => config('filesystems.default') === 'local' ? 'public' : config('filesystems.default', 'public')),
+                            ->default('public'),
 
                         Forms\Components\Hidden::make('file_name'),
                         Forms\Components\Hidden::make('mime_type'),
@@ -340,15 +343,12 @@ class MediaResource extends Resource
                     // `$storage->exists()` (HeadObject) contra R2 antes de
                     // construir la URL — mismo punto de falla potencial,
                     // corregido preventivamente aunque no se reportó roto.
-                    // `visibility('public')`: 3er fix, ver docblock extenso
-                    // en `ServiceResource` — sin esto, `getVisibility()`
-                    // infiere `'private'` (disco `'r2'` ≠ string `'public'`)
-                    // y arma una URL firmada de R2 en vez de la pública
-                    // simple que ya funciona.
+                    // Fix del disco (config + migración de datos, ya no
+                    // `->visibility('public')` por columna): ver docblock
+                    // extenso en `ServiceResource::table()`.
                     Tables\Columns\ImageColumn::make('path')
                         ->label('')
                         ->disk(fn ($record) => $record->disk?->value ?? 'public')
-                        ->visibility('public')
                         ->checkFileExistence(false)
                         ->square()
                         ->height(190)

@@ -294,31 +294,40 @@ class Cliente0MediaSeeder extends Seeder
         }
     }
 
+    /**
+     * 2026-09-18: reescrito tras el fix de `config/filesystems.php` del
+     * mismo día — el disco `'public'` pasó a resolver local O R2 según
+     * `FILESYSTEM_DISK`, así que ya no sirve para leer los archivos FUENTE
+     * de este seeder (que siempre viven en el repo, en
+     * `storage/app/public/media/`, sin importar el ambiente). Ahora:
+     * `'local_public'` (fijo, nunca cambia) para leer la fuente,
+     * `'public'` (dinámico) para escribir el archivo en el disco de media
+     * real del ambiente si todavía no está ahí, y el registro `Media`
+     * siempre queda con `disk = 'public'` — el mismo criterio canónico que
+     * ya usan `MediaUpload`/`MediaResource`/`media:sync-r2`.
+     */
     private function seedFile(Tenant $tenant, string $file, string $name, string $alt): void
     {
         $path = "media/{$file}";
-        $defaultDisk = config('filesystems.default');
-        $targetDisk = $defaultDisk === 'r2' ? MediaDiskEnum::R2->value : MediaDiskEnum::Public->value;
 
-        if (! Storage::disk('public')->exists($path)) {
+        if (! Storage::disk('local_public')->exists($path)) {
             $this->command?->warn("Cliente0MediaSeeder: falta storage/app/public/{$path}, se omite.");
 
             return;
         }
 
-        if ($targetDisk === MediaDiskEnum::R2->value) {
+        if (! Storage::disk('public')->exists($path)) {
             try {
-                if (! Storage::disk('r2')->exists($path)) {
-                    $mime = Storage::disk('public')->mimeType($path) ?: 'image/webp';
-                    Storage::disk('r2')->put($path, Storage::disk('public')->get($path), [
-                        'visibility' => 'public',
-                        'mimetype' => $mime,
-                        'ContentType' => $mime,
-                    ]);
-                }
+                $mime = Storage::disk('local_public')->mimeType($path) ?: 'image/webp';
+                Storage::disk('public')->put($path, Storage::disk('local_public')->get($path), [
+                    'visibility' => 'public',
+                    'mimetype' => $mime,
+                    'ContentType' => $mime,
+                ]);
             } catch (\Throwable $e) {
-                $this->command?->warn("Cliente0MediaSeeder: no se pudo subir {$path} a R2 ({$e->getMessage()}), sembrando como disco public.");
-                $targetDisk = MediaDiskEnum::Public->value;
+                $this->command?->warn("Cliente0MediaSeeder: no se pudo copiar {$path} al disco de media ({$e->getMessage()}).");
+
+                return;
             }
         }
 
@@ -330,9 +339,9 @@ class Cliente0MediaSeeder extends Seeder
             [
                 'name' => $name,
                 'file_name' => $file,
-                'mime_type' => Storage::disk('public')->mimeType($path) ?: 'image/webp',
-                'size' => Storage::disk('public')->size($path),
-                'disk' => $targetDisk,
+                'mime_type' => Storage::disk('local_public')->mimeType($path) ?: 'image/webp',
+                'size' => Storage::disk('local_public')->size($path),
+                'disk' => MediaDiskEnum::Public->value,
                 'alt_text' => $alt,
             ]
         );

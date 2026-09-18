@@ -41,7 +41,17 @@ class SyncMediaToR2Command extends Command
         }
 
         // 2. Escanear archivos locales en storage/app/public/
-        $localStorage = Storage::disk('public');
+        //
+        // 2026-09-18: `'local_public'` (antes `'public'`) — desde el fix del
+        // mismo día en `config/filesystems.php`, el disco `'public'` pasó a
+        // resolver local O R2 según `FILESYSTEM_DISK` (para que Filament
+        // infiera bien la visibilidad de `ImageColumn`, ver PROGRESS.md).
+        // Este comando necesita el filesystem LOCAL de forma garantizada
+        // (lee de acá para subir a R2) sin importar el ambiente — con
+        // `'public'` a secas, correr este comando en un servidor con
+        // `FILESYSTEM_DISK=r2` habría escaneado el propio bucket R2 en vez
+        // del disco local, rompiendo el propósito del comando por completo.
+        $localStorage = Storage::disk('local_public');
         $mediaFiles = $localStorage->allFiles('media');
         $assetFiles = $localStorage->allFiles('assets');
         $allFiles = array_merge($mediaFiles, $assetFiles);
@@ -124,13 +134,25 @@ class SyncMediaToR2Command extends Command
         $this->newLine(2);
 
         // 3. Actualizar registros en base de datos (tabla Media)
+        //
+        // 2026-09-18: el valor escrito en `Media.disk` pasa a ser SIEMPRE
+        // `MediaDiskEnum::Public` (antes escribía `$targetDisk` tal cual,
+        // ej. `'r2'`) — desde el fix de `config/filesystems.php` del mismo
+        // día, `'public'` es el único nombre de disco canónico que debe
+        // quedar guardado en cualquier registro `Media` (sin importar el
+        // disco físico real detrás, local o R2), porque es el nombre que
+        // `Filament\Tables\Columns\ImageColumn` reconoce automáticamente
+        // como público sin necesitar `->visibility('public')` explícito en
+        // cada columna (ver PROGRESS.md/DECISIONS.md de ese día). El
+        // `--disk` de este comando sigue siendo el disco físico de DESTINO
+        // real para el `put()` (por defecto `'r2'`, sin cambios).
         $dbUpdated = 0;
         if (! $dryRun) {
-            $dbUpdated = Media::where('disk', '!=', $targetDisk)->update([
-                'disk' => MediaDiskEnum::tryFrom($targetDisk)?->value ?? $targetDisk,
+            $dbUpdated = Media::where('disk', '!=', MediaDiskEnum::Public->value)->update([
+                'disk' => MediaDiskEnum::Public->value,
             ]);
         } else {
-            $dbUpdated = Media::where('disk', '!=', $targetDisk)->count();
+            $dbUpdated = Media::where('disk', '!=', MediaDiskEnum::Public->value)->count();
         }
 
         // 4. Mostrar resumen

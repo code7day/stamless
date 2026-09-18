@@ -283,16 +283,13 @@ class PostResource extends Resource
                 // de construir la URL, que puede fallar y devolver null
                 // igual que el bug anterior; se desactiva para confiar en
                 // el registro `Media`, igual que `MediaUpload::previewUrl()`.
-                // `visibility('public')`: 3er fix, ver docblock extenso en
-                // `ServiceResource` — sin esto, `getVisibility()` infiere
-                // `'private'` (disco `'r2'` ≠ string `'public'`) y arma una
-                // URL firmada de R2 en vez de la pública simple que ya
-                // funciona.
+                // Fix del disco (config + migración de datos, ya no
+                // `->visibility('public')` por columna): ver docblock
+                // extenso en `ServiceResource`.
                 Tables\Columns\ImageColumn::make('featuredImage.path')
                     ->label('')
                     ->getStateUsing(fn (Post $record) => $record->featuredImage?->path)
                     ->disk(fn (Post $record) => $record->featuredImage?->disk?->value ?? 'public')
-                    ->visibility('public')
                     ->checkFileExistence(false)
                     ->circular(),
 
