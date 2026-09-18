@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Filas de "Últimos contactos" ahora clickeables, abren "Ver / gestionar" directo
+
+- **Pedido del Tech Lead**: "desde últimos contactos debería poder darse clic en el contacto y abrir el formulario para atenderlo" — hasta ahora la tabla del widget era solo lectura, sin ninguna forma de actuar sobre un contacto sin ir a `ContactResource` completo con "Ver todos" y buscarlo de nuevo.
+- **Fix**: `->recordUrl()` en la tabla del widget — la fila entera es clickeable y abre directo el `EditAction` de `ContactResource` (labeled "Ver / gestionar", slide-over, `modalWidth('5xl')`), mismo mecanismo de deep-link (`tableAction`/`tableActionRecord`) que `RecentContentChangesWidget`, con `$record->getKey()` explícito (no el modelo) para no repetir el bug de uuid-vs-id ya corregido ahí.
+- **Archivos:** `app/Filament/Widgets/RecentContactsWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo — clic en una fila debe abrir el slide-over de gestión del contacto.
+
 ## 2026-09-18 — Corrección de criterio: los widgets de Contactos vuelven a ser visibles para `Editor`
 
 - **El Tech Lead, viendo el Escritorio logueado como `Editor`**: "el rol editor tiene acceso a contactos, podría ver los 5 widgets de contactos" — corrigiendo el criterio del fix anterior del mismo día (`LeadsOverviewWidget`/`RecentContactsWidget`), que exigía `viewAny` de `Contact` Y de `Form` a la vez, excluyendo sin querer a `Editor` (tiene Contactos pero no Formularios en la matriz de ADR-078).

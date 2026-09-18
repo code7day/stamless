@@ -62,6 +62,21 @@ class RecentContactsWidget extends TableWidget
                     ->latest('created_at')
                     ->limit(5)
             )
+            // 2026-09-18, pedido del Tech Lead: "desde últimos contactos
+            // debería poder darse clic en el contacto y abrir el formulario
+            // para atenderlo" — la fila entera ahora es clickeable y abre
+            // directo el `EditAction` ("Ver / gestionar", slide-over) de
+            // `ContactResource`, mismo deep-link (`tableAction`/
+            // `tableActionRecord`) que `RecentContentChangesWidget`. Con
+            // `->getKey()` explícito, NO el modelo — pasar el modelo
+            // sustituye por su route key (`uuid` en esta app, `HasUuid`),
+            // pero Filament resuelve la acción de tabla montada por la PK
+            // interna (`id`, bigint) vía `resolveRecordKey()`, mismo bug ya
+            // encontrado y corregido en `RecentContentChangesWidget`.
+            ->recordUrl(fn (Contact $record): string => ContactResource::getUrl(parameters: [
+                'tableAction' => 'edit',
+                'tableActionRecord' => $record->getKey(),
+            ]))
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nombre')
