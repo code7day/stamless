@@ -11,6 +11,15 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — WelcomeWidget: badge del Escritorio pasa de mostrar el plan a mostrar el rol ("Propietario"/"Administrador"/Soporte/Marketing/Editor/Redactor)
+
+- **Pedido del Tech Lead, con captura**: el badge junto al nombre en el widget de bienvenida ("Fulano · Auspicio/Convenio") mostraba el PLAN del tenant — se pidió que muestre en su lugar si el usuario logueado es Administrador o Propietario, "esto solo a nivel de vista... aunque a nivel de rol sea el mismo nivel de acceso Administrador o Propietario".
+- **Sin campo `owner_id`/`is_owner` en el esquema** (agregar uno para un badge puramente visual estaba fuera de alcance) — se resuelve con un heurístico nuevo, `Tenant::isOwnedBy(User $user): bool`: el primer usuario creado del tenant (`created_at` asc, `id` de desempate) se considera el dueño. Puramente informativo — no es una Policy, no cambia ningún `canAccess()`/`canViewAny()`, un Admin "no dueño" sigue teniendo exactamente el mismo acceso real.
+- **`WelcomeWidget`**: `getPlanLabel()`/`getPlanBadgeColor()` reemplazados por `getRoleLabel()`/`getRoleBadgeColor()` (mismo patrón de 2 métodos ya usado). El rol se resuelve igual que en `UserResource`/las Policies (`setPermissionsTeamId()` + `$user->roles()->first()?->name`). `Admin` + `isOwnedBy()` → "Propietario" (`warning`); `Admin` sin serlo → "Administrador" (`success`); el resto usa los mismos colores que la columna "Rol" de `UserResource`: Soporte=`info`, Marketing=`purple`, Editor=`primary`, Redactor=`gray`. El plan del tenant sigue visible sin cambios en `PlanStatusWidget` (columna 2 del Escritorio) — no se pierde información, se reubica.
+- **Archivos:** `app/Models/Tenant.php` (+`isOwnedBy()`), `app/Filament/Widgets/WelcomeWidget.php`, `resources/views/filament/cms/widgets/welcome-widget.blade.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK) en los 2 archivos PHP. Grep confirmó que `getPlanLabel()`/`getPlanBadgeColor()` no se usaban en ningún otro lugar.
+- **Pendiente:** confirmación visual del Tech Lead — loguearse como el usuario dueño de un tenant (Admin/Propietario) y como un Admin agregado después, para confirmar que el badge distingue bien ambos casos; probar con cada uno de los 5 roles.
+
 ## 2026-09-18 — 2do addendum ADR-078: expansión de 3 a 5 roles (`Soporte`/`Marketing` nuevos, `Editor` acotado) + `PlanUsageWidget` gated por rol
 
 - **Pedido del Tech Lead**, con el sistema de roles ya funcionando (ADR-078 + fix de `dehydrated`): sumar dos roles nuevos — `Soporte` ("accesos a todos similar al administrador pero excepto a ajustes (usuarios)") y `Marketing` ("parecido al acceso del administrador... pero sin acceso a ajustes, desarrolladores, preferencias"), más gatear el widget de uso del plan del Dashboard a solo Admin/Soporte.

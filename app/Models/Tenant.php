@@ -577,6 +577,31 @@ class Tenant extends Model
         return $this->hasMany(User::class);
     }
 
+    /**
+     * "Dueño de la cuenta" (2026-09-18, pedido del Tech Lead): distinción
+     * puramente VISUAL en `WelcomeWidget` entre el `Admin` que creó el
+     * tenant y cualquier otro colaborador al que se le asignó rol `Admin`
+     * después — ambos tienen el MISMO nivel de acceso real (esto no es una
+     * Policy ni afecta ningún `canAccess()`), solo cambia qué badge se
+     * muestra ("Propietario" vs "Administrador"). No existe un campo
+     * `owner_id`/`is_owner` en el esquema (fuera de alcance agregar uno
+     * para un badge puramente visual) — se usa el mismo heurístico que ya
+     * documenta `TenantRolePolicy::hasAnyRole()`/`RestrictsPageToRoles`
+     * para el caso legado "usuario sin rol": el PRIMER usuario creado del
+     * tenant (`created_at` asc, `id` como desempate) es, en la práctica,
+     * siempre quien registró/inició la cuenta.
+     */
+    public function isOwnedBy(User $user): bool
+    {
+        if ($user->tenant_id !== $this->id) {
+            return false;
+        }
+
+        $ownerId = $this->users()->orderBy('created_at')->orderBy('id')->value('id');
+
+        return $ownerId === $user->id;
+    }
+
     public function media(): HasMany
     {
         return $this->hasMany(Media::class);

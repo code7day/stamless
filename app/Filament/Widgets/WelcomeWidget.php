@@ -2,7 +2,9 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\UserRoleEnum;
 use App\Models\Tenant;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Widgets\AccountWidget;
 
@@ -16,8 +18,18 @@ use Filament\Widgets\AccountWidget;
  * botón de salir) — se conserva, pero no se puede tocar su vista vendor sin
  * pisarla en `resources/views/vendor/...`, así que se extiende como clase
  * propia con vista propia (`filament.cms.widgets.welcome-widget`), que
- * reusa el mismo markup y le agrega el badge de plan (`Tenant::planLabel()`).
- * `canView()` se hereda tal cual del padre (requiere sesión autenticada).
+ * reusa el mismo markup. `canView()` se hereda tal cual del padre (requiere
+ * sesión autenticada).
+ *
+ * 2026-09-18, pedido del Tech Lead con captura: el badge junto al nombre
+ * dejó de mostrar el PLAN del tenant (`Tenant::planLabel()`, "Auspicio/
+ * Convenio" en la captura) para mostrar el ROL del usuario logueado — "si
+ * es administrador o si es Propietario (esto solo a nivel de vista...
+ * aunque a nivel de rol sea el mismo nivel de acceso Administrador o
+ * Propietario"). El plan del tenant sigue visible en otro lado
+ * (`PlanStatusWidget`, columna 2 del Escritorio) — no se pierde
+ * información, se reubica. Ver `Tenant::isOwnedBy()` para el criterio
+ * "dueño de la cuenta" (heurístico, sin campo `owner_id` en el esquema).
  */
 class WelcomeWidget extends AccountWidget
 {
@@ -44,26 +56,61 @@ class WelcomeWidget extends AccountWidget
      */
     protected int|string|array $columnSpan = 1;
 
-    public function getPlanLabel(): ?string
+    /**
+     * "Propietario" (el `Admin` que creó el tenant, ver `Tenant::isOwnedBy()`)
+     * o el label corto del rol real (`UserRoleEnum`) para cualquier otro
+     * colaborador — incluido otro `Admin` no-dueño, que se etiqueta
+     * "Administrador" (no "Propietario"). `null` fuera de un tenant válido
+     * o sin usuario autenticado (no debería pasar en la práctica, `canView()`
+     * ya exige sesión).
+     */
+    public function getRoleLabel(): ?string
     {
-        $tenant = Filament::getTenant();
+        [$label] = $this->resolveRoleBadge();
 
-        return $tenant instanceof Tenant ? $tenant->planLabel() : null;
+        return $label;
     }
 
     /**
-     * Verde para planes pagos (mismo gate de negocio que ya usa
-     * `Tenant::canPersonalizeStudioBrand()`), gris para Free/Freemium — no
-     * es un estado de alerta, solo una distinción visual discreta.
+     * Mismos colores que `UserResource::table()` para consistencia visual
+     * entre el badge del Escritorio y la columna "Rol" de Usuarios —
+     * "Propietario" se distingue del resto de `Admin` con `warning` (dorado)
+     * en vez de `success`.
      */
-    public function getPlanBadgeColor(): string
+    public function getRoleBadgeColor(): string
     {
+        [, $color] = $this->resolveRoleBadge();
+
+        return $color;
+    }
+
+    /**
+     * @return array{0: ?string, 1: string} [label, color]
+     */
+    private function resolveRoleBadge(): array
+    {
+        $user = filament()->auth()->user();
         $tenant = Filament::getTenant();
 
-        if (! $tenant instanceof Tenant) {
-            return 'gray';
+        if (! $user instanceof User || ! $tenant instanceof Tenant) {
+            return [null, 'gray'];
         }
 
-        return $tenant->canPersonalizeStudioBrand() ? 'success' : 'gray';
+        setPermissionsTeamId($tenant->id);
+        $roleName = $user->roles()->first()?->name ?? UserRoleEnum::Admin->value;
+
+        if ($roleName === UserRoleEnum::Admin->value) {
+            return $tenant->isOwnedBy($user)
+                ? ['Propietario', 'warning']
+                : ['Administrador', 'success'];
+        }
+
+        return match ($roleName) {
+            UserRoleEnum::Soporte->value => ['Soporte', 'info'],
+            UserRoleEnum::Marketing->value => ['Marketing', 'purple'],
+            UserRoleEnum::Editor->value => ['Editor', 'primary'],
+            UserRoleEnum::Author->value => ['Redactor', 'gray'],
+            default => [$roleName, 'gray'],
+        };
     }
 }

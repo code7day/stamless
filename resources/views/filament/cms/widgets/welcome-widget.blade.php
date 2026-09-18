@@ -1,6 +1,6 @@
 @php
     $user = filament()->auth()->user();
-    $planLabel = $this->getPlanLabel();
+    $roleLabel = $this->getRoleLabel();
 @endphp
 
 <x-filament-widgets::widget class="fi-account-widget">
@@ -19,9 +19,9 @@
             <p class="fi-account-widget-user-name">
                 {{ filament()->getUserName($user) }}
 
-                @if ($planLabel)
-                    <x-filament::badge :color="$this->getPlanBadgeColor()" size="sm" class="fi-welcome-widget-plan-badge">
-                        {{ $planLabel }}
+                @if ($roleLabel)
+                    <x-filament::badge :color="$this->getRoleBadgeColor()" size="sm" class="fi-welcome-widget-role-badge">
+                        {{ $roleLabel }}
                     </x-filament::badge>
                 @endif
             </p>
