@@ -117,6 +117,27 @@ class PageSocialLinksUrlTest extends TestCase
         $this->assertTrue($v->passes(), 'Standard TikTok URL with @ should pass validation.');
     }
 
+    public function test_linkedin_url_with_accents_and_facebook_with_query_passes_validation(): void
+    {
+        $field = $this->getSocialLinksUrlField();
+        $rules = $field->getValidationRules();
+
+        // Accented URL (as in user screenshot: cica-consultoría)
+        $vLinkedIn = validator(['url' => 'https://www.linkedin.com/in/cica-consultoría'], ['url' => $rules]);
+        $this->assertTrue($vLinkedIn->passes(), 'LinkedIn URL with accented characters should pass validation.');
+
+        // Protocol-less accented URL
+        $vLinkedInNoProto = validator(['url' => 'linkedin.com/in/cica-consultoría '], ['url' => $rules]);
+        $this->assertTrue($vLinkedInNoProto->passes(), 'LinkedIn URL without protocol and trailing space should pass validation.');
+
+        // Facebook profile with query params (as in user screenshot)
+        $vFacebook = validator(['url' => 'https://www.facebook.com/profile.php?id=61586972725857'], ['url' => $rules]);
+        $this->assertTrue($vFacebook->passes(), 'Facebook profile URL with query params should pass validation.');
+
+        $vFacebookNoProto = validator(['url' => 'facebook.com/profile.php?id=61586972725857'], ['url' => $rules]);
+        $this->assertTrue($vFacebookNoProto->passes(), 'Facebook URL without protocol should pass validation.');
+    }
+
     public function test_tiktok_url_with_whitespace_and_unicode_spaces_passes_validation(): void
     {
         $field = $this->getSocialLinksUrlField();

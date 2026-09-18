@@ -11,6 +11,16 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix (2do): URLs sociales admiten caracteres internacionales/tildes (`Str::isUrl` + host con punto) como en LinkedIn `cica-consultoría`
+
+- **Pedido del Tech Lead**: Reporte con captura en Studio: "se daño otros formatos de urls, ahora no me permite editar con urls sociales como linkedin" (`https://www.linkedin.com/in/cica-consultoría...`), arrojando el error `"El campo URL debe ser una dirección web válida."`.
+- **Causa raíz**: `filter_var($url, FILTER_VALIDATE_URL)` en PHP opera estrictamente bajo ASCII (RFC 2396). Cualquier URL con letras acentuadas (`í`, `á`, etc.) o caracteres Unicode en el path (muy comunes en perfiles de LinkedIn de habla hispana como `cica-consultoría`) es rechazada por `filter_var`.
+- **Solución**:
+  1. `app/Filament/Resources/PageResource.php`: Se reemplaza `filter_var` por `Illuminate\Support\Str::isUrl($urlToCheck)` (que soporta letras Unicode `\pL` en paths bajo el flag `/u`), junto con la comprobación de host con dominio (`parse_url($urlToCheck, PHP_URL_HOST)` que contenga un punto) para rechazar cadenas sin TLD o strings aleatorios. Mantiene el auto-trimming de espacios unicode y la anteposición de `https://`.
+  2. `tests/Feature/Filament/PageSocialLinksUrlTest.php`: Se añadieron casos de prueba específicos para LinkedIn con tildes (`https://www.linkedin.com/in/cica-consultoría`), URLs sin protocolo con tildes (`linkedin.com/in/cica-consultoría`), y perfiles de Facebook con parámetros query (`facebook.com/profile.php?id=61586972725857`).
+- **Resultados**: 158 de 158 tests pasando al 100%, `vendor/bin/pint --dirty --format agent` ejecutado limpiamente. Sin despliegues per instrucción ("no desplegar cambios, solo solucionar").
+- **Archivos**: `app/Filament/Resources/PageResource.php`, `tests/Feature/Filament/PageSocialLinksUrlTest.php`.
+
 ## 2026-09-18 — Fix: validación de URLs de redes sociales (TikTok con alias `@`, espacios y prefijo https) en Footer
 
 - **Pedido del Tech Lead**: Reporte en vivo con captura en Studio: no se podía guardar una URL de TikTok (`https://www.tiktok.com/@cicavidafeliz`) en el bloque de footer (`colophon` -> redes sociales) debido a que contenía `@` en el alias, arrojando el error `"El campo uRL debe ser una URL válida."`. Restricciones explícitas: no desplegar cambios ("no desplegar cambios, solo solucionar") y no editar librerías en `vendor/`.

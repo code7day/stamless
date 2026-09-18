@@ -40,6 +40,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 use Schmeits\FilamentCharacterCounter\Forms\Components\Textarea as CharacterTextarea;
 use Schmeits\FilamentCharacterCounter\Forms\Components\TextInput as CharacterTextInput;
 
@@ -2319,7 +2320,9 @@ class PageResource extends Resource
                                                                                                         $trimmed = trim(preg_replace('/^\s+|\s+$/u', '', (string) $value));
                                                                                                         $urlToCheck = ! preg_match('~^https?://~i', $trimmed) ? 'https://'.$trimmed : $trimmed;
 
-                                                                                                        if (! filter_var($urlToCheck, FILTER_VALIDATE_URL)) {
+                                                                                                        $host = parse_url($urlToCheck, PHP_URL_HOST);
+
+                                                                                                        if (! Str::isUrl($urlToCheck) || ! is_string($host) || ! str_contains($host, '.')) {
                                                                                                             $fail('El campo URL debe ser una dirección web válida.');
                                                                                                         }
                                                                                                     },
