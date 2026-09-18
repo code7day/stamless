@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
+use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -103,8 +104,18 @@ class ApiPlayground extends Page implements HasForms
     {
         $preset = self::PRESETS[$this->activePreset];
 
+        // 2026-09-18: `tenant_slug` precarga el tenant ACTUAL de Console
+        // (`Filament::getTenant()`), no un valor fijo — este playground lo
+        // usa cualquier tenant de la plataforma, no solo CICA360. El campo
+        // sigue siendo editable a mano (por si alguien quiere probar contra
+        // otro tenant), pero el default ahora es correcto para quien sea
+        // que lo esté abriendo. Fallback a 'cica360' solo si por algún
+        // motivo no hay tenant resuelto (no debería pasar en un panel
+        // tenant-scoped, pero evita un campo vacío si ocurriera).
+        $tenantSlug = Filament::getTenant()?->slug ?? 'cica360';
+
         $this->form->fill([
-            'tenant_slug' => 'cica360',
+            'tenant_slug' => $tenantSlug,
             'method' => $preset['method'],
             'path' => $preset['path'],
             'token' => '',

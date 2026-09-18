@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use BackedEnum;
+use Filament\Facades\Filament;
 use Filament\Pages\Page;
 use Illuminate\Support\Str;
 use UnitEnum;
@@ -12,6 +13,18 @@ use UnitEnum;
  * Fuente de verdad única: este page NO duplica contenido, solo lo
  * muestra (con un índice navegable e IDs de anclaje inyectados); cualquier
  * cambio a la documentación se hace editando el archivo del repo.
+ *
+ * 2026-09-18: `readMarkdown()` reemplaza el tenant slug de ejemplo del
+ * archivo fuente (`cica360`, en minúsculas, usado SOLO como segmento
+ * `{tenant_slug}` en URLs/curl/fetch de ejemplo) por el slug del tenant
+ * ACTUAL de Console — el Tech Lead notó que la doc mostraba "cica360" en
+ * todos los ejemplos de URL sin importar desde qué tenant se abriera,
+ * cuando la plataforma es multi-tenant y cualquier cliente puede terminar
+ * viendo esta misma página. Las menciones en MAYÚSCULAS ("CICA360", marca)
+ * dentro de prosa o de valores de ejemplo en JSON (`seo_title`, `quote`,
+ * etc.) NO se tocan — son contenido ilustrativo de esa cuenta puntual, no
+ * parte de la ruta del API, y `str_replace` es case-sensitive por diseño
+ * acá (no requiere ninguna lógica extra para distinguirlas).
  */
 class ApiDocumentation extends Page
 {
@@ -103,6 +116,17 @@ class ApiDocumentation extends Page
     {
         $path = base_path('docs/api/v1.md');
 
-        return is_file($path) ? file_get_contents($path) : null;
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $raw = file_get_contents($path);
+        $tenantSlug = Filament::getTenant()?->slug;
+
+        if ($tenantSlug !== null && $tenantSlug !== 'cica360') {
+            $raw = str_replace('cica360', $tenantSlug, $raw);
+        }
+
+        return $raw;
     }
 }
