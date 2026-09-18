@@ -331,9 +331,19 @@ class MediaResource extends Resource
             ->defaultSort('updated_at', 'desc')
             ->columns([
                 Stack::make([
+                    // 2026-09-18: `checkFileExistence(false)` — mismo riesgo
+                    // encontrado y corregido en `ServiceResource`/
+                    // `TestimonialResource`/`PostResource` (ver docblock
+                    // extenso en `ServiceResource`). Acá el estado (`path`
+                    // directo, sin relación) siempre estuvo bien, pero
+                    // `ImageColumn::getImageUrl()` igual hace un
+                    // `$storage->exists()` (HeadObject) contra R2 antes de
+                    // construir la URL — mismo punto de falla potencial,
+                    // corregido preventivamente aunque no se reportó roto.
                     Tables\Columns\ImageColumn::make('path')
                         ->label('')
                         ->disk(fn ($record) => $record->disk?->value ?? 'public')
+                        ->checkFileExistence(false)
                         ->square()
                         ->height(190)
                         // "las imágenes centradas" (2026-09-13, 4ta vuelta):

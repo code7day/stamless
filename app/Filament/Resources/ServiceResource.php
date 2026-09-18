@@ -471,10 +471,31 @@ class ServiceResource extends Resource
                 // forma directa (`$record->image?->path`) que ya usaba
                 // `disk()` para el disco, sin depender de la resolución
                 // automática de relaciones por dot-notation de `ImageColumn`.
+                // 2026-09-18, 2do fix producción (el mismo día, mismo hilo):
+                // el `getStateUsing()` de arriba resolvió el estado (antes
+                // llegaba null) pero el thumbnail SEGUÍA sin mostrarse en
+                // producción (R2) incluso con el estado ya poblado. Causa
+                // real, en el propio código fuente de Filament
+                // (`ImageColumn::getImageUrl()`): antes de construir la URL,
+                // llama `$storage->exists($state)` — un `HeadObject` extra
+                // contra R2 por cada fila del listado — y si esa llamada
+                // devuelve `false` O tira `UnableToCheckFileExistence`
+                // (credenciales/permiso limitado del token R2, latencia,
+                // etc.), el método corta y devuelve `null`, mismo resultado
+                // visual (`src=""`) que el bug anterior. `MediaUpload::
+                // previewUrl()` (el mecanismo del formulario de edición, que
+                // SIEMPRE funcionó) nunca hace este chequeo — arma la URL
+                // directo desde `Storage::disk()->url()`, confiando en que
+                // el registro `Media` en base de datos representa un
+                // archivo real. `->checkFileExistence(false)` alinea el
+                // listado con ese mismo criterio ya usado en el resto de la
+                // app (evita además un HEAD extra a R2 por cada fila visible
+                // del listado, más rápido de por sí).
                 Tables\Columns\ImageColumn::make('image.path')
                     ->label('')
                     ->getStateUsing(fn ($record) => $record?->image?->path)
                     ->disk(fn ($record) => $record?->image?->disk?->value ?? 'public')
+                    ->checkFileExistence(false)
                     ->circular(),
 
                 // Título+subtítulo fusionados en 1 columna, 2 filas

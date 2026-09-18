@@ -177,10 +177,18 @@ class TestimonialResource extends Resource
                 // `ServiceResource` — `getStateUsing()` explícito porque el
                 // estado por dot-notation (`'avatar.path'`) llegaba null
                 // (src="" vacío) pese a que `disk()` sí resuelve la relación.
+                // `checkFileExistence(false)`: 2do fix, ver docblock extenso
+                // en `ServiceResource` — `ImageColumn::getImageUrl()` hace
+                // un `$storage->exists()` (HeadObject) contra R2 antes de
+                // construir la URL, que puede fallar/tirar
+                // `UnableToCheckFileExistence` y devolver null igual que el
+                // bug anterior; se desactiva para confiar en el registro
+                // `Media`, igual que ya hace `MediaUpload::previewUrl()`.
                 Tables\Columns\ImageColumn::make('avatar.path')
                     ->label('')
                     ->getStateUsing(fn ($record) => $record?->avatar?->path)
                     ->disk(fn ($record) => $record?->avatar?->disk?->value ?? 'public')
+                    ->checkFileExistence(false)
                     ->circular(),
 
                 // Nombre+puesto fusionados en 1 columna, 2 filas (2026-08-31,
