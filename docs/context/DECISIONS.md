@@ -138,6 +138,26 @@
 | **Alternativas consideradas** | S3 puro, local disk, DigitalOcean Spaces. R2 preferido por precio de egress + Cloudflare. |
 | **Consecuencias** | Configurar `FILESYSTEM_DISK` / disk `r2`. Credenciales fuera del repo. Desarrollo local puede usar `local` o MinIO hasta tener R2. |
 
+### Addendum 2026-09-18 — Stage pasa de disco local a R2, con bucket y credenciales PROPIOS (no comparte el bucket de Producción)
+
+Pedido del Tech Lead: "creo que si es necesario ahora habilitar en stage el storage en r2, por seguridad y pruebas fidedignas" — hasta ahora Stage usaba el disco `local` (`storage/app/public`), mientras que Producción ya corre sobre R2 (bucket real `stamless-storage`, confirmado por el Tech Lead — el placeholder `genesis-media` que traía `.env.example` era el codename interno viejo, nunca el nombre real usado en el servidor). Que Stage no use R2 significaba que las pruebas ahí no reflejaban fielmente cómo se comporta la app con S3/R2 real (`ImageColumn`, URLs firmadas vs públicas, latencia, etc. — la causa raíz de varios bugs reales de este mismo día solo aparecía con R2 activo).
+
+Decisión: Stage usa R2 con un **bucket y token de acceso propios**, separados de los de Producción (ej. `stamless-storage-stage`, un token de Cloudflare acotado a ese bucket) — no reutilizar el bucket/credenciales de Producción. Motivo: (a) seguridad — un token de Stage filtrado (ambiente de pruebas, más expuesto a experimentación) no debe dar acceso al bucket con media real de clientes; (b) higiene de datos — archivos de prueba/seeds de Stage no deben mezclarse con archivos reales de tenants en el mismo bucket.
+
+**No requiere cambios de código.** `config/filesystems.php` ya resuelve el disco `'public'` como local o R2 puramente por variables de entorno (`FILESYSTEM_DISK`, `R2_*`) desde ADR-077 — activar R2 en Stage es 100% configuración de ambiente:
+
+1. Crear un bucket R2 nuevo en Cloudflare para Stage (ej. `stamless-storage-stage`) con su propio token de API (scope acotado a ese bucket, no al de Producción) y, si se quiere una URL pública propia, un dominio/subdominio dedicado (ej. `media-stage.stamless.com`) o el `pub-<hash>.r2.dev` que Cloudflare genera por defecto.
+2. En el `.env` de Stage en el servidor (`/var/www/vhosts/stage_stamless/.env` — **no** en este repo, nunca commitear credenciales): `FILESYSTEM_DISK=r2` + `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET`/`R2_ENDPOINT`/`R2_URL` apuntando al bucket de Stage.
+3. `php artisan config:clear && php artisan config:cache` en Stage para que tome el nuevo `FILESYSTEM_DISK`.
+4. `php artisan media:sync-r2 --dry-run` primero (previsualizar qué se subiría, sin tocar nada), luego `php artisan media:sync-r2` real — sube los archivos que hoy están en `storage/app/public` de Stage al bucket de Stage y normaliza `Media.disk` a `'public'` en esa base de datos (ver `App\Console\Commands\SyncMediaToR2Command`, ya preparado para esto desde ADR-077 — lee siempre del disco fijo `'local_public'`, nunca del condicional).
+5. Confirmar visualmente en Studio de Stage que Servicios/Testimonios/Publicaciones/Biblioteca de Medios siguen mostrando sus thumbnails (mismo criterio que la cadena de fixes de `ImageColumn` de ADR-077).
+
+Sin riesgo de que esto afecte a Producción: `production.sh` excluye `storage/` de la sincronización rutinaria Stage→Prod (solo se copia con el flag `-s` explícito o si Producción todavía no tiene `storage/app/public/media/`, ver línea 85), y ambos `.env` son independientes salvo en el bootstrap inicial (primera vez que se crea Producción, si no existe `.env` ahí, se copia el de Stage como base — ya no aplica, Producción ya está desplegada con su propio `.env`).
+
+`.env.example` actualizado: comentario de la sección R2 ahora dice "Stage y Producción" (antes solo mencionaba Producción), placeholder de bucket corregido de `genesis-media` (codename viejo) a `stamless-storage` (nombre real), y se agregó una nota explícita de "bucket/token propio por ambiente, nunca compartido".
+
+**Pendiente, fuera del alcance de este repo/sandbox** (requiere acceso al dashboard de Cloudflare y SSH al servidor, ninguno disponible acá): crear el bucket + token de Stage en Cloudflare, editar el `.env` real de Stage, y correr los comandos de arriba. Ver TASK.md.
+
 ---
 
 ## ADR-005 — Modelo freemium + módulos verticales

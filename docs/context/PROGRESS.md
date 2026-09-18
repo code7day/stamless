@@ -11,6 +11,17 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Stage pasa a usar R2 con bucket propio (no el de Producción) + `.env.example` corregido (bucket real `stamless-storage`, no el codename `genesis-media`)
+
+- **Pedido del Tech Lead:** "creo que si es necesario ahora habilitar en stage el storage en r2, por seguridad y pruebas fidedignas" — hoy Stage corre sobre disco `local`, mientras Producción ya usa R2; las pruebas en Stage no reflejan fielmente el comportamiento real con S3/R2 (varios bugs de `ImageColumn` de este mismo día solo aparecían con R2 activo).
+- **Pregunta de diseño resuelta con el Tech Lead (`AskUserQuestion`):** ¿bucket propio para Stage o reutilizar el de Producción? Eligió **bucket propio** — evita mezclar archivos de prueba con media real de clientes, y limita el daño si las credenciales de Stage (ambiente más expuesto a experimentación) se filtran.
+- **Corrección del Tech Lead en el mismo turno:** el placeholder `R2_BUCKET=genesis-media` de `.env.example` era el codename interno viejo — el bucket REAL de Producción es `stamless-storage` (confirmado, coincide con el endpoint firmado visto en un fix anterior del mismo día: `stamless-storage.{account}.r2.cloudflarestorage.com`). Corregido el placeholder + `R2_URL` de ejemplo a `https://media.stamless.com` (el dominio custom real).
+- **Sin cambios de código:** `config/filesystems.php` ya resuelve el disco `'public'` como local o R2 puramente por `FILESYSTEM_DISK`/`R2_*` (ADR-077) — activar R2 en Stage es 100% configuración de ambiente en el `.env` real del servidor, algo que este sandbox no puede hacer (sin SSH). Se documentó el procedimiento completo como addendum de ADR-004: crear bucket+token propios en Cloudflare para Stage, editar `.env` de Stage, `config:clear`+`config:cache`, `media:sync-r2 --dry-run` y luego real, confirmar visualmente en Studio.
+- **Sin riesgo para Producción:** `production.sh` excluye `storage/` de la sincronización rutinaria Stage→Prod (solo se copia con `-s` explícito o si Prod aún no tiene `storage/app/public/media/`) — este cambio queda aislado a Stage.
+- **`.env.example`:** comentario de la sección R2 actualizado ("Stage y Producción", antes solo "Producción") + nota explícita de bucket/token propio por ambiente, nunca compartido.
+- **Archivos:** `.env.example`, `docs/context/DECISIONS.md` (addendum ADR-004).
+- **Pendiente (fuera de este sandbox, requiere Cloudflare dashboard + SSH):** crear bucket+token de Stage en Cloudflare, editar `.env` real de Stage, correr `media:sync-r2` y confirmar visualmente. Ver TASK.md.
+
 ## 2026-09-18 — Tabla de límites de tokens en `docs/api/v1.md` (Free=5, Auspicio/Convenio=10) reemplazada por un ejemplo genérico
 
 - **Pedido del Tech Lead**, viendo la tabla renderizada `| Plan | Tokens activos permitidos | Free | 5 | Auspicio/Convenio | 10 |`: "esto es fijo o dinámico, si es dinámico dejalo fijo como un ejemplo genérico". Se confirmó: `docs/api/v1.md` es un archivo Markdown estático (leído vía `file_get_contents()` en `ApiDocumentation::readMarkdown()`, la única sustitución que hace es la del `tenant_slug` — ver entradas anteriores) — la tabla eran números escritos a mano, no leídos en runtime de `Tenant::maxApiTokens()` (`app/Models/Tenant.php:551-558`, que hoy devuelve `free/freemium => 5, sponsorship => 10`). Los números coincidían con el código HOY, pero nada los mantiene sincronizados — si el límite de un plan cambia en el código, la doc queda desactualizada en silencio, sin ningún aviso.
