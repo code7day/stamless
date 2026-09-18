@@ -220,7 +220,19 @@ RSYNC_EXCLUDES=(
     --exclude='/public/hot'
     --exclude='/public/storage'
     --exclude='/tests/'
-    --exclude='/docs/'
+    # 2026-09-18: se excluye SOLO `docs/context/` (documentación interna de
+    # trabajo para agentes/Tech Lead — CURRENT_STATE.md, TASK.md, DECISIONS.md,
+    # etc., nunca leída en runtime por la app). `docs/api/` NO se excluye:
+    # `App\Filament\Pages\ApiDocumentation::readMarkdown()` lee
+    # `base_path('docs/api/v1.md')` en cada request a "API Documentation", y
+    # la ruta `docs.openapi-yaml` (routes/web.php) sirve
+    # `base_path('docs/api/openapi.v1.yaml')` crudo — ambos archivos son
+    # dependencias reales de runtime, no solo documentación de repo. Antes de
+    # este fix, excluir todo `/docs/` dejaba esas 2 páginas rotas
+    # ("No se encontró docs/api/v1.md") en CUALQUIER stage/producción
+    # desplegado con este script, sin relación con el contenido del archivo
+    # en sí — reportado por el Tech Lead viendo el mensaje de error en Studio.
+    --exclude='/docs/context/'
 )
 
 if [ "$VERBOSE" = true ]; then
