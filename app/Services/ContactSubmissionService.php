@@ -7,12 +7,16 @@ use App\Enums\ContactStatusEnum;
 use App\Enums\FormFieldTypeEnum;
 use App\Exceptions\Api\InvalidFieldFormatException;
 use App\Exceptions\Api\MissingRequiredFieldsException;
+use App\Mail\ContactFormReceipt;
 use App\Mail\ContactFormSubmitted;
 use App\Models\Contact;
 use App\Models\ContactActivity;
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\Media;
+use App\Models\Setting;
 use App\Rules\NoHtmlTags;
+use Filament\Forms\Components\RichEditor\RichContentRenderer;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Crypt;
@@ -170,6 +174,75 @@ class ContactSubmissionService
         }
 
         return $decrypted;
+    }
+
+    /**
+     * "Página de Agradecimiento" resuelta para UN envío puntual — mismo
+     * contenido que ve el visitante en pantalla (respuesta JSON del
+     * submit, ver `FormSubmissionController::store()`) y el que recibe por
+     * email si `Form::send_copy_to_submitter` está activo (ver
+     * `notifySubmitter()` más abajo). Vivía como método privado en
+     * `FormSubmissionController` (ADR-074) — se mueve acá 2026-09-18 para
+     * que ambos consumidores (la respuesta HTTP y el email de "copia al
+     * usuario") compartan la misma lógica de resolución de `{name}`/
+     * RichEditor→HTML en vez de duplicarla.
+     *
+     * @return array{title: string, description: ?string, alert_title: ?string, alert_description: ?string, button_label: ?string}
+     */
+    public function resolveThankYouData(?Form $form, ?string $submitterName = null): array
+    {
+        $rawName = trim((string) $submitterName);
+        $firstName = filled($rawName) ? trim(explode(' ', $rawName)[0]) : '';
+
+        $rawTitle = $form?->thank_you_title ?? '¡Muchas gracias, {name}!';
+        $title = filled($firstName)
+            ? str_replace('{name}', $firstName, $rawTitle)
+            : trim(str_replace(['{name}', ' ,', '  '], ['', '', ' '], $rawTitle));
+
+        $title = rtrim($title, ' ,');
+        if (str_starts_with($title, '¡') && ! str_ends_with($title, '!')) {
+            $title .= '!';
+        }
+
+        $rawDescription = $form?->thank_you_description
+            ?? 'Hemos recibido tu consulta correctamente. Nuestro equipo revisará tu información y se pondrá en contacto contigo a la brevedad.';
+        $description = $this->renderRichContent($rawDescription);
+        if (filled($firstName)) {
+            $description = str_replace('{name}', e($firstName), (string) $description);
+        } else {
+            $description = str_replace([' {name}', '{name}'], '', (string) $description);
+        }
+
+        return [
+            'title' => $title,
+            'description' => $description,
+            'alert_title' => $form?->thank_you_alert_title ?? 'Tiempo de respuesta estimado:',
+            'alert_description' => $form?->thank_you_alert_description ?? 'Menos de 24 horas hábiles.',
+            'button_label' => $form?->thank_you_button_label ?? 'Enviar otra consulta',
+        ];
+    }
+
+    /**
+     * Mismo contrato que `App\Http\Concerns\ResolvesPublicLinks::renderRichContent()`
+     * (usado por los API Resources), copiado acá en vez de importar ese
+     * trait completo: está pensado para Controllers HTTP (mezcla
+     * `NormalizesJsonFields` y media docena de métodos de resolución de
+     * links/SEO que este servicio de dominio no necesita) — traerlo entero
+     * por una función de 6 líneas acoplaría de más. Un `string` pasa tal
+     * cual; un `array` (documento JSON del `RichEditor` de Filament) se
+     * renderiza a HTML.
+     */
+    private function renderRichContent(mixed $value): ?string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_array($value)) {
+            return RichContentRenderer::make($value)->toHtml();
+        }
+
+        return null;
     }
 
     /**
@@ -369,19 +442,90 @@ class ContactSubmissionService
     }
 
     /**
-     * Best-effort: un fallo de correo nunca debe perder el contacto ya
-     * guardado, solo se registra en logs.
+     * Envía la notificación al equipo del tenant y, si corresponde, una
+     * copia/constancia a quien completó el formulario. Cada email vive en
+     * su propio try/catch (ver `notifyAdmin()`/`notifySubmitter()`): un
+     * fallo de correo nunca debe perder el `Contact` ya guardado, y que
+     * falle uno de los dos emails no debe impedir el otro.
+     *
+     * 2026-09-18 (pedido del Tech Lead: "el envio a correo tiene que ser
+     * usando queue tambien") — `ContactFormSubmitted`/`ContactFormReceipt`
+     * implementan `ShouldQueue`; se despachan con `->later()` (ver
+     * `randomMailDelay()` más abajo) en vez de `->send()`/`->queue()`
+     * inmediato — mismo mecanismo de cola, pero con un delay aleatorio
+     * para no mandar los envíos "pegados" al proveedor SMTP.
      */
     private function notify(Form $form, Contact $contact): void
+    {
+        $logoUrl = $this->resolveBrandLogoUrl($form);
+        $siteName = $form->tenant?->name ?? config('app.name');
+
+        $this->notifyAdmin($form, $contact, $logoUrl, $siteName);
+        $this->notifySubmitter($form, $contact, $logoUrl, $siteName);
+    }
+
+    /**
+     * Delay aleatorio (en segundos) para espaciar cada email individual
+     * antes de que la cola lo despache de verdad — 2026-09-18, pedido del
+     * Tech Lead: "aplicar un pequeño delay por correo o envío para que así
+     * también no bannee el proveedor de SMTP... entre 5 a 30 segundos de
+     * forma random, así que no sea predecible los envíos". Independiente
+     * por cada llamada (`notifyAdmin()`/`notifySubmitter()` piden el suyo
+     * por separado) — así, cuando ambos aplican al mismo `Contact`, no
+     * salen exactamente en el mismo segundo tampoco entre sí.
+     */
+    private function randomMailDelay(): int
+    {
+        return random_int(5, 30);
+    }
+
+    /**
+     * `Form::notification_email` admite varios correos separados por coma
+     * (2026-09-18, pedido del Tech Lead: "podria usarse el mismo campo de
+     * email para notificacion pero con soporte a varios correos separados
+     * por comas y se enviaría el primero y con copia a los otros a
+     * continuacion") — el primero recibe el correo como destinatario
+     * (`to`), el resto va en copia (`cc`). Sin coma, se comporta igual que
+     * antes de este cambio: un solo destinatario.
+     */
+    private function notifyAdmin(Form $form, Contact $contact, ?string $logoUrl, string $siteName): void
     {
         if (! $form->notification_email) {
             return;
         }
 
+        $recipients = array_values(array_filter(array_map('trim', explode(',', $form->notification_email))));
+
+        if ($recipients === []) {
+            return;
+        }
+
+        // PHP no tiene "rest pattern" en destructuring de listas (a
+        // diferencia de JS) — `array_shift()` saca el primero y deja el
+        // resto en el mismo array.
+        $to = array_shift($recipients);
+        $cc = $recipients;
+
+        // 2026-09-18: confirmado con logs reales de producción que el
+        // `to`/`cc` se arman bien y la cola los despacha correctamente —
+        // lo que fallaba intermitentemente era la disponibilidad del
+        // relay SMTP local del Tech Lead, no esta lógica (ver PROGRESS.md).
+        // Se deja este log de diagnóstico igual, ahora con el delay
+        // aplicado, para poder seguir confirmando en el futuro.
+        $delay = $this->randomMailDelay();
+
+        Log::debug('Despachando notificación de nuevo contacto.', [
+            'form_id' => $form->id,
+            'contact_id' => $contact->id,
+            'to' => $to,
+            'cc' => $cc,
+            'delay_seconds' => $delay,
+        ]);
+
         try {
-            Mail::to($form->notification_email)->send(
-                new ContactFormSubmitted($form, $contact, $this->decryptData($contact))
-            );
+            Mail::to($to)
+                ->cc($cc)
+                ->later($delay, new ContactFormSubmitted($form, $contact, $this->decryptData($contact), $logoUrl, $siteName));
         } catch (Throwable $e) {
             Log::warning('No se pudo enviar la notificación de nuevo contacto.', [
                 'form_id' => $form->id,
@@ -389,5 +533,90 @@ class ContactSubmissionService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * "Enviar copia a quien completa el formulario" (`Form::send_copy_to_submitter`)
+     * — columna y toggle en Filament existían desde el MVP pero nunca se
+     * leían acá (hallazgo 2026-09-18, columna muerta igual que
+     * `FormField::validation_rules` antes de ADR-054). Reusa el mismo
+     * contenido de la "Página de Agradecimiento" (`resolveThankYouData()`)
+     * que ya ve el visitante en pantalla tras enviar, en vez de duplicar
+     * textos personalizables por `Form` en dos lugares distintos.
+     */
+    private function notifySubmitter(Form $form, Contact $contact, ?string $logoUrl, string $siteName): void
+    {
+        if (! $form->send_copy_to_submitter || ! $contact->email) {
+            // 2026-09-18: hasta acá este `return` era 100% silencioso — sin
+            // log, indistinguible de "el toggle está apagado" vs "el
+            // visitante no cargó email en este envío puntual" (el campo
+            // `email` de `Contact` puede quedar `null` si el `Form` no
+            // tiene un campo mapeado a `email`/`correo`/`correo_electronico`,
+            // ver `splitPayload()`). El Tech Lead reportó que la "copia al
+            // usuario"/constancia no llegaba — sin poder inspeccionar la
+            // base de datos ni los logs de producción desde este sandbox,
+            // este log deja rastro de CUÁL de las 2 condiciones fue la
+            // que frenó el envío, la próxima vez que se reproduzca.
+            Log::debug('Copia al remitente omitida.', [
+                'form_id' => $form->id,
+                'contact_id' => $contact->id,
+                'send_copy_to_submitter' => $form->send_copy_to_submitter,
+                'has_email' => (bool) $contact->email,
+            ]);
+
+            return;
+        }
+
+        $thankYou = $this->resolveThankYouData($form, $contact->name);
+        $delay = $this->randomMailDelay();
+
+        Log::debug('Despachando copia de constancia al remitente.', [
+            'form_id' => $form->id,
+            'contact_id' => $contact->id,
+            'to' => $contact->email,
+            'delay_seconds' => $delay,
+        ]);
+
+        try {
+            Mail::to($contact->email)->later(
+                $delay,
+                new ContactFormReceipt($form, $thankYou, $logoUrl, $siteName)
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo enviar la copia de constancia al remitente.', [
+                'form_id' => $form->id,
+                'contact_id' => $contact->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Logo del tenant para el header de ambos emails (ver ADR de este
+     * mismo día) — `Setting` `branding.logo_id`, seteado desde
+     * `Preferences.php`. Consulta explícita por `tenant_id` con
+     * `withoutGlobalScopes()` en vez del helper `setting()`/scope
+     * automático de `HasTenant`: ambos dependen de que
+     * `TenantManager::hasTenant()` ya esté seteado, y este servicio corre
+     * también desde el submit público de la API (`FormSubmissionController`),
+     * que resuelve el tenant por `slug` directo sin pasar por
+     * `TenantManager::setTenant()` (mismo criterio ya usado ahí:
+     * `Form::where('tenant_id', $tenant->id)`, no scope implícito).
+     */
+    private function resolveBrandLogoUrl(Form $form): ?string
+    {
+        $logoId = Setting::withoutGlobalScopes()
+            ->where('tenant_id', $form->tenant_id)
+            ->where('key', 'branding.logo_id')
+            ->value('value');
+
+        if (blank($logoId)) {
+            return null;
+        }
+
+        return Media::withoutGlobalScopes()
+            ->where('tenant_id', $form->tenant_id)
+            ->find((int) $logoId)
+            ?->url();
     }
 }

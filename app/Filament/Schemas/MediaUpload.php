@@ -148,6 +148,28 @@ class MediaUpload
                 ->acceptedFileTypes(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'])
                 ->maxSize(51200),
             'any' => $upload->maxSize(10240),
+            // 2026-09-18, pedido del Tech Lead tras un logo SVG que se
+            // quedaba trabado en `storage/app/private/livewire-tmp/` sin
+            // llegar nunca a `public/media/` (a diferencia de los logos
+            // PNG/JPG/WEBP ya sembrados, que sí completaban el flujo
+            // normal): el `->imageEditor()` (cropper de Filepond) no
+            // soporta SVG — es vectorial, sin dimensiones de canvas fijas
+            // — y su intento de cargarlo aborta el flujo de subida en
+            // silencio, sin error visible, dejando el archivo temporal
+            // huérfano para siempre. Un logo de marca es justo el caso
+            // típico donde SÍ hace falta SVG (vectorial, se ve nítido a
+            // cualquier tamaño) — variante propia SIN editor de imagen
+            // (no tiene sentido "recortar" un vector) y con mimetypes
+            // explícitos en vez de `->image()` genérico, para no depender
+            // de si esa regla de Laravel incluye SVG en esta versión.
+            // Nota de seguridad: un SVG puede llevar `<script>` embebido —
+            // acá es seguro porque el único uso es `<img src="...">` en
+            // emails/UI (los navegadores NO ejecutan script embebido en un
+            // SVG cargado como `<img>`, solo si se inlinea en el DOM o se
+            // navega directo al archivo).
+            'logo' => $upload
+                ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+                ->maxSize(5120),
             default => $upload
                 ->image()
                 ->imageEditor()
