@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LanguageEnum;
+use App\Observers\DeployTriggerObserver;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -18,6 +19,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Form extends Model
 {
     use HasTenant, HasUuid;
+
+    /**
+     * Fase 6 (post-MVP) adelantada, 2026-09-18 — expuesto vía API pública
+     * (`forms/{slug}`) y consumido en build time por el front, igual que
+     * Page/Post/Service — ver `Page::booted()` para el docblock completo.
+     */
+    protected static function booted(): void
+    {
+        static::observe(DeployTriggerObserver::class);
+    }
 
     /**
      * Get the attributes that should be cast.

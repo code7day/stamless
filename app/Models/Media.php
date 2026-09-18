@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MediaDiskEnum;
+use App\Observers\DeployTriggerObserver;
 use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,6 +14,18 @@ use Illuminate\Support\Facades\Storage;
 class Media extends Model
 {
     use HasTenant, HasUuid;
+
+    /**
+     * Fase 6 (post-MVP) adelantada, 2026-09-18 — expuesto vía API pública
+     * (`media/{uuid}`); un cambio de `alt_text` (u otro campo) queda
+     * horneado en el HTML estático de cualquier página/bloque que referencie
+     * este media, así que necesita el mismo trigger — ver `Page::booted()`
+     * para el docblock completo.
+     */
+    protected static function booted(): void
+    {
+        static::observe(DeployTriggerObserver::class);
+    }
 
     /**
      * Get the attributes that should be cast.

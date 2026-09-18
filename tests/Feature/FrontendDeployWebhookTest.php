@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BlockTypeEnum;
 use App\Enums\LanguageEnum;
 use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
 use App\Jobs\TriggerFrontendDeploy;
+use App\Models\Block;
+use App\Models\Form;
+use App\Models\FormField;
 use App\Models\Page;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -156,5 +160,109 @@ class FrontendDeployWebhookTest extends TestCase
         app(FrontendDeployService::class)->dispatch($tenant);
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * Bug real reportado por el Tech Lead (2026-09-18): guardó cambios en
+     * un bloque de footer/colophon y el deploy nunca se disparó. `Block`
+     * se había quedado afuera del observer que sí tienen Page/Post/etc.
+     * — cubre exactamente ese caso: guardar/borrar un Block DIRECTO (no vía
+     * el `save()` de la Page padre), que es lo que hace el Repeater de
+     * Filament.
+     */
+    public function test_saving_block_directly_with_webhook_configured_queues_deploy(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->makeTenant(withWebhook: true);
+
+        $page = Page::create([
+            'tenant_id' => $tenant->id,
+            'title' => 'Home',
+            'slug' => 'home',
+            'lang_iso' => LanguageEnum::Spanish,
+            'type' => PageTypeEnum::Page,
+            'status' => PublishStatusEnum::Published,
+        ]);
+
+        Queue::fake(); // reset: el create() de arriba ya encoló el suyo
+
+        Block::create([
+            'tenant_id' => $tenant->id,
+            'page_id' => $page->id,
+            'lang_iso' => LanguageEnum::Spanish,
+            'type' => BlockTypeEnum::Colophon,
+            'sort_order' => 1,
+            'is_visible' => true,
+        ]);
+
+        Queue::assertPushed(TriggerFrontendDeploy::class, function (TriggerFrontendDeploy $job) use ($tenant) {
+            return $job->tenantId === $tenant->id;
+        });
+    }
+
+    public function test_deleting_block_with_webhook_configured_queues_deploy(): void
+    {
+        $tenant = $this->makeTenant(withWebhook: true);
+
+        $page = Page::create([
+            'tenant_id' => $tenant->id,
+            'title' => 'Home',
+            'slug' => 'home',
+            'lang_iso' => LanguageEnum::Spanish,
+            'type' => PageTypeEnum::Page,
+            'status' => PublishStatusEnum::Published,
+        ]);
+
+        $block = Block::create([
+            'tenant_id' => $tenant->id,
+            'page_id' => $page->id,
+            'lang_iso' => LanguageEnum::Spanish,
+            'type' => BlockTypeEnum::Colophon,
+            'sort_order' => 1,
+            'is_visible' => true,
+        ]);
+
+        Queue::fake();
+
+        $block->delete();
+
+        Queue::assertPushed(TriggerFrontendDeploy::class);
+    }
+
+    /**
+     * `FormField` no tiene columna `tenant_id` propia -- se resuelve vía el
+     * accessor `tenantId()` que lee `form.tenant_id`. Cubre que ese
+     * resuelva bien y el trigger se dispare igual.
+     */
+    public function test_saving_form_field_with_webhook_configured_queues_deploy(): void
+    {
+        $tenant = $this->makeTenant(withWebhook: true);
+
+        Queue::fake();
+
+        $form = Form::create([
+            'tenant_id' => $tenant->id,
+            'lang_iso' => LanguageEnum::Spanish,
+            'name' => 'Contacto',
+            'slug' => 'contacto',
+            'is_active' => true,
+        ]);
+
+        Queue::fake(); // reset: el create() de arriba ya encoló el suyo
+
+        FormField::create([
+            'form_id' => $form->id,
+            'label' => 'Email',
+            'name' => 'email',
+            'type' => 'email',
+            'is_required' => true,
+            'sort_order' => 1,
+            'is_active' => true,
+        ]);
+
+        Queue::assertPushed(TriggerFrontendDeploy::class, function (TriggerFrontendDeploy $job) use ($tenant) {
+            return $job->tenantId === $tenant->id;
+        });
     }
 }
