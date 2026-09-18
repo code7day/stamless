@@ -76,7 +76,10 @@ class FormSubmissionController extends Controller
             // desglose por campo (ADR-024). `InvalidFieldFormatException`
             // sumada 2026-09-12 — mismo shape que la de campos faltantes,
             // solo cambia el motivo (formato inválido, no ausencia).
-            return $this->error('Revisá los datos enviados.', 422, [
+            // 2026-09-18: 'Revisar' (antes 'Revisá') — español neutro, ver
+            // el mismo criterio aplicado al envelope de error central en
+            // bootstrap/app.php (ADR-051 también rige el API pública).
+            return $this->error('Revisar los datos enviados.', 422, [
                 'code' => 'validation',
                 'fields' => $e->fields(),
             ]);

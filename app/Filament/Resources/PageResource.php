@@ -1837,7 +1837,7 @@ class PageResource extends Resource
                                                         // ahora es responsive (1 en mobile → 7 desde 1700px). El
                                                         // límite real de cuántos se COMPARTEN con el sitio ahora
                                                         // se controla acá abajo, en "Límite compartido con la API".
-                                                        ->description('Cargá acá todos los logos que quieras (tope de 28) — cuáles y cuántos de estos llegan al sitio público se controla en "Límite compartido con la API" más abajo.')
+                                                        ->description('Cargar acá todos los logos necesarios (tope de 28) — cuáles y cuántos de estos llegan al sitio público se controla en "Límite compartido con la API" más abajo.')
                                                         ->schema([
                                                             Forms\Components\Repeater::make('content.items')
                                                                 ->label('Logos')

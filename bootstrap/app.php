@@ -157,14 +157,20 @@ return Application::configure(basePath: dirname(__DIR__))
             // internos de librerías (ej. el "Invalid ability provided." de
             // Sanctum, en inglés, sin traducir) tal cual al cliente. Un
             // mensaje fijo por status es más simple Y más seguro.
+            // 2026-09-18: mensajes reescritos a español neutro (sin voseo) —
+            // ADR-051 aplica también al API pública, no solo a las pantallas
+            // de Console: el voseo rioplatense es exclusivo de la marca
+            // CICA360/frontend, nunca de Stamless. Se corrige acá porque
+            // este es el envelope de error real que ve cualquier tenant
+            // integrando su propio frontend, no solo CICA360.
             $message = match (true) {
                 $status === 401 && $hadBearerToken => 'Token inválido o expirado.',
-                $status === 401 => 'No autenticado. Enviá un token Bearer en Authorization.',
-                $status === 403 => 'No tenés permiso para este recurso.',
+                $status === 401 => 'No autenticado. Se requiere un token Bearer en el header Authorization.',
+                $status === 403 => 'No tiene permiso para acceder a este recurso.',
                 $status === 404 => 'Recurso no encontrado.',
-                $status === 422 => 'Revisá los datos enviados.',
-                $status === 429 => 'Demasiadas solicitudes. Intentá más tarde.',
-                $status === 500 => 'Error interno. Intentá de nuevo.',
+                $status === 422 => 'Revisar los datos enviados.',
+                $status === 429 => 'Demasiadas solicitudes. Intentar de nuevo más tarde.',
+                $status === 500 => 'Error interno. Intentar de nuevo.',
                 default => 'Error inesperado.',
             };
 

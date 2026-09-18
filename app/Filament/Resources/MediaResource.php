@@ -77,7 +77,7 @@ class MediaResource extends Resource
         $limit = $tenant instanceof Tenant ? $tenant->maxMedia() : null;
 
         if ($tenant instanceof Tenant && ! $tenant->canAccessMediaLibrary()) {
-            return "El plan actual permite hasta {$limit} archivos multimedia. Para subir uno nuevo, mejorá de plan.";
+            return "El plan actual permite hasta {$limit} archivos multimedia. Para subir uno nuevo, mejorar de plan.";
         }
 
         return "El plan actual permite hasta {$limit} archivos multimedia. Para subir uno nuevo, eliminar primero alguno existente.";

@@ -307,7 +307,7 @@ class ApiTokens extends Page implements HasTable
                     Notification::make()
                         ->title('Token creado')
                         ->success()
-                        ->body('Copiá el token ahora: no se va a volver a mostrar.')
+                        ->body('Copiar el token ahora: no se va a volver a mostrar.')
                         ->send();
                 }),
         ];
@@ -533,7 +533,7 @@ class ApiTokens extends Page implements HasTable
                             Notification::make()
                                 ->title('Token regenerado')
                                 ->success()
-                                ->body('Copiá el nuevo token ahora: no se va a volver a mostrar.')
+                                ->body('Copiar el nuevo token ahora: no se va a volver a mostrar.')
                                 ->send();
                         }),
 
@@ -623,7 +623,7 @@ class ApiTokens extends Page implements HasTable
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('Todavía no creaste ningún token')
-            ->emptyStateDescription('Creá un token para que tu frontend pueda consumir la API v1 de forma autenticada.')
+            ->emptyStateDescription('Crear un token para que el frontend pueda consumir la API v1 de forma autenticada.')
             ->emptyStateIcon('heroicon-o-key');
     }
 

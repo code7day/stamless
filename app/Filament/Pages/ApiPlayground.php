@@ -35,7 +35,7 @@ class ApiPlayground extends Page implements HasForms
 
     protected static ?string $title = 'API Playground';
 
-    protected ?string $subheading = 'Armá y ejecutá requests reales contra el API v1 sin salir de Console.';
+    protected ?string $subheading = 'Arma y ejecuta requests reales contra el API v1 sin salir de Console.';
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-code-bracket-square';
 
@@ -132,7 +132,7 @@ class ApiPlayground extends Page implements HasForms
                         Forms\Components\TextInput::make('path')
                             ->label('Path')
                             ->prefix('/v1/{tenant}/')
-                            ->helperText('Editable — reemplazá {slug}/{uuid} según el recurso.')
+                            ->helperText('Editable — reemplazar {slug}/{uuid} según el recurso.')
                             ->required()
                             ->columnSpan(2),
                     ]),
@@ -141,14 +141,14 @@ class ApiPlayground extends Page implements HasForms
                     ->label('Bearer token')
                     ->password()
                     ->revealable()
-                    ->placeholder('Pegá un token existente o generá uno de prueba con el botón de arriba')
+                    ->placeholder('Pegar un token existente o generar uno de prueba con el botón de arriba')
                     ->helperText('Se envía como header Authorization: Bearer {token}. Nunca se guarda.'),
 
                 Forms\Components\KeyValue::make('headers')
                     ->label('Headers adicionales')
                     ->keyLabel('Header')
                     ->valueLabel('Valor')
-                    ->helperText('Authorization se agrega automáticamente si completás el token de arriba.'),
+                    ->helperText('Authorization se agrega automáticamente si se completa el token de arriba.'),
 
                 Forms\Components\Textarea::make('body')
                     ->label('Body (JSON)')

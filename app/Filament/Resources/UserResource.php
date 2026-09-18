@@ -77,7 +77,7 @@ class UserResource extends Resource
         $tenant = Filament::getTenant();
         $limit = $tenant instanceof Tenant ? $tenant->maxUsers() : null;
 
-        return "El plan actual permite hasta {$limit} usuarios activos. Para delegar acceso a más colaboradores, mejorá tu plan.";
+        return "El plan actual permite hasta {$limit} usuarios activos. Para delegar acceso a más colaboradores, mejorar el plan.";
     }
 
     public static function getNavigationBadge(): ?string
@@ -230,7 +230,7 @@ class UserResource extends Resource
                     ->action(function (User $record): void {
                         if ($record->id === auth()->id() && $record->is_active) {
                             Notification::make()
-                                ->title('No podés desactivar tu propio usuario')
+                                ->title('No es posible desactivar el propio usuario')
                                 ->danger()
                                 ->send();
 
@@ -344,7 +344,7 @@ class UserResource extends Resource
                     ->before(function (DeleteAction $action, User $record): void {
                         if ($record->id === auth()->id()) {
                             Notification::make()
-                                ->title('No podés eliminar tu propio usuario')
+                                ->title('No es posible eliminar el propio usuario')
                                 ->danger()
                                 ->send();
                             $action->halt();
