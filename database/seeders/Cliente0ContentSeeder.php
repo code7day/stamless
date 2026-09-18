@@ -129,6 +129,22 @@ class Cliente0ContentSeeder extends Seeder
                 'is_active' => true,
                 'enable_honeypot' => true,
                 'enable_recaptcha' => false,
+                // "Página de Agradecimiento" (2026-09-18, ADR-074): vivía
+                // como `Setting` tenant-wide (`thank_you.*`, editable en
+                // Preferences) — TRASLADADA a columnas propias de `Form`
+                // ahora que un tenant puede tener más de uno (Fase 1,
+                // ADR-073). Mismo copy exacto que ya usaba CICA360 en
+                // producción (antes vivía como default hardcodeado en
+                // `FormSubmissionController`/`Http\Resources\Api\V1\
+                // FormResource` cuando el tenant no había tocado
+                // Preferences todavía) — se siembra acá explícitamente para
+                // que este form quede 100% autocontenido, sin depender de
+                // ningún fallback genérico del código.
+                'thank_you_title' => '¡Muchas gracias, {name}!',
+                'thank_you_description' => 'Hemos recibido tu consulta correctamente. Un asesor especializado de <strong>CICA360</strong> revisará tu información y se pondrá en contacto contigo a la brevedad.',
+                'thank_you_alert_title' => 'Tiempo de respuesta estimado:',
+                'thank_you_alert_description' => 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).',
+                'thank_you_button_label' => 'Enviar otra consulta',
             ]
         );
 
@@ -362,7 +378,12 @@ class Cliente0ContentSeeder extends Seeder
             [
                 'type' => BlockTypeEnum::ContactForm,
                 'content' => [
-                    'form_id' => $form->id,
+                    // 2026-09-18, Fase 2 (ADR-073): `form_slug`, no
+                    // `form_id` — el API público resuelve formularios por
+                    // slug (`GET /forms/{slug}`), nunca por id interno; ver
+                    // el mismo cambio en `PageResource.php` (bloque
+                    // `contact_form`).
+                    'form_slug' => $form->slug,
                 ],
                 // 2026-09-11 (pedido del Tech Lead, mockup real de
                 // "Contactame"): "la espectativa tambien indica que el

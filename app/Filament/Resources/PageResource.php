@@ -1491,7 +1491,29 @@ class PageResource extends Resource
                                                     Section::make('Formulario')
                                                         ->description('Elegir qué formulario de este sitio se muestra en esta sección. Los formularios se administran en el módulo Formularios, disponible en el menú lateral.')
                                                         ->schema([
-                                                            Forms\Components\Select::make('content.form_id')
+                                                            // 2026-09-18, Fase 2 del plan de formularios (ADR-073):
+                                                            // este Select guardaba el `id` INTERNO del `Form`
+                                                            // (`pluck('name', 'id')`) — un detalle de
+                                                            // implementación de Eloquent, no un dato que el API
+                                                            // público pueda resolver. El endpoint público de
+                                                            // formularios (igual que Páginas/Posts/Servicios)
+                                                            // SIEMPRE resuelve por `slug` (`GET /forms/{slug}`,
+                                                            // nunca por id), así que cica360 no tenía forma de
+                                                            // pedirle al API el formulario elegido acá — el gap
+                                                            // real detrás de "el front sigue mostrando el
+                                                            // formulario hardcodeado, no lee `content.form_id`"
+                                                            // (ver `ContactFormBlock.astro`, consecuencia #4 de
+                                                            // ADR-073). Se cambia a guardar el `slug` (string,
+                                                            // igual que `properties.footer_page_id` guarda un id
+                                                            // porque ESE sí se resuelve server-side dentro de
+                                                            // Genesis — acá en cambio el consumidor es el frontend
+                                                            // headless, vía API pública) y se renombra la clave a
+                                                            // `content.form_slug` para que el nombre no mienta
+                                                            // sobre lo que realmente contiene. Bloques YA
+                                                            // guardados con la clave vieja `content.form_id`
+                                                            // (numérica) se migran en
+                                                            // `2026_09_18_050000_migrate_contact_form_block_id_to_slug`.
+                                                            Forms\Components\Select::make('content.form_slug')
                                                                 ->label('Formulario a mostrar')
                                                                 ->helperText('Si el formulario buscado no aparece en la lista, se puede crear uno nuevo en el módulo Formularios.')
                                                                 ->options(function () {
@@ -1499,7 +1521,7 @@ class PageResource extends Resource
 
                                                                     return Form::query()
                                                                         ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
-                                                                        ->pluck('name', 'id');
+                                                                        ->pluck('name', 'slug');
                                                                 })
                                                                 ->searchable()
                                                                 ->required(),

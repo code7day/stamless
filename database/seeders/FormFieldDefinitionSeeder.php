@@ -9,6 +9,25 @@ use Illuminate\Database\Seeder;
 class FormFieldDefinitionSeeder extends Seeder
 {
     /**
+     * 2026-09-18 (3ra vuelta del builder de formularios, pedido del Tech
+     * Lead: "considerar las validaciones predeterminadas por ser un
+     * componente campo del catálogo, entonces que ya tenga internamente
+     * sus validates... para ahorrar pasos al usuario") — antes esta
+     * columna existía en el schema pero NUNCA se poblaba (ver docblock de
+     * `DEFINITIONS` más abajo, "el catálogo global no tiene opinión sobre
+     * esos valores"): las regex de `name`/`city`/`email`/`message` vivían
+     * ÚNICAMENTE como overrides puntuales de CICA360 en
+     * `Cliente0ContentSeeder::upsertContactForm()`. Son genéricas de
+     * verdad (nombre = solo letras, email = TLD válido, mensaje = sin
+     * HTML/markup) — no específicas de CICA360 — así que se promueven acá
+     * a default del catálogo GLOBAL; cualquier tenant que elija estos
+     * campos del picker de `FormResource` las trae precargadas (y
+     * editables/borrables por instancia, `FormField::validation_rules`
+     * sigue pisando esto si el form real lo necesita distinto).
+     */
+    private const string LETTER_PATTERN = 'regex:/^\p{L}+(?: \p{L}+)*$/u';
+
+    /**
      * Catálogo global de campos reutilizables por cualquier `Form` de
      * cualquier tenant (ver `App\Models\FormFieldDefinition`).
      */
@@ -19,6 +38,7 @@ class FormFieldDefinitionSeeder extends Seeder
             'type' => FormFieldTypeEnum::Text,
             'required' => true,
             'encrypted' => false,
+            'validation_rules' => ['min:3', 'max:40', self::LETTER_PATTERN],
         ],
         [
             'key' => 'email',
@@ -26,6 +46,7 @@ class FormFieldDefinitionSeeder extends Seeder
             'type' => FormFieldTypeEnum::Email,
             'required' => true,
             'encrypted' => true,
+            'validation_rules' => ['regex:/^[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$/'],
         ],
         // 2026-09-18 (ADR forms por tenant) — antes `Tel` plano: el selector
         // de país + detección por IP de CICA360 (`ContactForm.tsx`) era un
@@ -76,6 +97,7 @@ class FormFieldDefinitionSeeder extends Seeder
             'type' => FormFieldTypeEnum::Text,
             'required' => true,
             'encrypted' => false,
+            'validation_rules' => ['min:3', 'max:40', self::LETTER_PATTERN],
         ],
         [
             'key' => 'country',
@@ -97,6 +119,10 @@ class FormFieldDefinitionSeeder extends Seeder
             'type' => FormFieldTypeEnum::Textarea,
             'required' => true,
             'encrypted' => false,
+            // Allow-list de caracteres (letras/dígitos/espacios/puntuación
+            // normal en español), sin `< > { } [ ] \ \` ~ ^ |` — mismo
+            // criterio "sin HTML/markup" que ya probó CICA360 en producción.
+            'validation_rules' => ['regex:/^[\p{L}\p{N}\s.,;:!?\'"()\-_¿¡%\/@#&*+=$°]*$/u'],
         ],
     ];
 
@@ -114,6 +140,7 @@ class FormFieldDefinitionSeeder extends Seeder
                     'is_system' => true,
                     'default_required' => $definition['required'],
                     'default_encrypted' => $definition['encrypted'],
+                    'validation_rules' => $definition['validation_rules'] ?? null,
                     'sort_order' => $sortOrder,
                 ]
             );

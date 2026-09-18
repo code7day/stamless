@@ -24,20 +24,27 @@ class FormSubmissionController extends Controller
     {
         $tenant = $this->resolveTenant($tenant_slug);
 
+        // 2026-09-18 (ADR-074): la resolución del `Form` sube ANTES del
+        // chequeo de honeypot — la "Página de Agradecimiento" ahora vive
+        // POR formulario (`Form::thank_you_*`, ya no `Setting` tenant-wide),
+        // así que hasta la respuesta falsa-exitosa que ve un bot necesita
+        // saber DE QUÉ formulario viene para mostrar el mensaje correcto.
+        // Costo: 1 query extra en el camino de honeypot (antes no hacía
+        // ninguna) — intrascendente frente al resto del request.
+        $form = Form::where('tenant_id', $tenant->id)->where('slug', $slug)->where('is_active', true)->first();
+
         // Protección anti-bot Honeypot: si un bot completa campos trampa invisibles,
         // se responde 201 exitoso sin persistir spam ni disparar emails.
         if ($request->filled('honeypot') || $request->filled('_hp_check') || $request->filled('_gotcha')) {
             return $this->success(
                 data: [
                     'uuid' => (string) Str::uuid(),
-                    'thank_you' => $this->resolveThankYouData(),
+                    'thank_you' => $this->contactSubmissionService->resolveThankYouData($form),
                 ],
                 message: 'Formulario enviado correctamente.',
                 status: 201,
             );
         }
-
-        $form = Form::where('tenant_id', $tenant->id)->where('slug', $slug)->where('is_active', true)->first();
 
         if (! $form) {
             return $this->error('Formulario no encontrado.', 404, ['code' => 'not_found']);
@@ -82,49 +89,11 @@ class FormSubmissionController extends Controller
         return $this->success(
             data: [
                 'uuid' => $contact->uuid,
-                'thank_you' => $this->resolveThankYouData(is_string($submitterName) ? $submitterName : null),
+                'thank_you' => $this->contactSubmissionService->resolveThankYouData($form, is_string($submitterName) ? $submitterName : null),
             ],
             message: 'Formulario enviado correctamente.',
             status: 201,
         );
-    }
-
-    /**
-     * @return array{title: string, description: ?string, alert_title: ?string, alert_description: ?string, button_label: ?string}
-     */
-    private function resolveThankYouData(?string $submitterName = null): array
-    {
-        $rawName = trim((string) $submitterName);
-        $firstName = filled($rawName) ? trim(explode(' ', $rawName)[0]) : '';
-
-        $rawTitle = setting('thank_you.title', '¡Muchas gracias, {name}!');
-        $title = filled($firstName)
-            ? str_replace('{name}', $firstName, $rawTitle)
-            : trim(str_replace(['{name}', ' ,', '  '], ['', '', ' '], $rawTitle));
-
-        $title = rtrim($title, ' ,');
-        if (str_starts_with($title, '¡') && ! str_ends_with($title, '!')) {
-            $title .= '!';
-        }
-
-        $rawDescription = setting(
-            'thank_you.description',
-            'Hemos recibido tu consulta correctamente. Un asesor especializado de <strong>CICA360</strong> revisará tu información y se pondrá en contacto contigo a la brevedad.'
-        );
-        $description = $this->renderRichContent($rawDescription);
-        if (filled($firstName)) {
-            $description = str_replace('{name}', e($firstName), (string) $description);
-        } else {
-            $description = str_replace([' {name}', '{name}'], '', (string) $description);
-        }
-
-        return [
-            'title' => $title,
-            'description' => $description,
-            'alert_title' => setting('thank_you.alert_title', 'Tiempo de respuesta estimado:'),
-            'alert_description' => setting('thank_you.alert_description', 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).'),
-            'button_label' => setting('thank_you.button_label', 'Enviar otra consulta'),
-        ];
     }
 
     /**
