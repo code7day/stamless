@@ -5,7 +5,6 @@ namespace App\Filament\Widgets;
 use App\Enums\ContactStatusEnum;
 use App\Filament\Resources\ContactResource;
 use App\Models\Contact;
-use App\Models\Form;
 use App\Models\Tenant;
 use Filament\Facades\Filament;
 use Filament\Widgets\StatsOverviewWidget;
@@ -40,16 +39,16 @@ class LeadsOverviewWidget extends StatsOverviewWidget
      * matriz de ADR-078) veía igual los 4 KPIs y la previsualización de
      * leads acá.
      *
-     * Corrección del mismo Tech Lead sobre el primer intento (que solo
-     * chequeaba Contactos): "si el rol no tiene acceso a contactos O
-     * formularios, no debería poder ver estos widgets" — exige AMBOS
-     * accesos, no solo uno. Con la matriz de 5 roles (2do addendum
-     * ADR-078) esto además excluye a `Editor` (tiene Contactos pero NO
-     * Formularios) de este resumen del Dashboard, aunque sí conserve su
-     * acceso normal a `ContactResource`. `can('viewAny', X::class)` delega
-     * a `ContactPolicy`/`FormPolicy` en vez de repetir listas de roles a
-     * mano — si cualquiera de las 2 matrices cambia a futuro, este gate se
-     * actualiza solo.
+     * **Corrección del mismo Tech Lead, 2do round**: el primer intento de
+     * fix exigía `viewAny` de `Contact` Y de `Form` a la vez, lo que sin
+     * querer excluía a `Editor` (tiene Contactos pero no Formularios) de
+     * este resumen del Dashboard. El Tech Lead, viendo el Escritorio
+     * logueado como Editor, aclaró el criterio real: "el rol editor tiene
+     * acceso a contactos, podría ver los 5 widgets de contactos" — el gate
+     * correcto es solo `Contact` (de donde sale TODO el dato que estos
+     * widgets muestran: leads/contactos), sin exigir Formularios. Con la
+     * matriz de 5 roles esto deja ver los 5 widgets a Admin/Soporte/
+     * Marketing/Editor, y los sigue ocultando solo a `Author`.
      */
     public static function canView(): bool
     {
@@ -57,11 +56,7 @@ class LeadsOverviewWidget extends StatsOverviewWidget
             return false;
         }
 
-        $user = auth()->user();
-
-        return $user
-            && $user->can('viewAny', Contact::class)
-            && $user->can('viewAny', Form::class);
+        return (bool) auth()->user()?->can('viewAny', Contact::class);
     }
 
     protected function getStats(): array

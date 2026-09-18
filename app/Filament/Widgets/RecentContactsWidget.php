@@ -4,7 +4,6 @@ namespace App\Filament\Widgets;
 
 use App\Filament\Resources\ContactResource;
 use App\Models\Contact;
-use App\Models\Form;
 use App\Models\Tenant;
 use App\Support\FriendlyDate;
 use Filament\Actions;
@@ -31,14 +30,16 @@ class RecentContactsWidget extends TableWidget
     protected static ?int $sort = -10;
 
     /**
-     * 2026-09-18, mismo fix que `LeadsOverviewWidget` (ver su docblock
-     * completo) — este widget mostraba una previsualización real de
-     * `Contact` sin chequear ninguna Policy, visible a cualquier rol con
-     * acceso al Dashboard. Exige acceso a Contactos Y a Formularios
-     * (pedido explícito del Tech Lead) — con la matriz de 5 roles, esto
-     * excluye a `Editor` de este resumen del Dashboard además de a
-     * `Author`, aunque `Editor` sí conserve su acceso normal a
-     * `ContactResource`.
+     * 2026-09-18, mismo fix (y misma corrección de 2do round) que
+     * `LeadsOverviewWidget` (ver su docblock completo) — este widget
+     * mostraba una previsualización real de `Contact` sin chequear ninguna
+     * Policy, visible a cualquier rol con acceso al Dashboard. El gate
+     * final es solo `viewAny` de `Contact` (el Tech Lead corrigió el
+     * primer intento, que exigía Contactos Y Formularios a la vez y sin
+     * querer excluía a `Editor`): "el rol editor tiene acceso a contactos,
+     * podría ver los 5 widgets de contactos". Con la matriz de 5 roles,
+     * Admin/Soporte/Marketing/Editor ven este widget; solo `Author` queda
+     * afuera.
      */
     public static function canView(): bool
     {
@@ -46,11 +47,7 @@ class RecentContactsWidget extends TableWidget
             return false;
         }
 
-        $user = auth()->user();
-
-        return $user
-            && $user->can('viewAny', Contact::class)
-            && $user->can('viewAny', Form::class);
+        return (bool) auth()->user()?->can('viewAny', Contact::class);
     }
 
     public function table(Table $table): Table

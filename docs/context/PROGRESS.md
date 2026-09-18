@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Corrección de criterio: los widgets de Contactos vuelven a ser visibles para `Editor`
+
+- **El Tech Lead, viendo el Escritorio logueado como `Editor`**: "el rol editor tiene acceso a contactos, podría ver los 5 widgets de contactos" — corrigiendo el criterio del fix anterior del mismo día (`LeadsOverviewWidget`/`RecentContactsWidget`), que exigía `viewAny` de `Contact` Y de `Form` a la vez, excluyendo sin querer a `Editor` (tiene Contactos pero no Formularios en la matriz de ADR-078).
+- **Fix: el gate pasa a ser solo `$user->can('viewAny', Contact::class)`** en ambos widgets — de donde sale TODO el dato que muestran (leads/contactos), sin relación real con el acceso a Formularios. Con la matriz de 5 roles esto deja ver los 5 widgets a Admin/Soporte/Marketing/Editor, y los sigue ocultando solo a `Author`.
+- **Archivos:** `app/Filament/Widgets/LeadsOverviewWidget.php`, `app/Filament/Widgets/RecentContactsWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo con `Editor` (debe ver los 5 widgets) y `Author` (debe seguir sin verlos).
+
 ## 2026-09-18 — Fix real (2do, mismo hilo): `tableActionRecord` con el modelo completo en vez del `id` — 500 en producción (`invalid input syntax for type bigint`)
 
 - **El Tech Lead probó el fix anterior y reportó, con captura, un `Illuminate\Database\QueryException`** al hacer clic en un item: `SQLSTATE[22P02]: Invalid text representation... invalid input syntax for type bigint: "68678ea7-88ff-45ce-a361-26f71d89b7a5"` — Postgres comparando `pages.id` (bigint) contra un UUID.
