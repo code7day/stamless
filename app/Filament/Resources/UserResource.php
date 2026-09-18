@@ -147,6 +147,25 @@ class UserResource extends Resource
                             ->helperText('El usuario podrá iniciar sesión inmediatamente con esta contraseña.')
                             ->columnSpanFull(),
 
+                        /**
+                         * FIX CRÍTICO (2026-09-18, addendum ADR-078): este campo
+                         * tenía `->dehydrated(false)` — Filament excluía `role`
+                         * del array `$data` que llega a los closures `action()`/
+                         * `using()` de abajo, ANTES de que corrieran. Como esos
+                         * closures leen `$data['role'] ?? UserRoleEnum::Editor->
+                         * value`, el rol elegido en este Radio NUNCA se
+                         * aplicaba — toda creación/edición de colaborador caía
+                         * siempre al default `Editor`, sin importar qué opción
+                         * se marcara en la UI. Esta es la causa raíz REAL del
+                         * bug original reportado por el Tech Lead ("creé un
+                         * usuario redactor y me generó con rol editor") — no
+                         * solo la falta de Policies (ya corregida en ADR-078),
+                         * sino que el rol ni siquiera se guardaba nunca. No
+                         * hace falta `dehydrated(false)`: ambos closures ya
+                         * hacen `unset($data['role'])` ANTES de `update()`/
+                         * `create()`, así que no hay riesgo de mass-assignment
+                         * sobre una columna que no existe en `users`.
+                         */
                         Radio::make('role')
                             ->label('Rol asignado')
                             ->options(UserRoleEnum::class)
@@ -168,7 +187,6 @@ class UserResource extends Resource
 
                                 return $record->roles()->first()?->name ?? UserRoleEnum::Editor->value;
                             })
-                            ->dehydrated(false)
                             ->columnSpanFull(),
 
                         Toggle::make('is_active')

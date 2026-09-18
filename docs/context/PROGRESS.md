@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix crítico (addendum ADR-078): el Radio "Rol asignado" nunca guardaba el rol elegido — `->dehydrated(false)` lo excluía de `$data` antes de llegar a los closures que lo leen
+
+- **Reporte del Tech Lead, probando en vivo el fix de ADR-078**: cambió el rol de un colaborador de Editor a Redactor y "no guarda cambios, se mantiene en editor". Además, logueado como ese colaborador (rol Editor, sin cambiar), veía "todos los accesos, excepto el de Ajustes > Usuarios" — que en realidad es el comportamiento CORRECTO para Editor (ver matriz de ADR-078), solo confuso porque el intento de cambio a Redactor nunca se guardó.
+- **Causa raíz real, más grave que la original:** `Radio::make('role')` en `UserResource.php` tenía `->dehydrated(false)`. Filament excluye ese campo del array `$data` que reciben los closures `EditAction::action(function (User $record, array $data) {...})` y `CreateAction::using(function (array $data) {...})` — ambos leen `$roleName = $data['role'] ?? UserRoleEnum::Editor->value`, así que SIEMPRE caían al default. Esto significa que el bug ORIGINAL reportado por el Tech Lead ("creé un usuario redactor y me generó con rol editor") no era (solo) la ausencia de Policies — el rol elegido en el Radio nunca se guardó en la base para NINGÚN colaborador, desde que existe este formulario.
+- **Fix:** se quita `->dehydrated(false)`. Ambos closures ya hacían `unset($data['role'])` antes de `$record->update($data)`/`User::create($data)`, así que no hay riesgo de mass-assignment sobre una columna `role` que no existe en `users` (el rol real vive en las tablas de Spatie, vía `syncRoles()`/`assignRole()`).
+- **Archivos:** `app/Filament/Resources/UserResource.php` (1 línea removida + docblock explicando el fix).
+- **Pendiente:** confirmación en vivo del Tech Lead — cambiar un colaborador a Redactor, guardar, y verificar que esta vez SÍ persiste (y que loguearse como ese usuario ahora sí muestra el acceso restringido de Author, no el de Editor).
+
 ## 2026-09-18 — ADR-078: autorización real por rol en Studio (Admin/Editor/Author) — jerarquía de Policies + fix de `setPermissionsTeamId()` global
 
 - **Bug reportado en vivo por el Tech Lead**, con capturas del sidebar de Studio y del modal "Crear nuevo colaborador": creó un usuario con rol Editor y notó que tenía acceso total, igual que el Admin/dueño del tenant. Investigación confirmó 2 bugs independientes: (1) `spatie/laravel-permission` asignaba roles correctamente pero NINGÚN Resource/Page de Filament los consultaba — solo existía una Policy en toda la app (`ContactPolicy`), y solo chequeaba tenant, nunca rol; (2) `setPermissionsTeamId()` (obligatorio para que `hasRole()` resuelva bien con `teams => true`) solo se llamaba en 3 puntos aislados de `UserResource`/`ManageUsers`, nunca globalmente — cualquier Policy nueva habría fallado en silencio sin este fix de base.
