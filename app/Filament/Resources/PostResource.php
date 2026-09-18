@@ -272,8 +272,15 @@ class PostResource extends Resource
                 // `ServiceResource`/`TestimonialResource` (`ImageColumn`
                 // sobre la relación BelongsTo a `Media`, `->disk()` dinámico
                 // según el disco real del archivo, no asumido "public").
+                //
+                // 2026-09-18, fix producción: mismo problema encontrado en
+                // Servicios/Testimonios — `getStateUsing()` explícito porque
+                // el estado por dot-notation (`'featuredImage.path'`) llegaba
+                // null (src="" vacío) pese a que `disk()` sí resuelve la
+                // relación.
                 Tables\Columns\ImageColumn::make('featuredImage.path')
                     ->label('')
+                    ->getStateUsing(fn (Post $record) => $record->featuredImage?->path)
                     ->disk(fn (Post $record) => $record->featuredImage?->disk?->value ?? 'public')
                     ->circular(),
 

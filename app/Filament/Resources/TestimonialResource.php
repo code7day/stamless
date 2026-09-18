@@ -173,8 +173,13 @@ class TestimonialResource extends Resource
     {
         return $table
             ->columns([
+                // 2026-09-18, fix producción: mismo patrón que
+                // `ServiceResource` — `getStateUsing()` explícito porque el
+                // estado por dot-notation (`'avatar.path'`) llegaba null
+                // (src="" vacío) pese a que `disk()` sí resuelve la relación.
                 Tables\Columns\ImageColumn::make('avatar.path')
                     ->label('')
+                    ->getStateUsing(fn ($record) => $record?->avatar?->path)
                     ->disk(fn ($record) => $record?->avatar?->disk?->value ?? 'public')
                     ->circular(),
 

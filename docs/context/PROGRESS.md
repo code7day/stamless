@@ -11,6 +11,16 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix producción: thumbnails de Servicios/Testimonios/Blog con `src` vacío en el listado (Servicios, Testimonios, Publicaciones)
+
+- **Reporte del Tech Lead**, con capturas de producción: en los listados de "Servicios" y "Casos de Éxito/Testimonios" el ícono de la imagen sale completamente roto (no una URL rota — el `<img>` no tiene `src` en absoluto, confirmado por DevTools: `<img alt src style="...">`). El mismo registro SÍ muestra su imagen real en el formulario de edición ("Imágenes del servicio", preview de `MediaUpload`), descartando de entrada un problema de credenciales de R2/`.env` (que rompería ambos lugares por igual, no solo uno) — confirmado también porque el ambiente local (sin R2 configurado) nunca fue el que reportó el síntoma.
+- **Causa raíz:** las 3 columnas afectadas usaban `Tables\Columns\ImageColumn::make('relacion.path')` (notación de punto para atravesar la relación BelongsTo hacia `Media`) — ese patrón resuelve bien el **disco** (el closure `->disk(fn ($record) => $record?->relacion?->disk?->value ?? 'public')` accede a `$record` completo, no depende de la resolución de estado) pero Filament no estaba resolviendo el **estado** de la columna (la ruta del archivo) por esa misma notación de punto — llegaba `null`, de ahí el `src=""` vacío. El formulario de edición nunca pasa por este mecanismo (usa `MediaUpload::getUploadedFileUsing()`, un `Media::find($id)` directo), por eso solo el listado se veía afectado.
+- **Fix:** `->getStateUsing(fn ($record) => $record?->relacion?->path)` explícito en las 3 columnas, en vez de depender de la resolución automática por dot-notation — misma idea que ya usaba `disk()`, aplicada también al estado.
+- **Alcance confirmado sistémico** (mismo patrón exacto, mismo fix en los 3): `ServiceResource.php` (`image.path` → `image.path` + `getStateUsing`), `TestimonialResource.php` (`avatar.path`), `PostResource.php` (`featuredImage.path` — el Tech Lead confirmó que el Blog/Publicaciones debía revisarse también por el mismo patrón). Se grepeó el resto de `app/Filament` (`ImageColumn::make('algo.algo')`) y no quedó ningún otro caso con notación de punto sin cubrir — `MediaResource.php` usa la variante directa sobre `Media` (`path`, sin relación), no afectada.
+- **Verificación:** sin runtime de PHP en este sandbox — balance de llaves/paréntesis/corchetes verificado manualmente en los 3 archivos tocados (OK).
+- **Archivos:** `app/Filament/Resources/ServiceResource.php`, `app/Filament/Resources/TestimonialResource.php`, `app/Filament/Resources/PostResource.php`.
+- **Pendiente:** confirmar en vivo en producción (sin necesidad de migración ni seed — es un cambio de código puro) que los 3 listados vuelven a mostrar el thumbnail correcto.
+
 ## 2026-09-18 — Deploy webhook: el tenant vincula su propio repo/token de Git desde Preferencias + checkbox "Automatización activa" (addendum ADR-072)
 
 - **Pedido del Tech Lead:** "eso lo registré manual con tinker en preferencias, ¿no debería poder el cliente para su tenant vincular a git para que pueda hacer el envío si es necesario usar el trigger a git para automatizar? Si no, no habilita el check de automatización" — hasta ahora `deploy_repo`/`deploy_token` (ADR-072, 2026-09-17) solo los cargaba el operador de la plataforma vía tinker, sin ninguna pantalla en Studio.

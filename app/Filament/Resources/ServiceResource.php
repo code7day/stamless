@@ -455,8 +455,25 @@ class ServiceResource extends Resource
             ->columns([
                 // 2026-09-13, pedido del Tech Lead: circular (antes
                 // cuadrada) — mismo criterio visual que `TestimonialResource`.
+                //
+                // 2026-09-18, fix producción: en el listado real el thumbnail
+                // salía SIEMPRE roto (src="" vacío, ni siquiera intentaba una
+                // URL) pese a que el mismo `image_id` resuelve bien en el
+                // formulario de edición (`MediaUpload::getUploadedFileUsing()`,
+                // que busca el `Media` directo por id). El `disk()` de abajo
+                // SÍ podía leer `$record->image` (recibe `$record` completo),
+                // pero el ESTADO de la columna (`'image.path'`, resuelto por
+                // Filament vía notación de puntos / `data_get()`) llegaba
+                // null — una discrepancia entre cómo Filament arma el
+                // "state" de la columna y cómo el closure de `disk()` accede
+                // a la misma relación. `->getStateUsing()` explícito saca
+                // esa ambigüedad: la ruta del archivo se lee de la MISMA
+                // forma directa (`$record->image?->path`) que ya usaba
+                // `disk()` para el disco, sin depender de la resolución
+                // automática de relaciones por dot-notation de `ImageColumn`.
                 Tables\Columns\ImageColumn::make('image.path')
                     ->label('')
+                    ->getStateUsing(fn ($record) => $record?->image?->path)
                     ->disk(fn ($record) => $record?->image?->disk?->value ?? 'public')
                     ->circular(),
 
