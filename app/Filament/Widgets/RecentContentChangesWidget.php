@@ -66,6 +66,25 @@ use Filament\Widgets\Widget;
  * `ServiceResource`/`TestimonialResource` no exponen su tabla por `uuid`
  * en ningún otro lado (ni `ContactResource`/`RecentContactsWidget`, que no
  * hacen este tipo de deep-link), así que `getKey()` es lo correcto acá.
+ *
+ * 2026-09-18, fix real (3ro, mismo hilo): un item tipo Footer/Legal
+ * cargaba el listado de `ManagePages` pero no abría el editar — el Tech
+ * Lead lo reportó con captura ("por causa de que el registro es tipo
+ * footer, no abre el tab Secciones"). Causa: `ManagePages` (`ListRecords`
+ * de Filament) filtra su tabla por TAB activa (`paginas`/`legales`/
+ * `partials`, cada una con su propio `->modifyQueryUsing()` por `type` en
+ * `ManagePages::getTabs()`) — la tab activa persiste en la URL como
+ * `?tab=` (`#[Url(as: 'tab')]` en `Filament\Resources\Pages\ListRecords`,
+ * trait `HasTabs`). Sin ese parámetro, el deep-link aterriza en la tab por
+ * default (la primera, "Páginas"), cuyo query NO incluye registros
+ * `Legal`/`Footer` — el `EditAction` no puede resolver un record que no
+ * está en el query de la tab activa, así que simplemente no abre nada.
+ * Fix: mapear `PageTypeEnum` → key de tab (`'paginas'`/`'legales'`/
+ * `'partials'`, mismas keys literales que `ManagePages::getTabs()`) y
+ * sumar `'tab' => $tabKey` a los parámetros de la URL. `PageTypeEnum::
+ * Landing` no tiene tab propia hoy (no hay `CreateAction` para Landing
+ * tampoco, ver comentario en `ManagePages.php`) — cae a `'paginas'` por
+ * default, gap preexistente fuera de alcance de este widget.
  */
 class RecentContentChangesWidget extends Widget
 {
@@ -143,6 +162,11 @@ class RecentContentChangesWidget extends Widget
                         'url' => PageResource::getUrl(parameters: [
                             'tableAction' => 'edit',
                             'tableActionRecord' => $page->getKey(),
+                            'tab' => match ($page->type) {
+                                PageTypeEnum::Legal => 'legales',
+                                PageTypeEnum::Footer => 'partials',
+                                default => 'paginas',
+                            },
                         ]),
                         'updated_at' => $page->updated_at,
                     ])

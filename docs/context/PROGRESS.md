@@ -11,6 +11,16 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix real (3ro, mismo hilo): un item de "Últimos cambios" tipo Footer/Legal no abría el editar (falta el parámetro de tab)
+
+- **El Tech Lead reportó, con 2 capturas**: clic en un item tipo Footer ("Footer principal") carga bien el listado de Contenidos, pero no abre el formulario de edición — "por causa de que el registro es tipo footer, no abre el tab Secciones".
+- **Causa real**: `ManagePages` filtra su tabla por la TAB activa — cada una de las 3 tabs (`Páginas`/`Legales`/`Secciones`, keys `paginas`/`legales`/`partials` en `ManagePages::getTabs()`) tiene su propio `->modifyQueryUsing()` por `type`. La tab activa persiste en la URL como `?tab=` (`#[Url(as: 'tab')]`, `Filament\Resources\Pages\ListRecords`, trait `HasTabs`). El deep-link del widget no mandaba ese parámetro, así que siempre aterrizaba en la tab por default (la primera, "Páginas") — cuyo query no incluye registros `Legal`/`Footer`. El `EditAction` deep-linkeado no puede resolver un record que no está en el query de la tab activa, así que no abre nada (sin error visible, solo no pasa nada).
+- **Fix**: mapear `PageTypeEnum` → key de tab (`Legal` → `'legales'`, `Footer` → `'partials'`, resto → `'paginas'`) y sumar `'tab' => $tabKey` a los parámetros de la URL del item, junto a `tableAction`/`tableActionRecord`.
+- **Gap conocido, fuera de alcance**: `PageTypeEnum::Landing` no tiene tab propia (no tiene `CreateAction` habilitada tampoco, ver comentario existente en `ManagePages.php`) — cae a `'paginas'` por default, mismo comportamiento preexistente del resto de la app.
+- **Archivos:** `app/Filament/Widgets/RecentContentChangesWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo — clic en un item Footer/Legal debe abrir el editar en la tab correcta.
+
 ## 2026-09-18 — Filas de "Últimos contactos" ahora clickeables, abren "Ver / gestionar" directo
 
 - **Pedido del Tech Lead**: "desde últimos contactos debería poder darse clic en el contacto y abrir el formulario para atenderlo" — hasta ahora la tabla del widget era solo lectura, sin ninguna forma de actuar sobre un contacto sin ir a `ContactResource` completo con "Ver todos" y buscarlo de nuevo.
