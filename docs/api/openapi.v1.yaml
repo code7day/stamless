@@ -592,7 +592,7 @@ components:
                 Objeto estructurado — `intro`/`offers`/`coverages`/
                 `why_choose_us`/`tip`, todos opcionales. Puede llegar `{}`.
                 `why_choose_us`/`tip` son objetos `{ title, text }` (no
-                strings). Excepción (2026-09-14): `why_choose_us.text` es
+                strings). Excepción: `why_choose_us.text` es
                 HTML ya renderizado y sanitizado (campo `RichEditor` en
                 Console) — el resto de campos de texto del objeto
                 (`intro`, `offers[].text`, `coverages[].items[]`,
@@ -608,7 +608,7 @@ components:
                 - $ref: "#/components/schemas/Media"
               nullable: true
               description: >
-                2026-09-14: imagen secundaria/opcional, pensada para un
+                Imagen secundaria/opcional, pensada para un
                 header más panorámico/apaisado en el detalle. Solo presente
                 acá (`Service`, `GET /services/{slug}`) — NO en
                 `ServiceSummary` (`GET /services`). `image` (heredado de
@@ -619,7 +619,7 @@ components:
               type: object
               nullable: true
               description: >
-                2026-09-15: footer dinámico elegido en Studio (properties.footer_page_id).
+                Footer dinámico elegido en Studio (properties.footer_page_id).
                 Contiene el slug y la lista de bloques hijos completamente resueltos.
               properties:
                 slug: { type: string }
