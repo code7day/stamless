@@ -40,6 +40,17 @@ use Filament\Widgets\Widget;
  * lectura a los 4 tipos (`TenantRolePolicy`, ver ADR-078), así que en la
  * práctica todos ven la lista completa; si a futuro un tipo de contenido se
  * le retira a algún rol, este widget se ajusta solo.
+ *
+ * **Link de cada item**: abre directo el `EditAction` (slide-over) del
+ * registro en su Resource, no solo la pantalla índice — mismo mecanismo
+ * que usa el buscador global nativo de Filament (`HasGlobalSearch::
+ * getGlobalSearchResultUrl()`, ver `vendor/filament/filament/src/Resources/
+ * Resource/Concerns/HasGlobalSearch.php`): `Resource::getUrl(parameters:
+ * ['tableAction' => 'edit', 'tableActionRecord' => $record])` deep-linkea
+ * a la acción de tabla por su nombre + el record, sin necesitar una ruta
+ * `/edit/{record}` propia (los 4 Resources acá usan el patrón "Manage" de
+ * una sola página). Los 4 `EditAction::make()` de estos Resources usan el
+ * nombre default `'edit'` (confirmado, ninguno lo sobreescribe).
  */
 class RecentContentChangesWidget extends Widget
 {
@@ -114,7 +125,10 @@ class RecentContentChangesWidget extends Widget
                             default => 'primary',
                         },
                         'icon' => 'heroicon-o-document-text',
-                        'url' => PageResource::getUrl(),
+                        'url' => PageResource::getUrl(parameters: [
+                            'tableAction' => 'edit',
+                            'tableActionRecord' => $page,
+                        ]),
                         'updated_at' => $page->updated_at,
                     ])
             );
@@ -132,7 +146,10 @@ class RecentContentChangesWidget extends Widget
                         'type' => 'Blog',
                         'color' => 'success',
                         'icon' => 'heroicon-o-document-duplicate',
-                        'url' => PostResource::getUrl(),
+                        'url' => PostResource::getUrl(parameters: [
+                            'tableAction' => 'edit',
+                            'tableActionRecord' => $post,
+                        ]),
                         'updated_at' => $post->updated_at,
                     ])
             );
@@ -150,7 +167,10 @@ class RecentContentChangesWidget extends Widget
                         'type' => 'Servicio',
                         'color' => 'amber',
                         'icon' => 'heroicon-o-briefcase',
-                        'url' => ServiceResource::getUrl(),
+                        'url' => ServiceResource::getUrl(parameters: [
+                            'tableAction' => 'edit',
+                            'tableActionRecord' => $service,
+                        ]),
                         'updated_at' => $service->updated_at,
                     ])
             );
@@ -168,7 +188,10 @@ class RecentContentChangesWidget extends Widget
                         'type' => 'Testimonio',
                         'color' => 'purple',
                         'icon' => 'heroicon-o-chat-bubble-left-right',
-                        'url' => TestimonialResource::getUrl(),
+                        'url' => TestimonialResource::getUrl(parameters: [
+                            'tableAction' => 'edit',
+                            'tableActionRecord' => $testimonial,
+                        ]),
                         'updated_at' => $testimonial->updated_at,
                     ])
             );

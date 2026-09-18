@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix: los links de "Últimos cambios" abrían el índice del Resource, no el editar del registro
+
+- **El Tech Lead probó el widget recién agregado y pidió**: "al dar clic en ese contenido debería ir al resource pero abrir el editar de ese registro" — cada item linkeaba a `Resource::getUrl()` (la pantalla índice sola), sin abrir el slide-over de edición del registro puntual.
+- **Fix**: cada `url` ahora usa `Resource::getUrl(parameters: ['tableAction' => 'edit', 'tableActionRecord' => $record])` — el mismo mecanismo de deep-link que usa el buscador global nativo de Filament (`HasGlobalSearch::getGlobalSearchResultUrl()`) para abrir una acción de tabla por nombre + registro vía query string, sin necesitar una ruta `/edit/{record}` propia (los 4 Resources acá solo tienen la página "Manage" índice). Confirmado que los 4 `EditAction::make()` (Page/Post/Service/Testimonial) usan el nombre default `'edit'`, ninguno lo sobreescribe.
+- **Archivos:** `app/Filament/Widgets/RecentContentChangesWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo del Tech Lead — clic en un item debe abrir directo el slide-over de edición del registro.
+
 ## 2026-09-18 — Nuevo widget "Últimos cambios" en el Dashboard (10 contenidos más recientes)
 
 - **Pedido del Tech Lead**: "crear un widgets con ultimos cambios, ya sea en contenidos por tipo pagina, legales, secciones, y blog, servicios, testimonios, pero mostrar los 10 ultimos contenidos que fueron actualizados" — seguido de "que tengan acceso los roles de marketing, editores y redactores" (aclaración de alcance de visibilidad).
