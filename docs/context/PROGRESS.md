@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — El rol Soporte deja de ver el widget "Últimos contactos"
+
+- **Pedido explícito del Tech Lead**: "para el rol soporte no mostrar el widget últimos contactos" — decisión puntual de qué previsualizar en el Escritorio, no de permisos: `ContactResource` completo sigue accesible para Soporte sin cambios (sigue teniendo `viewAny`/`view`/`update` de `Contact` vía `ContactPolicy`), solo se oculta la previsualización de este widget puntual.
+- **Fix**: `canView()` de `RecentContactsWidget` suma un chequeo de rol explícito (`RestrictsPageToRoles::userHasAnyRole([UserRoleEnum::Soporte->value])`, mismo trait que usan las 4 Pages sin Eloquent) ANTES del chequeo de Policy — si el rol es Soporte, no se muestra, sin importar el acceso real a `Contact`. `LeadsOverviewWidget` (los 4 KPIs) NO se toca — el pedido nombró puntualmente "el widget últimos contactos", no los 5 widgets de la corrección anterior del mismo día.
+- **Archivos:** `app/Filament/Widgets/RecentContactsWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo con una cuenta `Soporte` (no debe ver "Últimos contactos", sí debe seguir viendo los 4 KPIs de Leads y `ContactResource` completo).
+
 ## 2026-09-18 — Fix real (3ro, mismo hilo): un item de "Últimos cambios" tipo Footer/Legal no abría el editar (falta el parámetro de tab)
 
 - **El Tech Lead reportó, con 2 capturas**: clic en un item tipo Footer ("Footer principal") carga bien el listado de Contenidos, pero no abre el formulario de edición — "por causa de que el registro es tipo footer, no abre el tab Secciones".

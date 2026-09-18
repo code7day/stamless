@@ -2,6 +2,8 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\UserRoleEnum;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use App\Filament\Resources\ContactResource;
 use App\Models\Contact;
 use App\Models\Tenant;
@@ -20,6 +22,8 @@ use Filament\Widgets\TableWidget;
  */
 class RecentContactsWidget extends TableWidget
 {
+    use RestrictsPageToRoles;
+
     /**
      * Columna 1 (default de `Widget`, explícita acá para que quede
      * documentado): comparte fila con `PlanUsageWidget` (también columna
@@ -34,16 +38,29 @@ class RecentContactsWidget extends TableWidget
      * `LeadsOverviewWidget` (ver su docblock completo) — este widget
      * mostraba una previsualización real de `Contact` sin chequear ninguna
      * Policy, visible a cualquier rol con acceso al Dashboard. El gate
-     * final es solo `viewAny` de `Contact` (el Tech Lead corrigió el
-     * primer intento, que exigía Contactos Y Formularios a la vez y sin
-     * querer excluía a `Editor`): "el rol editor tiene acceso a contactos,
-     * podría ver los 5 widgets de contactos". Con la matriz de 5 roles,
-     * Admin/Soporte/Marketing/Editor ven este widget; solo `Author` queda
-     * afuera.
+     * base es `viewAny` de `Contact` (el Tech Lead corrigió el primer
+     * intento, que exigía Contactos Y Formularios a la vez y sin querer
+     * excluía a `Editor`): "el rol editor tiene acceso a contactos, podría
+     * ver los 5 widgets de contactos".
+     *
+     * **3er round, mismo día**: pedido explícito del Tech Lead — "para el
+     * rol soporte no mostrar el widget últimos contactos". A diferencia de
+     * `LeadsOverviewWidget` (los 4 KPIs, que Soporte SÍ sigue viendo, no
+     * mencionados en este pedido), acá se excluye a `Soporte` puntualmente
+     * aunque la Policy de `Contact` le siga dando acceso de lectura real
+     * (`ContactResource` completo, con "Ver todos" desde este mismo
+     * widget, sigue intacto para Soporte) — es una decisión de qué
+     * previsualizar en el Escritorio, no de permisos. `RestrictsPageToRoles
+     * ::userHasAnyRole()` (mismo trait que usan las Pages sin Eloquent)
+     * para el chequeo de rol puntual.
      */
     public static function canView(): bool
     {
         if (! Filament::getTenant() instanceof Tenant) {
+            return false;
+        }
+
+        if (self::userHasAnyRole([UserRoleEnum::Soporte->value])) {
             return false;
         }
 
