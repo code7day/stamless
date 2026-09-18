@@ -11,6 +11,16 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Rebrand de la documentación pública del API: "Genesis CMS" → "Stamless CMS Headless" en `docs/api/v1.md`/`openapi.v1.yaml` + refuerzo del aislamiento por tenant
+
+- **Pedido del Tech Lead**, tras el fix del deploy: notó que la documentación pública del API (`docs/api/v1.md`, `docs/api/openapi.v1.yaml`) seguía llamando al producto "Genesis CMS" — el codename técnico interno (ADR-026: "Genesis" es codename, "Stamless" es la marca pública; ambos términos son intercambiables SOLO en documentación técnica interna, no en superficies orientadas a desarrolladores externos). "Stamless CMS Headless" ya es el nombre real usado en copy de producción (ej. el copyright por defecto del footer en `PageResource.php`: "© {año} Stamless CMS Headless. Todos los derechos reservados.") — se adopta esa misma frase como título/branding de ambos documentos, en vez de inventar una variante nueva.
+- **`docs/api/v1.md`:** título (`# Genesis CMS — API v1 (Headless)` → `# Stamless CMS Headless — API v1`) y las 2 menciones en el cuerpo ("La API v1 de Genesis CMS expone...", "Genesis CMS responde en varios dominios...") reemplazadas.
+- **`docs/api/openapi.v1.yaml`:** `info.title`, `info.description` y `info.contact.name` actualizados del mismo modo.
+- **Pedido de seguimiento en el mismo turno:** "con todo lo que hemos implementado ultimo y que es de uso por tenant o por cuenta" — se agregó un párrafo explícito en la Introducción de `v1.md` aclarando que TODO en la API está scopeado por tenant, y se reforzó esa aclaración puntual en las 3 secciones más nuevas (agregadas en la entrada de abajo, mismo día) que son configuración por cuenta: "Límites y alcance de los tokens" (el tope/abilities/dominio de un token es exclusivo de su tenant dueño), "SMTP propio" (credenciales en columnas propias del tenant, nunca compartidas) y "Despliegue automático (Git)" (cada tenant vincula su propio repo/token, el debounce es por tenant) — ninguna de las tres puede filtrar ni compartir configuración entre cuentas distintas.
+- **Verificación:** `grep -r "Genesis CMS" docs/api/` sin resultados tras el cambio — ninguna referencia residual al codename en estos 2 archivos. Sin runtime de PHP necesario (son archivos Markdown/YAML puros).
+- **Archivos:** `docs/api/v1.md`, `docs/api/openapi.v1.yaml`.
+- **Pendiente:** correr `./deploy.sh` + `./production.sh` (ya pendiente de la entrada anterior) para que ambos cambios —el fix del rsync y este rebrand— lleguen al servidor juntos.
+
 ## 2026-09-18 — Fix real: `deploy.sh` excluía TODO `/docs/` del rsync, dejando "API Documentation"/`openapi.v1.yaml` rotos en cualquier stage/producción desplegado con el script (independiente del contenido del archivo)
 
 - **Reporte del Tech Lead**, con captura de Console en producción: la página "API Documentation" mostraba `No se encontró docs/api/v1.md.` — justo después de la actualización de contenido de la entrada de abajo, dando la impresión de que algo se había roto o perdido con esos cambios.

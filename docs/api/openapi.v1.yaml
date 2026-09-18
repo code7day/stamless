@@ -1,14 +1,14 @@
 openapi: 3.0.3
 info:
-  title: Genesis CMS API v1 (Headless)
+  title: Stamless CMS Headless API v1
   version: "1.0.0"
   description: >
-    API pública headless de Genesis CMS. Multi-tenant por segmento de path
-    (`{tenant_slug}`), autenticada por Bearer token (Laravel Sanctum, ver
-    docs/v1.md). Solo expone contenido publicado/activo.
+    API pública del CMS headless de Stamless. Multi-tenant por segmento
+    de path (`{tenant_slug}`), autenticada por Bearer token (Laravel
+    Sanctum, ver docs/v1.md). Solo expone contenido publicado/activo.
     `lang_iso` fijo en `es` por el momento.
   contact:
-    name: Genesis CMS
+    name: Stamless
 externalDocs:
   description: Documentación completa (envelope, auth, ejemplos)
   url: ./v1.md
