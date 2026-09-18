@@ -16,13 +16,14 @@ use Illuminate\Database\Eloquent\Model;
  *
  * Solo encola (`TriggerFrontendDeploy::dispatch(...)->delay(...)`), nunca
  * llama a `FrontendDeployService` directo — el Job es quien decide si el
- * tenant tiene el webhook configurado (`hasDeployWebhookConfigured()`) y
- * aplica el debounce vía `ShouldBeUnique`. Encolar sin ese gate acá sería
- * doble validación innecesaria (el Job ya lo hace) sin ganar nada, salvo
- * evitar encolar filas de más en la tabla `jobs` para tenants sin webhook
- * — por eso SÍ se revisa acá también, es barato (ya se cargó el modelo) y
- * mantiene la tabla de jobs limpia para tenants (la mayoría, hoy) sin este
- * mecanismo activado.
+ * tenant tiene la automatización activa (`hasAutoDeployActive()`, 2026-09-18
+ * — combina credenciales + el checkbox "Automatización activa" de
+ * Preferencias, ver `Tenant.php`) y aplica el debounce vía `ShouldBeUnique`.
+ * Encolar sin ese gate acá sería doble validación innecesaria (el Job ya lo
+ * hace) sin ganar nada, salvo evitar encolar filas de más en la tabla `jobs`
+ * para tenants sin la automatización activa — por eso SÍ se revisa acá
+ * también, es barato (ya se cargó el modelo) y mantiene la tabla de jobs
+ * limpia para tenants (la mayoría, hoy) sin este mecanismo activado.
  */
 class DeployTriggerObserver
 {
@@ -55,9 +56,12 @@ class DeployTriggerObserver
         // `TenantManager` no tiene nada resuelto. `select()` acotado a las 2
         // columnas que hacen falta — no carga el tenant completo por cada
         // guardado de contenido.
-        $tenant = Tenant::query()->select(['id', 'deploy_repo', 'deploy_token'])->find($tenantId);
+        // 2026-09-18: `deploy_enabled` se suma al select — es la 3ra
+        // columna que `Tenant::hasAutoDeployActive()` necesita leída para
+        // decidir (antes bastaba con `deploy_repo`/`deploy_token`).
+        $tenant = Tenant::query()->select(['id', 'deploy_repo', 'deploy_token', 'deploy_enabled'])->find($tenantId);
 
-        if (! $tenant?->hasDeployWebhookConfigured()) {
+        if (! $tenant?->hasAutoDeployActive()) {
             return;
         }
 

@@ -10,6 +10,7 @@ use App\Services\TenantManager;
 use BackedEnum;
 use DateTimeZone;
 use Filament\Actions;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -22,6 +23,11 @@ use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransportFactory;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
+use Throwable;
 use UnitEnum;
 
 /**
@@ -70,7 +76,7 @@ class Preferences extends Page implements HasForms
 
     protected static ?string $title = 'Preferencias';
 
-    protected ?string $subheading = 'Identidad del proyecto, cómo se muestran las fechas y textos en Console, valores de SEO/Open Graph por defecto e integraciones.';
+    protected ?string $subheading = 'Identidad del proyecto (nombre, slug y logo), cómo se muestran las fechas y textos en Console, valores de SEO/Open Graph por defecto e integraciones.';
 
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
@@ -110,12 +116,36 @@ class Preferences extends Page implements HasForms
             // Integraciones de analytics — mismo mecanismo, ver docblock.
             'tracking_meta_pixel_id' => setting('tracking.meta_pixel_id'),
             'tracking_gtm_id' => setting('tracking.gtm_id'),
-            // Página de Agradecimiento (Formularios) — tenant-wide
-            'thank_you_title' => setting('thank_you.title', '¡Muchas gracias, {name}!'),
-            'thank_you_description' => setting('thank_you.description', 'Hemos recibido tu consulta correctamente. Un asesor especializado de <strong>CICA360</strong> revisará tu información y se pondrá en contacto contigo a la brevedad.'),
-            'thank_you_alert_title' => setting('thank_you.alert_title', 'Tiempo de respuesta estimado:'),
-            'thank_you_alert_description' => setting('thank_you.alert_description', 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).'),
-            'thank_you_button_label' => setting('thank_you.button_label', 'Enviar otra consulta'),
+            // Logo del tenant (2026-09-18) — mismo mecanismo que las
+            // imágenes OG de arriba: `Setting` guarda el `id` de un
+            // `Media`, ver docblock de la sección "Marca" más abajo.
+            'branding_logo_id' => setting('branding.logo_id'),
+            // "Página de Agradecimiento (Formularios)" TRASLADADA a
+            // `FormResource` (2026-09-18, ADR-074) — ya no vive acá.
+
+            // SMTP propio del tenant (2026-09-18) — a diferencia de todo lo
+            // demás de arriba, esto NO vive en `Setting` (que no cifra su
+            // columna `value`): son columnas reales de `Tenant`, mismo
+            // mecanismo que `deploy_token` (ver `Tenant::casts()`).
+            // `smtp_password` queda A PROPÓSITO fuera de este `fill()` —
+            // nunca se manda la contraseña ya guardada de vuelta al
+            // navegador; el campo se muestra vacío y solo se sobreescribe
+            // si el tenant escribe una nueva (ver `getHeaderActions()`).
+            'smtp_host' => $tenant?->smtp_host,
+            'smtp_port' => $tenant?->smtp_port,
+            'smtp_username' => $tenant?->smtp_username,
+            'smtp_encryption' => $tenant?->smtp_encryption,
+            'smtp_from_address' => $tenant?->smtp_from_address,
+            'smtp_from_name' => $tenant?->smtp_from_name,
+
+            // Despliegue automático (Git) (2026-09-18, 2da actualización) —
+            // antes solo lo cargaba el operador vía tinker; el propio
+            // tenant lo vincula ahora desde acá. Mismo criterio de
+            // enmascarado que `smtp_password`: `deploy_token` queda A
+            // PROPÓSITO fuera de este `fill()`, nunca vuelve al navegador
+            // (ver `getHeaderActions()` para el "dejar vacío = no cambiar").
+            'deploy_repo' => $tenant?->deploy_repo,
+            'deploy_enabled' => $tenant?->deploy_enabled ?? false,
         ]);
     }
 
@@ -198,6 +228,26 @@ class Preferences extends Page implements HasForms
                             ->dehydrated(),
                     ]),
 
+                // 2026-09-18, pedido del Tech Lead (viendo el email de
+                // notificación de un nuevo contacto sin marca propia,
+                // genérico "Stamless"): "el logo debería personalizarse en
+                // preferencias donde se personaliza el tenant, sería
+                // bueno... así como el logo del sitio cliente esté en los
+                // mailings". Mismo mecanismo que las imágenes OG de más
+                // abajo (`Setting` guardando el `id` de un `Media`) — el
+                // valor se lee en `ContactSubmissionService::resolveBrandLogoUrl()`
+                // para el header de ambos emails (notificación al admin y
+                // copia al usuario, ver ADR de este mismo día). A
+                // propósito tenant-wide (no por `Form`): es identidad
+                // visual del proyecto, no configuración puntual de un
+                // formulario.
+                Section::make('Marca')
+                    ->description('Logo de tu proyecto — se usa en los emails de notificación de formularios.')
+                    ->collapsible()
+                    ->schema([
+                        MediaUpload::make('branding_logo_id', 'Logo del proyecto', accept: 'logo', helperText: 'PNG, JPG, WEBP o SVG (recomendado para que se vea nítido a cualquier tamaño). Fondo transparente, máx. 5MB. Si no se sube uno, los emails muestran el nombre del proyecto en texto.'),
+                    ]),
+
                 Section::make('Cuenta')
                     ->description('Cómo se muestran las fechas y los textos en Console.')
                     ->collapsible()
@@ -256,6 +306,8 @@ class Preferences extends Page implements HasForms
                 Section::make('Open Graph (Redes Sociales) — por defecto del sitio')
                     ->description('Se usa cuando una página, publicación o servicio no define su propio título/descripción/imagen para compartir en redes.')
                     ->collapsible()
+                    ->columnSpanFull()
+                    ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('og_default_title')
                             ->label('Título OG')
@@ -269,40 +321,261 @@ class Preferences extends Page implements HasForms
                         MediaUpload::make('og_default_image_square_id', 'Imagen OG Cuadrada (600x600)'),
                     ]),
 
-                Section::make('Página de Agradecimiento (Formularios)')
-                    ->description('Personaliza el mensaje y contenidos que ven los usuarios luego de enviar un formulario de contacto.')
+                // 2026-09-18, pedido del Tech Lead: "falta la sección de
+                // configuración para ingresar los datos para configurar su
+                // SMTP favorito y será mejor para evitar usar mi smtp
+                // general para todo". Opcional — sin completar, los emails
+                // de este tenant (notificación de formularios, ver
+                // `ContactSubmissionService`) siguen usando el `MAIL_MAILER`
+                // de la plataforma, sin cambio de comportamiento (ver
+                // `Tenant::hasCustomSmtpConfigured()`). A diferencia de todo
+                // lo demás de esta página, esto NO se guarda vía `setting()`
+                // — son columnas reales de `Tenant` con `smtp_password`
+                // cifrada at-rest (mismo criterio que `deploy_token`), no un
+                // valor plano en la tabla `settings`. Movida al final de la
+                // página (2026-09-18, 4ta actualización, pedido del Tech
+                // Lead) — sección técnica/de infraestructura, no de
+                // contenido/negocio del sitio; queda agrupada junto a
+                // "Despliegue automático (Git)", la otra sección de este
+                // mismo tipo.
+                Section::make('SMTP propio (opcional)')
+                    ->description('Para que los emails de notificación de tus formularios salgan desde tu propio servidor de correo, con tu dominio, en vez del SMTP compartido de la plataforma. Dejar vacío para seguir usando el de Stamless.')
                     ->collapsible()
-                    ->columnSpanFull()
+                    ->collapsed()
+                    ->columns(2)
                     ->schema([
-                        Forms\Components\TextInput::make('thank_you_title')
-                            ->label('Título de Agradecimiento')
-                            ->helperText('Puedes usar {name} como comodín para el nombre del remitente (ej: ¡Muchas gracias, {name}!).')
+                        Forms\Components\TextInput::make('smtp_host')
+                            ->label('Host')
+                            ->placeholder('smtp.tudominio.com')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('smtp_port')
+                            ->label('Puerto')
+                            ->numeric()
+                            ->placeholder('587')
+                            ->minValue(1)
+                            ->maxValue(65535),
+
+                        Forms\Components\TextInput::make('smtp_username')
+                            ->label('Usuario')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('smtp_password')
+                            ->label('Contraseña')
+                            ->password()
+                            ->revealable()
                             ->maxLength(255)
-                            ->columnSpanFull(),
+                            ->helperText(fn (): ?string => filled(Filament::getTenant()?->smtp_password ?? null)
+                                ? 'Ya hay una contraseña guardada — dejar vacío la mantiene sin cambios.'
+                                : null),
 
-                        Forms\Components\RichEditor::make('thank_you_description')
-                            ->label('Descripción')
-                            ->helperText('Mensaje principal. Solo se permite formato en negrita (strong).')
-                            ->toolbarButtons(['bold'])
-                            ->columnSpanFull(),
+                        Forms\Components\Select::make('smtp_encryption')
+                            ->label('Cifrado')
+                            ->options([
+                                'tls' => 'TLS',
+                                'ssl' => 'SSL',
+                            ])
+                            ->placeholder('Ninguno'),
 
-                        Forms\Components\TextInput::make('thank_you_alert_title')
-                            ->label('Título del Cuadro Informativo / Alerta')
-                            ->helperText('Ej: Tiempo de respuesta estimado:')
+                        Forms\Components\TextInput::make('smtp_from_address')
+                            ->label('Email remitente (From)')
+                            ->email()
+                            ->placeholder('notificaciones@tudominio.com')
                             ->maxLength(255),
 
-                        Forms\Components\TextInput::make('thank_you_alert_description')
-                            ->label('Descripción del Cuadro Informativo / Alerta')
-                            ->helperText('Ej: Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).')
+                        Forms\Components\TextInput::make('smtp_from_name')
+                            ->label('Nombre remitente')
+                            ->placeholder('Se usa el nombre del proyecto si se deja vacío')
                             ->maxLength(255),
+                    ])
+                    ->headerActions([
+                        Action::make('test_smtp_connection')
+                            ->label('Probar conexión')
+                            ->icon('heroicon-o-paper-airplane')
+                            ->color('gray')
+                            ->action(function (Get $get): void {
+                                $this->testSmtpConnection($get);
+                            }),
+                    ]),
 
-                        Forms\Components\TextInput::make('thank_you_button_label')
-                            ->label('Texto del Botón')
-                            ->helperText('Etiqueta del botón para reiniciar o volver a consultar (ej: Enviar otra consulta).')
-                            ->maxLength(100)
+                // 2026-09-18 (2da actualización), pedido del Tech Lead: "no
+                // debería poder el cliente, para su tenant, vincular a git
+                // para que pueda hacer el envío si es necesario usar el
+                // trigger a git para automatizar, si no no habilita el
+                // check de automatización" — hasta ahora `deploy_repo`/
+                // `deploy_token` los cargaba el operador de la plataforma a
+                // mano vía tinker (ver ADR "Fase 6 post-MVP: deploy webhook
+                // por tenant"). El propio tenant los vincula ahora desde
+                // acá. El checkbox "Automatización activa" (`deploy_enabled`)
+                // queda `disabled()` — no se puede tildar — hasta que AMBOS
+                // campos (repo + token, ya sea recién tipeados en esta
+                // sesión o ya guardados de antes) estén completos; ver
+                // `Tenant::hasAutoDeployActive()`, el gate real que
+                // consultan `DeployTriggerObserver`/`TriggerFrontendDeploy`
+                // antes de disparar cualquier rebuild. Igual criterio de
+                // "dejar vacío no borra" que `smtp_password` para el token,
+                // que nunca vuelve al navegador (ver `mount()`/
+                // `getHeaderActions()`). Movida al final de la página junto
+                // a "SMTP propio" (2026-09-18, 4ta actualización, mismo
+                // pedido del Tech Lead) — ambas son secciones técnicas/de
+                // infraestructura, no de contenido/negocio del sitio.
+                Section::make('Despliegue automático (Git)')
+                    ->description('Vincular el repositorio de GitHub del sitio público para que se reconstruya y publique solo cada vez que se guarda contenido en Studio. Dejar vacío si el sitio no usa este mecanismo — nada cambia.')
+                    ->collapsible()
+                    ->collapsed()
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('deploy_repo')
+                            ->label('Repositorio (owner/repo)')
+                            ->placeholder('usuario-u-organizacion/nombre-del-repositorio')
+                            ->helperText('Formato exacto de GitHub, ej. "usuario/repositorio".')
+                            ->maxLength(255)
+                            ->live(onBlur: true),
+
+                        Forms\Components\TextInput::make('deploy_token')
+                            ->label('Token de acceso (Personal Access Token)')
+                            ->password()
+                            ->revealable()
+                            ->maxLength(255)
+                            ->live(onBlur: true)
+                            ->helperText(fn (): ?string => filled(Filament::getTenant()?->deploy_token ?? null)
+                                ? 'Ya hay un token guardado — dejar vacío lo mantiene sin cambios.'
+                                : 'Con permiso "repo" (o, más acotado, "contents:read" + "actions:write" si es un Fine-grained PAT). Nunca se muestra de vuelta ni se expone en la API pública.'),
+
+                        Forms\Components\Toggle::make('deploy_enabled')
+                            ->label('Automatización activa')
+                            ->helperText(fn (Get $get): string => self::hasDeployCredentials($get)
+                                ? 'Cada vez que se guarda contenido, el sitio se reconstruye y publica solo.'
+                                : 'Completar repositorio y token para poder activarla.')
+                            ->disabled(fn (Get $get): bool => ! self::hasDeployCredentials($get))
                             ->columnSpanFull(),
                     ]),
+
+                // 2026-09-18: "Página de Agradecimiento (Formularios)" se
+                // TRASLADÓ de acá a `FormResource` — pedido del Tech Lead
+                // al ver que ahora los formularios son gestionables por
+                // tenant (Fase 1, ADR-073): "trasladar el contenido de la
+                // página gracias que sea dinámica... hay que trasladarlo
+                // ahora al formulario para personalizar los textos ahí
+                // mismo". Tenía sentido como setting único mientras solo
+                // existía UN formulario real (`contacto`) por tenant, pero
+                // deja de tenerlo con múltiples formularios por tenant: un
+                // valor tenant-wide no puede dar una página de gracias
+                // distinta por formulario. Los 5 campos (`thank_you_title`/
+                // `thank_you_description`/`thank_you_alert_title`/
+                // `thank_you_alert_description`/`thank_you_button_label`)
+                // ahora viven como columnas de `Form` — ver
+                // `FormResource::form()`, sección "Página de Agradecimiento".
+                // Los `Setting` `thank_you.*` que ya existieran de esta
+                // pantalla quedan huérfanos en la tabla `settings` (sin
+                // lectura en ningún lado desde este cambio) — no se
+                // migran/borran automáticamente, ver ADR-074.
             ]);
+    }
+
+    /**
+     * "Probar conexión" del SMTP propio (ver sección homónima en `form()`)
+     * — manda un email real de prueba con los datos que el tenant tiene
+     * TIPEADOS en ese momento (`Get $get`, estado en vivo del formulario,
+     * SIN guardar primero) al email del admin logueado. Se replica acá el
+     * mismo mecanismo interno que usa Laravel para construir un transporte
+     * SMTP (`Illuminate\Mail\MailManager::createSmtpTransport()` —
+     * `Symfony\Mailer\Transport\Smtp\EsmtpTransportFactory` + `Dsn`) en vez
+     * de armar una DSN a mano con `sprintf()`: evita bugs de escape si el
+     * usuario/contraseña tienen caracteres especiales (`@`, `:`, etc.).
+     *
+     * Si el campo "Contraseña" quedó vacío (el tenant no lo tocó, ver
+     * helper text del campo), se usa la ya guardada en `Tenant::smtp_password`
+     * — mismo criterio de "dejar vacío no borra" que el resto de esta
+     * sección.
+     *
+     * El scheme ('smtp' vs 'smtps') se deriva del select "Cifrado" con el
+     * MISMO criterio que `Tenant::smtpMailerConfig()` (ver ese método —
+     * Symfony Mailer no tiene una opción `encryption` suelta, decide
+     * TLS/SSL por el scheme de la Dsn).
+     */
+    private function testSmtpConnection(Get $get): void
+    {
+        $host = trim((string) $get('smtp_host'));
+        $username = trim((string) $get('smtp_username'));
+
+        if (blank($host) || blank($username)) {
+            Notification::make()
+                ->title('Completar al menos Host y Usuario antes de probar.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $tenant = Filament::getTenant() ?? auth()->user()?->tenant;
+        $password = trim((string) $get('smtp_password'));
+        if (blank($password)) {
+            $password = (string) ($tenant?->smtp_password ?? '');
+        }
+
+        $port = (int) ($get('smtp_port') ?: 587);
+        $encryption = $get('smtp_encryption') ?: null;
+        $fromAddress = trim((string) $get('smtp_from_address')) ?: $username;
+        $fromName = trim((string) $get('smtp_from_name')) ?: ($tenant?->name ?? config('app.name'));
+
+        /** @var User $adminUser */
+        $adminUser = auth()->user();
+
+        try {
+            $scheme = $encryption === 'ssl' ? 'smtps' : 'smtp';
+
+            $factory = new EsmtpTransportFactory;
+            $transport = $factory->create(new Dsn(
+                $scheme,
+                $host,
+                $username,
+                $password,
+                $port,
+            ));
+
+            $email = (new Email)
+                ->from(new Address($fromAddress, $fromName))
+                ->to($adminUser->email)
+                ->subject('Prueba de SMTP — Stamless Studio')
+                ->text('Si recibiste este correo, tu SMTP propio quedó bien configurado. Los emails de notificación de tus formularios ahora van a salir desde acá.');
+
+            $transport->send($email);
+
+            Notification::make()
+                ->title('Conexión exitosa')
+                ->body("Se envió un email de prueba a {$adminUser->email}. Revisar la bandeja de entrada (y spam).")
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()
+                ->title('No se pudo conectar')
+                ->body($e->getMessage())
+                ->danger()
+                ->persistent()
+                ->send();
+        }
+    }
+
+    /**
+     * ¿El tenant tiene repo Y token para el deploy automático? Combina el
+     * estado EN VIVO del formulario (lo que el tenant tipeó recién, todavía
+     * sin guardar) con lo YA GUARDADO en `Tenant::deploy_token` — necesario
+     * porque `deploy_token` nunca se pre-carga en el formulario (ver
+     * `mount()`, mismo enmascarado que `smtp_password`): sin este segundo
+     * chequeo, reabrir esta página con un token ya guardado mostraría el
+     * checkbox "Automatización activa" bloqueado por error, aunque el
+     * tenant ya tenga todo configurado. `deploy_repo`, al no ser secreto,
+     * SÍ se pre-carga — con leer `$get('deploy_repo')` alcanza.
+     */
+    private static function hasDeployCredentials(Get $get): bool
+    {
+        $tenant = Filament::getTenant() ?? auth()->user()?->tenant;
+
+        $hasRepo = filled($get('deploy_repo'));
+        $hasToken = filled($get('deploy_token')) || filled($tenant?->deploy_token);
+
+        return $hasRepo && $hasToken;
     }
 
     protected function getHeaderActions(): array
@@ -333,6 +606,44 @@ class Preferences extends Page implements HasForms
                             $tenant->name = $newName;
                             setting(['site_name' => $newName]);
                         }
+
+                        // SMTP propio (2026-09-18) — columnas reales de
+                        // `Tenant`, no `Setting` (ver docblock de la
+                        // sección en `form()`). `smtp_password` es el único
+                        // campo con lógica especial: si llegó vacío, el
+                        // tenant no lo tocó — se conserva la contraseña que
+                        // ya estaba guardada (cifrada) en vez de borrarla.
+                        $tenant->smtp_host = filled($data['smtp_host'] ?? null) ? trim($data['smtp_host']) : null;
+                        $tenant->smtp_port = filled($data['smtp_port'] ?? null) ? (int) $data['smtp_port'] : null;
+                        $tenant->smtp_username = filled($data['smtp_username'] ?? null) ? trim($data['smtp_username']) : null;
+                        $tenant->smtp_encryption = $data['smtp_encryption'] ?? null;
+                        $tenant->smtp_from_address = filled($data['smtp_from_address'] ?? null) ? trim($data['smtp_from_address']) : null;
+                        $tenant->smtp_from_name = filled($data['smtp_from_name'] ?? null) ? trim($data['smtp_from_name']) : null;
+
+                        if (filled($data['smtp_password'] ?? null)) {
+                            $tenant->smtp_password = $data['smtp_password'];
+                        }
+
+                        // Despliegue automático (Git) (2026-09-18, 2da
+                        // actualización) — mismo criterio "dejar vacío no
+                        // borra" que `smtp_password` para `deploy_token`.
+                        // `deploy_enabled` se fuerza a `false` si, tras
+                        // aplicar los cambios de este guardado, el tenant
+                        // NO termina con repo+token completos — defensa en
+                        // profundidad además del `disabled()` del checkbox
+                        // en el formulario (ver `hasDeployCredentials()`):
+                        // un campo `disabled()` en Filament puede seguir
+                        // dehidratando su último valor conocido según el
+                        // estado del navegador, así que la fuente de verdad
+                        // real de "¿puede estar activo?" se revalida acá,
+                        // contra el modelo ya actualizado.
+                        $tenant->deploy_repo = filled($data['deploy_repo'] ?? null) ? trim($data['deploy_repo']) : null;
+
+                        if (filled($data['deploy_token'] ?? null)) {
+                            $tenant->deploy_token = $data['deploy_token'];
+                        }
+
+                        $tenant->deploy_enabled = (bool) ($data['deploy_enabled'] ?? false) && $tenant->hasDeployWebhookConfigured();
 
                         if ($tenant->canChangeSlug() && filled($newSlug) && $newSlug !== $oldSlug) {
                             // Validar unicidad
@@ -372,11 +683,9 @@ class Preferences extends Page implements HasForms
                         'og.default_image_square_id' => $data['og_default_image_square_id'] ?? null,
                         'tracking.meta_pixel_id' => $data['tracking_meta_pixel_id'] ?? null,
                         'tracking.gtm_id' => $data['tracking_gtm_id'] ?? null,
-                        'thank_you.title' => $data['thank_you_title'] ?? null,
-                        'thank_you.description' => $data['thank_you_description'] ?? null,
-                        'thank_you.alert_title' => $data['thank_you_alert_title'] ?? null,
-                        'thank_you.alert_description' => $data['thank_you_alert_description'] ?? null,
-                        'thank_you.button_label' => $data['thank_you_button_label'] ?? null,
+                        'branding.logo_id' => $data['branding_logo_id'] ?? null,
+                        // `thank_you.*` TRASLADADO a `Form::thank_you_*`
+                        // (2026-09-18, ADR-074) — ya no se escribe acá.
                     ]);
 
                     if ($slugChanged && $tenant instanceof Tenant) {

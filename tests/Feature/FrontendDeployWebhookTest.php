@@ -22,12 +22,26 @@ use Tests\TestCase;
 /**
  * Fase 6 (post-MVP) adelantada, 2026-09-17 — ver ADR nuevo en DECISIONS.md
  * y `Page::booted()`/`DeployTriggerObserver`/`TriggerFrontendDeploy`/
- * `FrontendDeployService`. Cubre las 2 puertas del mecanismo:
- *   1) `Tenant::hasDeployWebhookConfigured()` — el gate de negocio.
- *   2) El observer NO encola nada para un tenant sin webhook configurado,
- *      y SÍ encola (con el delay de debounce correcto) para uno que sí.
+ * `FrontendDeployService`. Cubre las 2 (ahora 3) puertas del mecanismo:
+ *   1) `Tenant::hasDeployWebhookConfigured()` — ¿tiene credenciales? (repo
+ *      + token, sin importar el checkbox de automatización).
+ *   1b) `Tenant::hasAutoDeployActive()` (2026-09-18, 2da actualización) —
+ *      el gate REAL de disparo automático: credenciales + `deploy_enabled`.
+ *   2) El observer NO encola nada para un tenant sin la automatización
+ *      activa (sin credenciales, O con credenciales pero el checkbox
+ *      apagado), y SÍ encola (con el delay de debounce correcto) cuando
+ *      ambas condiciones se cumplen.
  *   3) `FrontendDeployService::dispatch()` arma el request HTTP correcto
- *      contra la API de GitHub — y es un no-op si el tenant no califica.
+ *      contra la API de GitHub — y es un no-op si el tenant no tiene
+ *      credenciales (sigue usando `hasDeployWebhookConfigured()` sin
+ *      cambios, no `hasAutoDeployActive()` — ver docblock del método en
+ *      `Tenant.php`: es la capacidad técnica, no la política de
+ *      automatización, pensando en un futuro botón manual).
+ *
+ * `makeTenant(withWebhook: true)` arma un tenant "completamente operativo"
+ * (credenciales Y `deploy_enabled = true`) — sigue siendo el fixture que
+ * usa la mayoría de los tests de abajo, que verifican el disparo real, no
+ * solo la presencia de credenciales.
  */
 class FrontendDeployWebhookTest extends TestCase
 {
@@ -40,6 +54,7 @@ class FrontendDeployWebhookTest extends TestCase
             'slug' => 'tenant-deploy-test-'.uniqid(),
             'deploy_repo' => $withWebhook ? 'eduflores/cica360' : null,
             'deploy_token' => $withWebhook ? 'ghp_faketoken123' : null,
+            'deploy_enabled' => $withWebhook,
         ]);
     }
 
@@ -59,11 +74,67 @@ class FrontendDeployWebhookTest extends TestCase
         $this->assertTrue($both->hasDeployWebhookConfigured());
     }
 
+    /**
+     * 2026-09-18 (2da actualización): tener repo+token cargados YA NO
+     * alcanza para que se dispare el rebuild automático — el tenant tiene
+     * que además tildar "Automatización activa" (`deploy_enabled`) desde
+     * Preferencias. `hasDeployWebhookConfigured()` (credenciales) sigue
+     * dando `true` en el caso "configurado pero apagado" — son gates
+     * distintos a propósito, ver docblocks en `Tenant.php`.
+     */
+    public function test_has_auto_deploy_active_requires_enabled_flag_on_top_of_credentials(): void
+    {
+        $configuredButDisabled = Tenant::create([
+            'name' => 'Tenant Configured Disabled',
+            'slug' => 'tenant-configured-disabled-'.uniqid(),
+            'deploy_repo' => 'eduflores/cica360',
+            'deploy_token' => 'ghp_faketoken123',
+            'deploy_enabled' => false,
+        ]);
+
+        $configuredAndEnabled = $this->makeTenant(withWebhook: true);
+
+        $this->assertTrue($configuredButDisabled->hasDeployWebhookConfigured());
+        $this->assertFalse($configuredButDisabled->hasAutoDeployActive());
+        $this->assertTrue($configuredAndEnabled->hasAutoDeployActive());
+    }
+
     public function test_saving_content_without_webhook_configured_does_not_queue_deploy(): void
     {
         Queue::fake();
 
         $tenant = $this->makeTenant(withWebhook: false);
+
+        Page::create([
+            'tenant_id' => $tenant->id,
+            'title' => 'Home',
+            'slug' => 'home',
+            'lang_iso' => LanguageEnum::Spanish,
+            'type' => PageTypeEnum::Page,
+            'status' => PublishStatusEnum::Published,
+        ]);
+
+        Queue::assertNotPushed(TriggerFrontendDeploy::class);
+    }
+
+    /**
+     * 2026-09-18 (2da actualización): el caso nuevo que separa
+     * `hasDeployWebhookConfigured()` de `hasAutoDeployActive()` — un tenant
+     * con repo+token cargados (ej. recién los vinculó desde Preferencias)
+     * pero SIN tildar "Automatización activa" todavía no debe disparar
+     * nada al guardar contenido.
+     */
+    public function test_saving_content_with_credentials_but_automation_disabled_does_not_queue_deploy(): void
+    {
+        Queue::fake();
+
+        $tenant = Tenant::create([
+            'name' => 'Tenant Credentials Only',
+            'slug' => 'tenant-credentials-only-'.uniqid(),
+            'deploy_repo' => 'eduflores/cica360',
+            'deploy_token' => 'ghp_faketoken123',
+            'deploy_enabled' => false,
+        ]);
 
         Page::create([
             'tenant_id' => $tenant->id,

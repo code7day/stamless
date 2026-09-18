@@ -108,7 +108,11 @@ class TriggerFrontendDeploy implements ShouldQueue, ShouldBeUnique
     {
         $tenant = Tenant::find($this->tenantId);
 
-        if (! $tenant || ! $tenant->hasDeployWebhookConfigured()) {
+        // 2026-09-18: `hasAutoDeployActive()` (credenciales + checkbox
+        // "Automatización activa" de Preferencias), no `hasDeployWebhookConfigured()`
+        // — un tenant puede tener repo/token cargados sin haber activado
+        // todavía el disparo automático, ver `Tenant.php`.
+        if (! $tenant || ! $tenant->hasAutoDeployActive()) {
             return;
         }
 

@@ -22,19 +22,39 @@ class Tenant extends Model
         'slug_changes_count',
         'slug_changes_allowed',
         'deploy_repo',
+        // 2026-09-18 (2da actualización): `deploy_token` pasa a `$fillable`
+        // — el propio tenant lo vincula desde la sección "Despliegue
+        // automático (Git)" de `Preferences.php`, ya no es exclusivo del
+        // operador vía tinker (ver docblock de `$hidden` más abajo, que
+        // sigue aplicando: nunca se expone en un `toArray()`/`toJson()`
+        // accidental, aunque sí sea mass-assignable). `deploy_enabled`
+        // (el checkbox "Automatización activa") viaja acá también — es un
+        // booleano de negocio, no una credencial, no necesita `$hidden`.
+        'deploy_token',
+        'deploy_enabled',
+        // El SMTP propio sigue el mismo criterio de auto-gestión por el
+        // tenant desde `Preferences.php` — por eso vive en `$fillable`.
+        'smtp_host',
+        'smtp_port',
+        'smtp_username',
+        'smtp_password',
+        'smtp_encryption',
+        'smtp_from_address',
+        'smtp_from_name',
     ];
 
     /**
-     * `deploy_token` (PAT de GitHub, ver migración de deploy webhook) queda
-     * fuera de `$fillable` a propósito — es una credencial de infraestructura
-     * que solo el operador de la plataforma setea (`forceFill()` vía tinker
-     * o seeder), nunca un campo que un formulario de Studio deba poder
-     * llenar en masa. `$hidden` es la segunda defensa: aunque el modelo
+     * `deploy_token` (PAT de GitHub, ver migración de deploy webhook) es
+     * `$fillable` desde 2026-09-18 (2da actualización) — el propio tenant lo
+     * carga desde `Preferences.php` — pero se mantiene en `$hidden` porque
+     * sigue siendo una credencial, no un dato de negocio: aunque el modelo
      * `Tenant` no se expone hoy en ninguna API Resource, cualquier futuro
-     * `toArray()`/`toJson()` accidental no lo filtra.
+     * `toArray()`/`toJson()` accidental no debe filtrarlo. Mismo criterio
+     * que `smtp_password` (mass-assignable, pero nunca serializable).
      */
     protected $hidden = [
         'deploy_token',
+        'smtp_password',
     ];
 
     /**
@@ -66,6 +86,10 @@ class Tenant extends Model
             // Mismo criterio que `Contact::email/phone/company` — el PAT de
             // GitHub es un secreto, no un dato de negocio, se cifra at-rest.
             'deploy_token' => 'encrypted',
+            'deploy_enabled' => 'boolean',
+            'smtp_port' => 'integer',
+            // Mismo criterio: la contraseña SMTP se cifra at-rest.
+            'smtp_password' => 'encrypted',
         ];
     }
 
@@ -232,20 +256,112 @@ class Tenant extends Model
     /**
      * Gate del mecanismo de "deploy webhook" (2026-09-17, Fase 6 post-MVP
      * adelantada — ver ADR nuevo en DECISIONS.md): indica si este tenant
-     * tiene configurado el disparo automático de rebuild+deploy de su front
-     * headless al guardar contenido (`deploy_repo` + `deploy_token`, ambos
-     * seteados solo por el operador de la plataforma vía tinker/seeder, ver
-     * migración `add_deploy_webhook_fields_to_tenants_table`).
+     * tiene CREDENCIALES cargadas (`deploy_repo` + `deploy_token`) para
+     * disparar el rebuild+deploy de su front headless. Puramente sobre
+     * presencia de datos — NO indica si el disparo automático al guardar
+     * contenido debe estar activo; para eso ver `hasAutoDeployActive()`
+     * (2026-09-18, 2da actualización).
      *
-     * `false` por defecto para CUALQUIER tenant (ambos campos nulos) — el
-     * mecanismo es opt-in explícito, no un comportamiento nuevo silencioso
-     * para tenants que no tengan un pipeline de CI propio conectado todavía.
-     * `DeployTriggerObserver`/`TriggerFrontendDeploy` consultan este gate
-     * antes de encolar o disparar nada.
+     * Hasta 2026-09-18 este método era el ÚNICO gate del mecanismo completo
+     * (ambos campos los seteaba solo el operador vía tinker) — al pasar a
+     * que el propio tenant los cargue desde `Preferences.php`, dejó de
+     * alcanzar por sí solo: el tenant puede querer completar sus
+     * credenciales sin activar todavía el disparo automático. Se mantiene
+     * sin cambios de comportamiento porque `FrontendDeployService::dispatch()`
+     * lo sigue usando tal cual — la capacidad TÉCNICA de disparar (¿hay con
+     * qué autenticar contra GitHub?) es una pregunta distinta de la
+     * política de automatización (¿debe hacerse en cada guardado?),
+     * pensando en un futuro botón manual "Publicar ahora" que funcione
+     * aunque el checkbox de automatización esté apagado.
      */
     public function hasDeployWebhookConfigured(): bool
     {
         return filled($this->deploy_repo) && filled($this->deploy_token);
+    }
+
+    /**
+     * Gate REAL del disparo automático al guardar contenido (2026-09-18,
+     * pedido del Tech Lead: dejar que el tenant vincule su propio repo/token
+     * desde Preferencias, con un checkbox "Automatización activa" que solo
+     * se pueda tildar cuando el repo y el token ya estén completos, y que
+     * NO quede activo por default solo porque las credenciales están
+     * cargadas). `DeployTriggerObserver`/`TriggerFrontendDeploy` consultan
+     * ESTE método (no `hasDeployWebhookConfigured()`) antes de encolar o
+     * disparar nada — combina ambas condiciones: credenciales presentes Y
+     * el tenant tildó el checkbox. `deploy_enabled` en `false` (default de
+     * la columna) para cualquier tenant nuevo o que recién cargó sus
+     * credenciales sin activar todavía el toggle.
+     */
+    public function hasAutoDeployActive(): bool
+    {
+        return (bool) $this->deploy_enabled && $this->hasDeployWebhookConfigured();
+    }
+
+    /**
+     * SMTP propio del tenant (2026-09-18, pedido del Tech Lead: "falta la
+     * sección de configuración para ingresar los datos para configurar su
+     * SMTP favorito y será mejor para evitar usar mi smtp general para
+     * todo"). `host`+`username` como mínimo — `port`/`encryption`/`from_*`
+     * tienen fallback razonable (ver `smtpMailerConfig()`), pero sin host+
+     * usuario no hay nada real que conectar. Igual que
+     * `hasDeployWebhookConfigured()`: `false` por defecto para cualquier
+     * tenant nuevo, mecanismo 100% opt-in — sin esto configurado, los
+     * emails de `ContactSubmissionService` siguen usando el `MAIL_MAILER`
+     * global de la plataforma, sin cambio de comportamiento.
+     */
+    public function hasCustomSmtpConfigured(): bool
+    {
+        return filled($this->smtp_host) && filled($this->smtp_username);
+    }
+
+    /**
+     * Config de mailer SMTP lista para registrar en `config('mail.mailers.*')`
+     * en runtime (ver `App\Mail\Concerns\UsesTenantSmtp`) — centraliza los
+     * fallbacks acá en vez de repetirlos en cada Mailable. `port` cae a 587
+     * si el tenant no lo especifica.
+     *
+     * `scheme` (no `encryption`) es la llave real que entiende
+     * `Illuminate\Mail\MailManager::createSmtpTransport()` — Symfony
+     * Mailer (`EsmtpTransportFactory::create()`) decide TLS/SSL SOLO por el
+     * scheme de la Dsn ('smtps' = TLS implícito desde el inicio de la
+     * conexión) o, si no hay scheme explícito, por el puerto (465 → TLS
+     * implícito). NO existe una opción `encryption` que Symfony lea — a
+     * diferencia de versiones viejas de Laravel (`MAIL_ENCRYPTION`, ya
+     * deprecado). Por eso `smtp_encryption` (el select "Cifrado" de
+     * Preferencias) se traduce acá a `scheme`: `'ssl'` → fuerza `'smtps'`
+     * (TLS implícito, cualquiera sea el puerto); `'tls'` o vacío → `'smtp'`,
+     * que negocia STARTTLS automáticamente si el servidor lo ofrece (el
+     * comportamiento correcto para el puerto 587, el más común).
+     *
+     * @return array<string, mixed>
+     */
+    public function smtpMailerConfig(): array
+    {
+        return [
+            'transport' => 'smtp',
+            'scheme' => $this->smtp_encryption === 'ssl' ? 'smtps' : 'smtp',
+            'host' => $this->smtp_host,
+            'port' => $this->smtp_port ?: 587,
+            'username' => $this->smtp_username,
+            'password' => $this->smtp_password,
+        ];
+    }
+
+    /**
+     * Dirección/nombre "From" a usar en los emails de este tenant cuando
+     * tiene SMTP propio configurado — cae al nombre del tenant si no
+     * definió `smtp_from_name`, y al `MAIL_FROM_ADDRESS` global si no
+     * definió `smtp_from_address` (evita un "From" vacío o inválido si el
+     * tenant completó host/usuario/contraseña pero se olvidó de esto).
+     *
+     * @return array{address: string, name: string}
+     */
+    public function smtpFromAddress(): array
+    {
+        return [
+            'address' => $this->smtp_from_address ?: config('mail.from.address'),
+            'name' => $this->smtp_from_name ?: $this->name,
+        ];
     }
 
     /**
