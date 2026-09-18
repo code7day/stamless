@@ -45,7 +45,7 @@ class TriggerFrontendDeploy implements ShouldQueue, ShouldBeUnique
      * producción debe escuchar explícitamente esta cola además de
      * `default` (`--queue=default,deploys`) para que esto se procese.
      */
-    public string $queue = 'deploys';
+    public $queue = 'deploys';
 
     /**
      * Ventana de debounce aplicada por el observer al encolar (`->delay()`).
