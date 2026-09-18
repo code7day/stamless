@@ -51,6 +51,21 @@ use Filament\Widgets\Widget;
  * `/edit/{record}` propia (los 4 Resources acá usan el patrón "Manage" de
  * una sola página). Los 4 `EditAction::make()` de estos Resources usan el
  * nombre default `'edit'` (confirmado, ninguno lo sobreescribe).
+ *
+ * 2026-09-18, fix real: `tableActionRecord` va con `$record->getKey()`
+ * (el `id` interno, bigint), NUNCA con el modelo Eloquent completo. Pasar
+ * el modelo directo rompía en producción (`SQLSTATE[22P02]: invalid input
+ * syntax for type bigint`, comparando `pages.id` contra un UUID) — Laravel
+ * sustituye un `Model` como parámetro de URL usando `getRouteKey()`, que
+ * en esta app es `uuid` (trait `HasUuid::getRouteKeyName()`, la
+ * convención del proyecto: uuid = identificador público). Pero Filament
+ * resuelve el record de una acción de tabla montada con `resolveRecordKey()`
+ * (`vendor/filament/actions/src/Concerns/InteractsWithRecord.php`), que
+ * SIEMPRE usa `$record->getKey()` (la PK interna), sin mirar el route key
+ * — de ahí el desajuste uuid-vs-id. `PageResource`/`PostResource`/
+ * `ServiceResource`/`TestimonialResource` no exponen su tabla por `uuid`
+ * en ningún otro lado (ni `ContactResource`/`RecentContactsWidget`, que no
+ * hacen este tipo de deep-link), así que `getKey()` es lo correcto acá.
  */
 class RecentContentChangesWidget extends Widget
 {
@@ -127,7 +142,7 @@ class RecentContentChangesWidget extends Widget
                         'icon' => 'heroicon-o-document-text',
                         'url' => PageResource::getUrl(parameters: [
                             'tableAction' => 'edit',
-                            'tableActionRecord' => $page,
+                            'tableActionRecord' => $page->getKey(),
                         ]),
                         'updated_at' => $page->updated_at,
                     ])
@@ -148,7 +163,7 @@ class RecentContentChangesWidget extends Widget
                         'icon' => 'heroicon-o-document-duplicate',
                         'url' => PostResource::getUrl(parameters: [
                             'tableAction' => 'edit',
-                            'tableActionRecord' => $post,
+                            'tableActionRecord' => $post->getKey(),
                         ]),
                         'updated_at' => $post->updated_at,
                     ])
@@ -169,7 +184,7 @@ class RecentContentChangesWidget extends Widget
                         'icon' => 'heroicon-o-briefcase',
                         'url' => ServiceResource::getUrl(parameters: [
                             'tableAction' => 'edit',
-                            'tableActionRecord' => $service,
+                            'tableActionRecord' => $service->getKey(),
                         ]),
                         'updated_at' => $service->updated_at,
                     ])
@@ -190,7 +205,7 @@ class RecentContentChangesWidget extends Widget
                         'icon' => 'heroicon-o-chat-bubble-left-right',
                         'url' => TestimonialResource::getUrl(parameters: [
                             'tableAction' => 'edit',
-                            'tableActionRecord' => $testimonial,
+                            'tableActionRecord' => $testimonial->getKey(),
                         ]),
                         'updated_at' => $testimonial->updated_at,
                     ])

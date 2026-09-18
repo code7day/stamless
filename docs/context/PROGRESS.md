@@ -11,6 +11,15 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix real (2do, mismo hilo): `tableActionRecord` con el modelo completo en vez del `id` — 500 en producción (`invalid input syntax for type bigint`)
+
+- **El Tech Lead probó el fix anterior y reportó, con captura, un `Illuminate\Database\QueryException`** al hacer clic en un item: `SQLSTATE[22P02]: Invalid text representation... invalid input syntax for type bigint: "68678ea7-88ff-45ce-a361-26f71d89b7a5"` — Postgres comparando `pages.id` (bigint) contra un UUID.
+- **Causa real**: el fix anterior pasaba el MODELO Eloquent completo como `tableActionRecord` (`'tableActionRecord' => $page`). Laravel sustituye un `Model` en los parámetros de una URL usando `$model->getRouteKey()` — en esta app eso es `uuid` (trait `HasUuid::getRouteKeyName()`, la convención del proyecto: uuid = identificador público). Pero Filament resuelve el record de una acción de tabla montada con `Action::resolveRecordKey()` (`vendor/filament/actions/src/Concerns/InteractsWithRecord.php`), que SIEMPRE usa `$record->getKey()` (la PK interna `id`), nunca el route key — de ahí el desajuste: la URL llevaba el uuid, pero Filament intentaba buscar ese string contra la columna `id` (bigint).
+- **Fix: pasar `$record->getKey()` explícitamente** (`$page->getKey()`, etc.) en vez del modelo, en los 4 mapeos. Confirmado contra el código fuente real de Filament (`resolveRecordKey()`), no por prueba y error.
+- **Archivos:** `app/Filament/Widgets/RecentContentChangesWidget.php`.
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo del Tech Lead — clic en un item debe abrir el slide-over de edición sin el 500.
+
 ## 2026-09-18 — Fix: los links de "Últimos cambios" abrían el índice del Resource, no el editar del registro
 
 - **El Tech Lead probó el widget recién agregado y pidió**: "al dar clic en ese contenido debería ir al resource pero abrir el editar de ese registro" — cada item linkeaba a `Resource::getUrl()` (la pantalla índice sola), sin abrir el slide-over de edición del registro puntual.
