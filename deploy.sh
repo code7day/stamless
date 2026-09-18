@@ -204,6 +204,7 @@ RSYNC_EXCLUDES=(
     --exclude='/.editorconfig'
     --exclude='/.gitattributes'
     --exclude='/.npmrc'
+    --exclude='/*.pem'
     --exclude='/deploy.sh'
     --exclude='/production.sh'
     --exclude='/AGENTS.md'
