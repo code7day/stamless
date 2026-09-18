@@ -491,10 +491,26 @@ class ServiceResource extends Resource
                 // listado con ese mismo criterio ya usado en el resto de la
                 // app (evita además un HEAD extra a R2 por cada fila visible
                 // del listado, más rápido de por sí).
+                // 2026-09-18, 3er fix real, mismo hilo: con el estado y el
+                // `exists()` ya resueltos, el `src` seguía roto — mostraba
+                // una URL FIRMADA de R2 (`*.r2.cloudflarestorage.com/...
+                // ?X-Amz-Signature=...`), no la URL pública simple que ya
+                // funciona (`media.stamless.com/...`, confirmada por
+                // tinker). Causa: `ImageColumn::getVisibility()` infiere
+                // `'private'` cuando el disco NO se llama literalmente
+                // `'public'` (acá es `'r2'`) — dispara `$storage->
+                // temporaryUrl()` en vez de `$storage->url()`. La visibilidad
+                // real del archivo (pública, servible sin firma) vive en la
+                // config del disco/`MediaUpload` (`->visibility('public')`
+                // al subir), pero `ImageColumn` no la consulta — solo mira
+                // el string del nombre del disco. `->visibility('public')`
+                // explícito fuerza la rama correcta (`$storage->url()`,
+                // igual que `MediaUpload::previewUrl()`/`Media::url()`).
                 Tables\Columns\ImageColumn::make('image.path')
                     ->label('')
                     ->getStateUsing(fn ($record) => $record?->image?->path)
                     ->disk(fn ($record) => $record?->image?->disk?->value ?? 'public')
+                    ->visibility('public')
                     ->checkFileExistence(false)
                     ->circular(),
 

@@ -184,10 +184,16 @@ class TestimonialResource extends Resource
                 // `UnableToCheckFileExistence` y devolver null igual que el
                 // bug anterior; se desactiva para confiar en el registro
                 // `Media`, igual que ya hace `MediaUpload::previewUrl()`.
+                // `visibility('public')`: 3er fix, ver docblock extenso en
+                // `ServiceResource` — sin esto, `getVisibility()` infiere
+                // `'private'` (disco `'r2'` ≠ string `'public'`) y arma una
+                // URL firmada de R2 en vez de la pública simple que ya
+                // funciona.
                 Tables\Columns\ImageColumn::make('avatar.path')
                     ->label('')
                     ->getStateUsing(fn ($record) => $record?->avatar?->path)
                     ->disk(fn ($record) => $record?->avatar?->disk?->value ?? 'public')
+                    ->visibility('public')
                     ->checkFileExistence(false)
                     ->circular(),
 

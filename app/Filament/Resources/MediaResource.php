@@ -340,9 +340,15 @@ class MediaResource extends Resource
                     // `$storage->exists()` (HeadObject) contra R2 antes de
                     // construir la URL — mismo punto de falla potencial,
                     // corregido preventivamente aunque no se reportó roto.
+                    // `visibility('public')`: 3er fix, ver docblock extenso
+                    // en `ServiceResource` — sin esto, `getVisibility()`
+                    // infiere `'private'` (disco `'r2'` ≠ string `'public'`)
+                    // y arma una URL firmada de R2 en vez de la pública
+                    // simple que ya funciona.
                     Tables\Columns\ImageColumn::make('path')
                         ->label('')
                         ->disk(fn ($record) => $record->disk?->value ?? 'public')
+                        ->visibility('public')
                         ->checkFileExistence(false)
                         ->square()
                         ->height(190)
