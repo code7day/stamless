@@ -11,6 +11,12 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — ✅ Confirmado en producción: los 3 fixes de `ImageColumn`/disco canónico resolvieron el bug de thumbnails rotos
+
+El Tech Lead confirmó en vivo, tras el deploy de los 4 commits del día (`15a562e` estado → `2141a53` existencia → `57249a8` visibilidad → `04b9fa2` disco canónico + migración de datos): los thumbnails de Servicios/Testimonios/Publicaciones/Biblioteca de Medios vuelven a mostrarse correctamente en producción. Cierra la cadena de investigación completa de este hilo (de "no jala de R2" a la causa real, en 3 capas distintas de `ImageColumn` de Filament).
+
+De paso se confirmó con `php artisan media:sync-r2 --dry-run` (y aclarado con el Tech Lead) que los 39 archivos físicos que siguen en `storage/app/public` del servidor de producción son intencionales — contenido inicial del Cliente 0 que el Tech Lead conserva a propósito como backup local por si se pierde algo en R2, no archivos huérfanos que falte migrar. **Nota para el futuro:** el `--dry-run` de `media:sync-r2` no verifica existencia real contra el disco destino (bug preexistente del comando, no corregido esta vuelta por no ser parte del pedido) — siempre reporta "se subirían todos", sin importar si ya están en R2; para un chequeo real hay que correr el comando sin `--dry-run` (es idempotente, omite lo ya existente).
+
 ## 2026-09-18 — Fix de fondo (4to, mismo hilo): disco `'public'` como único nombre canónico de media, resolviendo local/R2 en `config/filesystems.php` — reemplaza los `->visibility('public')` por columna
 
 - **Pedido explícito del Tech Lead** tras el 3er fix: en vez de seguir parchando cada `ImageColumn` con `->visibility('public')`, corregir en la raíz — "en local funcione normal en public por default y si hay cambios de storage de local a r2 en .env, entonces ya no debería ser explícito `->visibility('public')`". Confirmó además que el mecanismo ya existía a medias: `MediaUpload::diskName()` ya redirigía `FILESYSTEM_DISK=local` → disco `'public'` (porque el disco `local` de Laravel 11+ sube privado por default, `storage/app/private`) — el mismo problema de "privado por default si no se declara explícito" que apareció ahora del lado de LECTURA en `ImageColumn`.
