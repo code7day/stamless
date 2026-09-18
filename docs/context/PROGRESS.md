@@ -11,6 +11,14 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Tabla de límites de tokens en `docs/api/v1.md` (Free=5, Auspicio/Convenio=10) reemplazada por un ejemplo genérico
+
+- **Pedido del Tech Lead**, viendo la tabla renderizada `| Plan | Tokens activos permitidos | Free | 5 | Auspicio/Convenio | 10 |`: "esto es fijo o dinámico, si es dinámico dejalo fijo como un ejemplo genérico". Se confirmó: `docs/api/v1.md` es un archivo Markdown estático (leído vía `file_get_contents()` en `ApiDocumentation::readMarkdown()`, la única sustitución que hace es la del `tenant_slug` — ver entradas anteriores) — la tabla eran números escritos a mano, no leídos en runtime de `Tenant::maxApiTokens()` (`app/Models/Tenant.php:551-558`, que hoy devuelve `free/freemium => 5, sponsorship => 10`). Los números coincidían con el código HOY, pero nada los mantiene sincronizados — si el límite de un plan cambia en el código, la doc queda desactualizada en silencio, sin ningún aviso.
+- **Fix:** la tabla se reemplazó por una explicación genérica con un número de ejemplo ("si tu plan tiene un límite de 3 tokens activos, al llegar a ese número Console bloquea la creación de tokens nuevos...") y se agregó una frase remitiendo al lugar real donde consultar el límite vigente (Console → Desarrolladores → API Tokens), en vez de listar los planes/números reales en un documento que no se actualiza junto con el código.
+- **Grep de verificación:** sin más menciones de `Free`/`Auspicio`/`Convenio` ni tablas de plan en `docs/api/v1.md` ni `docs/api/openapi.v1.yaml` — no queda otro caso del mismo problema en estos 2 archivos.
+- **Archivos:** `docs/api/v1.md`.
+- **Pendiente:** sumar al deploy pendiente.
+
 ## 2026-09-18 — `docs/api/v1.md`/`openapi.v1.yaml` dejan de leerse como changelog: sacadas todas las fechas/anotaciones de "agregado en"/"excepción de tal fecha"
 
 - **Pedido del Tech Lead**, viendo una captura de la doc renderizada con anotaciones tipo `(2026-09-15, solo en GET /services/{slug}, NO en GET /services)`: "no es necesario poner fechas por mejoras o cambios" — para un documento de referencia/guideline de uso, arrastrar cuándo se agregó cada campo (una anotación útil mientras se documentaba el desarrollo día a día) es ruido que no aporta a un desarrollador externo consumiendo la API hoy; podía leerse como un changelog en vez de una guía técnica.
