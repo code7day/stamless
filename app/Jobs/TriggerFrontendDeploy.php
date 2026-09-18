@@ -38,8 +38,14 @@ class TriggerFrontendDeploy implements ShouldQueue, ShouldBeUnique
      * Vive acá (no solo en el observer) para que `$uniqueFor` de abajo
      * siempre cubra al menos ese delay + margen de procesamiento, sin que
      * quede como un número mágico repetido en 2 archivos.
+     *
+     * Bajado de 90s a 30s (2026-09-18, pedido del Tech Lead: la espera se
+     * sentía larga end-to-end). Sigue agrupando guardados rápidos seguidos
+     * (varios bloques/campos en pocos segundos) en un solo build; con menos
+     * margen que antes, pero el caso real de "guardar todo un tirón" rara
+     * vez excede 30s entre guardados.
      */
-    public const DEBOUNCE_SECONDS = 90;
+    public const DEBOUNCE_SECONDS = 30;
 
     /**
      * Debe ser mayor a `DEBOUNCE_SECONDS` — si un job delayed todavía no
@@ -47,7 +53,7 @@ class TriggerFrontendDeploy implements ShouldQueue, ShouldBeUnique
      * `dispatch()` de ese mismo tenant sigan descartándose en silencio en
      * vez de encolar un segundo job en paralelo.
      */
-    public int $uniqueFor = 150;
+    public int $uniqueFor = 90;
 
     public int $tries = 3;
 
