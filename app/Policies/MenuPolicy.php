@@ -3,11 +3,11 @@
 namespace App\Policies;
 
 /**
- * Menús: solo `Admin`/`Editor` — ver docblock de `EditorManagedPolicy` y
- * ADR-078. `Author` no está en la lista de recursos que el Tech Lead
- * definió para el rol Redactor (contenidos/blog/servicios/testimonios).
+ * Menús: `Admin`/`Soporte`/`Marketing` — ver docblock de
+ * `SupportManagedPolicy` y el addendum de ADR-078 (2026-09-18, expansión a
+ * 5 roles). `Editor`/`Author` quedan fuera de este recurso.
  */
-class MenuPolicy extends EditorManagedPolicy
+class MenuPolicy extends SupportManagedPolicy
 {
-    // Usa los defaults de EditorManagedPolicy: Admin/Editor en las 4 acciones.
+    // Usa los defaults de SupportManagedPolicy.
 }

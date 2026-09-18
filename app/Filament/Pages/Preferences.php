@@ -88,21 +88,22 @@ class Preferences extends Page implements HasForms
     protected string $view = 'filament.pages.preferences';
 
     /**
-     * `Admin`/`Editor` — no `Author`. Esta página mezcla preferencias
-     * personales (idioma/zona horaria) con ajustes tenant-wide (identidad
-     * del proyecto, SEO/OG, integraciones, SMTP, despliegue — ver docblock
-     * de la clase); ninguno de esos grupos está en la lista de recursos que
-     * el Tech Lead definió para `Author` (contenidos/blog/servicios/
-     * testimonios). Efecto secundario conocido y aceptado: un `Author`
-     * tampoco puede cambiar su propio idioma/zona horaria desde acá en este
-     * MVP — no hay hoy una página separada solo para eso. Ver
-     * `RestrictsPageToRoles` y ADR-078.
+     * `Admin`/`Soporte` — no `Marketing`/`Editor`/`Author`. Esta página
+     * mezcla preferencias personales (idioma/zona horaria) con ajustes
+     * tenant-wide (identidad del proyecto, SEO/OG, integraciones, SMTP,
+     * despliegue — ver docblock de la clase); es el grupo "Ajustes/
+     * Preferencias" que el Tech Lead excluyó explícitamente de `Marketing`
+     * ("sin desarrolladores/ajustes/preferencias") al definir la expansión
+     * a 5 roles (2026-09-18, addendum ADR-078). Efecto secundario conocido
+     * y aceptado: ni `Marketing` ni `Editor`/`Author` pueden cambiar su
+     * propio idioma/zona horaria desde acá en este MVP — no hay hoy una
+     * página separada solo para eso. Ver `RestrictsPageToRoles` y ADR-078.
      */
     public static function canAccess(): bool
     {
         return static::userHasAnyRole([
             UserRoleEnum::Admin->value,
-            UserRoleEnum::Editor->value,
+            UserRoleEnum::Soporte->value,
         ]);
     }
 

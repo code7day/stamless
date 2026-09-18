@@ -60,15 +60,16 @@ class ApiTokens extends Page implements HasTable
     protected string $view = 'filament.pages.api-tokens';
 
     /**
-     * Grupo "Desarrolladores": `Admin`/`Editor` — no `Author`, fuera de la
-     * lista de recursos que el Tech Lead definió para ese rol. Ver
+     * Grupo "Desarrolladores": `Admin`/`Soporte` — no `Marketing`/`Editor`/
+     * `Author` (2026-09-18, addendum ADR-078, expansión a 5 roles: el Tech
+     * Lead excluyó explícitamente este grupo de `Marketing`). Ver
      * `RestrictsPageToRoles` y ADR-078.
      */
     public static function canAccess(): bool
     {
         return static::userHasAnyRole([
             UserRoleEnum::Admin->value,
-            UserRoleEnum::Editor->value,
+            UserRoleEnum::Soporte->value,
         ]);
     }
 

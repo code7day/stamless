@@ -48,14 +48,15 @@ class ApiPlayground extends Page implements HasForms
     protected string $view = 'filament.pages.api-playground';
 
     /**
-     * Grupo "Desarrolladores": `Admin`/`Editor` — no `Author`. Ver
+     * Grupo "Desarrolladores": `Admin`/`Soporte` — no `Marketing`/`Editor`/
+     * `Author` (2026-09-18, addendum ADR-078, expansión a 5 roles). Ver
      * `RestrictsPageToRoles` y ADR-078.
      */
     public static function canAccess(): bool
     {
         return static::userHasAnyRole([
             UserRoleEnum::Admin->value,
-            UserRoleEnum::Editor->value,
+            UserRoleEnum::Soporte->value,
         ]);
     }
 

@@ -3,10 +3,11 @@
 namespace App\Policies;
 
 /**
- * Sliders: solo `Admin`/`Editor` — ver docblock de `EditorManagedPolicy` y
- * ADR-078.
+ * Sliders: `Admin`/`Soporte`/`Marketing` — ver docblock de
+ * `SupportManagedPolicy` y el addendum de ADR-078 (2026-09-18, expansión a
+ * 5 roles). `Editor`/`Author` quedan fuera de este recurso.
  */
-class SliderPolicy extends EditorManagedPolicy
+class SliderPolicy extends SupportManagedPolicy
 {
-    // Usa los defaults de EditorManagedPolicy.
+    // Usa los defaults de SupportManagedPolicy.
 }

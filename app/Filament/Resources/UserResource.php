@@ -171,7 +171,9 @@ class UserResource extends Resource
                             ->options(UserRoleEnum::class)
                             ->descriptions([
                                 UserRoleEnum::Admin->value => 'Control total del panel Studio de este proyecto y sus configuraciones.',
-                                UserRoleEnum::Editor->value => 'Puede crear, editar y publicar contenidos, blog, servicios y multimedia.',
+                                UserRoleEnum::Soporte->value => 'Igual a Administrador excepto gestión de Usuarios: incluye Desarrolladores, Ajustes y Preferencias.',
+                                UserRoleEnum::Marketing->value => 'Contenidos, blog, servicios, multimedia, menús, sliders, testimonios, contactos y formularios. Sin Desarrolladores/Ajustes/Preferencias.',
+                                UserRoleEnum::Editor->value => 'Puede crear, editar y publicar contenidos, blog, servicios y testimonios, y ver los contactos recibidos.',
                                 UserRoleEnum::Author->value => 'Puede redactar contenidos y entradas de blog en modo borrador.',
                             ])
                             ->default(UserRoleEnum::Editor->value)
@@ -225,6 +227,8 @@ class UserResource extends Resource
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'Admin' => 'success',
+                        'Soporte' => 'info',
+                        'Marketing' => 'purple',
                         'Editor' => 'primary',
                         'Author' => 'warning',
                         default => 'gray',

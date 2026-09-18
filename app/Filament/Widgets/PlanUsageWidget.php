@@ -2,6 +2,8 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\UserRoleEnum;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use App\Filament\Pages\ApiTokens;
 use App\Filament\Resources\MediaResource;
 use App\Filament\Resources\MenuResource;
@@ -40,7 +42,25 @@ use Filament\Widgets\Widget;
  */
 class PlanUsageWidget extends Widget
 {
+    use RestrictsPageToRoles;
+
     protected string $view = 'filament.cms.widgets.plan-usage-widget';
+
+    /**
+     * 2026-09-18 (addendum ADR-078, expansión a 5 roles): pedido explícito
+     * del Tech Lead — "en el widget del uso del plan solo mostrar al
+     * administrador y soporte (dev)". `Marketing`/`Editor`/`Author` no ven
+     * este widget en el Escritorio (sí siguen viendo los badges de uso en
+     * el sidebar/tabs de cada Resource al que tengan acceso — esto solo
+     * oculta el resumen consolidado del Dashboard).
+     */
+    public static function canView(): bool
+    {
+        return static::userHasAnyRole([
+            UserRoleEnum::Admin->value,
+            UserRoleEnum::Soporte->value,
+        ]);
+    }
 
     /**
      * 2026-09-13, corrección del Tech Lead con captura: en `'full'` este
