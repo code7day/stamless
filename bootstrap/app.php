@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -94,6 +95,51 @@ return Application::configure(basePath: dirname(__DIR__))
                         }
                     }
                 }
+            }
+
+            return null;
+        });
+
+        // 2026-09-18, pedido del Tech Lead con captura: navegar por URL
+        // directa a una ruta de Studio sin acceso (`canAccess()`/Policy en
+        // `false` para el rol del usuario logueado — ej. `Marketing` a
+        // `/preferences`) mostraba la página de error CRUDA de Laravel
+        // ("403 | Forbidden", sin ningún estilo de Filament ni navegación),
+        // en vez de redirigir a un lugar útil dentro de la app. Mismo
+        // criterio que el handler de 404/tenant inválido de arriba: para un
+        // usuario autenticado en el host de Studio, un 403 se resuelve
+        // mandándolo a su propio Escritorio en vez de mostrarle el error —
+        // ahí puede seguir navegando por las opciones que SÍ tiene. Se deja
+        // pasar (```return null```) cuando no aplica (host distinto, la API
+        // ya tiene su propio envelope JSON más abajo, o no hay usuario
+        // autenticado — un guest sin sesión cae al comportamiento default).
+        //
+        // `AccessDeniedHttpException` (no `AuthorizationException`) porque
+        // `Handler::prepareException()` de Laravel ya hizo esa conversión
+        // ANTES de que este callback vea la excepción — mismo dato ya
+        // documentado en el envelope de la API, más abajo en este archivo.
+        $exceptions->render(function (AccessDeniedHttpException $e, Request $request) {
+            $studioHost = parse_url(config('stamless.urls.studio'), PHP_URL_HOST);
+            if ($request->getHost() !== $studioHost || $request->expectsJson()) {
+                return null;
+            }
+
+            $user = auth()->user();
+            if (! $user instanceof User) {
+                return null;
+            }
+
+            $cmsPanel = Filament::getPanel('cms', isStrict: false);
+            if (! $cmsPanel) {
+                return null;
+            }
+
+            if ($user->tenant instanceof Tenant) {
+                return redirect()->to($cmsPanel->getUrl($user->tenant));
+            }
+
+            if ($user->is_super_admin) {
+                return redirect()->to(config('stamless.urls.platform'));
             }
 
             return null;

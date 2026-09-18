@@ -324,7 +324,19 @@ class PanelCmsProvider extends PanelProvider
                 MenuItem::make()
                     ->label('Preferencias')
                     ->icon('heroicon-o-adjustments-horizontal')
-                    ->url(fn (): string => Preferences::getUrl(['tenant' => Filament::getTenant() ?? auth()->user()?->tenant])),
+                    ->url(fn (): string => Preferences::getUrl(['tenant' => Filament::getTenant() ?? auth()->user()?->tenant]))
+                    // 2026-09-18, bug real reportado por el Tech Lead: este
+                    // ítem no tenía `->visible()` — se mostraba a CUALQUIER
+                    // rol en el dropdown del avatar, aunque `Preferences::
+                    // canAccess()` (ADR-078, `[Admin, Soporte]` desde la
+                    // expansión de roles) diera `false` para ese usuario —
+                    // probado en vivo con una cuenta `Marketing`, que veía el
+                    // link y recibía un 403 al hacer clic. `MenuItem` no
+                    // pasa por ninguna Policy/canAccess automático de
+                    // Filament (a diferencia de un Resource o Page en el
+                    // sidebar) — hay que gatearlo a mano, igual que
+                    // "Ir a Platform Manager" arriba.
+                    ->visible(fn (): bool => Preferences::canAccess()),
                 MenuItem::make()
                     ->label('Cambiar contraseña')
                     ->icon('heroicon-o-lock-closed')
