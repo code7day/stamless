@@ -27,10 +27,21 @@ class FormFieldDefinitionSeeder extends Seeder
             'required' => true,
             'encrypted' => true,
         ],
+        // 2026-09-18 (ADR forms por tenant) — antes `Tel` plano: el selector
+        // de país + detección por IP de CICA360 (`ContactForm.tsx`) era un
+        // caso hardcodeado en un solo frontend, no algo que otro tenant
+        // pudiera elegir. Pasa a `TelCountry` para que CUALQUIER tenant
+        // pueda optar por esa UX desde el builder de formularios (Fase 1,
+        // `FormResource`) sin tocar código — ver docblock del case en
+        // `FormFieldTypeEnum`. Re-sembrar este seeder actualiza el `type`
+        // de la `FormFieldDefinition` global; los `FormField` YA creados
+        // (ej. el "WhatsApp" de CICA360) toman el nuevo tipo recién cuando
+        // `Cliente0ContentSeeder::upsertContactForm()` se vuelve a correr
+        // (copia `$definition->type->value` en cada `updateOrCreate`).
         [
             'key' => 'phone',
             'label' => 'Teléfono',
-            'type' => FormFieldTypeEnum::Tel,
+            'type' => FormFieldTypeEnum::TelCountry,
             'required' => false,
             'encrypted' => true,
         ],

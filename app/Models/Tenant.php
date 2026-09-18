@@ -369,6 +369,25 @@ class Tenant extends Model
     }
 
     /**
+     * Límite de formularios por tenant (2026-09-18, ADR forms por tenant —
+     * `FormResource`). Mismo criterio que `maxSliders()`: un `Form` es una
+     * pieza que se arma (nombre + campos elegidos del catálogo), no un
+     * ítem de contenido suelto, así que comparte esos mismos números en vez
+     * de los de `maxPosts()`/`maxServices()`. Free alcanza para el
+     * "Contacto principal" de siempre + 1 de repuesto (ej. un form de
+     * newsletter); Auspicio/Convenio deja margen para separar contacto
+     * general, cotización y soporte.
+     */
+    public function maxForms(): ?int
+    {
+        return match ($this->plan) {
+            'free', 'freemium' => 2,
+            'sponsorship' => 5,
+            default => null,
+        };
+    }
+
+    /**
      * Límite de CANTIDAD de menús por tenant (2026-09-13, pedido del Tech
      * Lead: "a lo mejor falta el limite de menus, son 5 menus limite sea
      * free o auspicio") — a diferencia del resto de topes de este bloque,
