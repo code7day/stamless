@@ -79,7 +79,12 @@ class ApiPlayground extends Page implements HasForms
         'pages.index' => ['group' => 'Pages', 'label' => 'Listar pages', 'method' => 'GET', 'path' => 'pages', 'body' => ''],
         'pages.show' => ['group' => 'Pages', 'label' => 'Page por slug (home)', 'method' => 'GET', 'path' => 'pages/home', 'body' => ''],
         'posts.index' => ['group' => 'Posts', 'label' => 'Listar posts', 'method' => 'GET', 'path' => 'posts', 'body' => ''],
-        'posts.show' => ['group' => 'Posts', 'label' => 'Post por slug', 'method' => 'GET', 'path' => 'posts/como-elegir-seguro-de-vida', 'body' => ''],
+        // 2026-09-18: antes traía un slug real de CICA360
+        // ('posts/como-elegir-seguro-de-vida') — cualquier tenant que no
+        // fuera CICA360 veía un ejemplo de otra cuenta y de un rubro
+        // (seguros) que no necesariamente es el suyo. Se usa el mismo
+        // patrón de placeholder que 'services.show' ('{slug}').
+        'posts.show' => ['group' => 'Posts', 'label' => 'Post por slug', 'method' => 'GET', 'path' => 'posts/{slug}', 'body' => ''],
         // 2026-09-02, ver ADR-044: "Services" nuevo, mismo patrón que "Posts" —
         // faltaba en este array (reportado en vivo: no aparecía en el sidebar
         // del Playground ni tenía ejemplo precargado).

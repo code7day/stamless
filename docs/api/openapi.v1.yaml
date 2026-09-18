@@ -18,12 +18,12 @@ servers:
     description: Producción
     variables:
       tenant_slug:
-        default: cica360
+        default: tu-tenant
   - url: http://localhost/v1/{tenant_slug}
     description: Desarrollo local
     variables:
       tenant_slug:
-        default: cica360
+        default: tu-tenant
 
 security:
   - bearerAuth: []
@@ -317,7 +317,7 @@ paths:
                 name: Juan Pérez
                 email: juan@example.com
                 phone: "099123456"
-                message: Quiero más información sobre seguros de vida.
+                message: Mensaje de ejemplo enviado desde el formulario.
       responses:
         "201":
           description: Creado
@@ -371,7 +371,7 @@ components:
               summary: Sin header Authorization
               value:
                 success: false
-                message: "No autenticado. Enviá un token Bearer en Authorization."
+                message: "No autenticado. Se requiere un token Bearer en el header Authorization."
                 status_code: 401
                 errors: { code: unauthenticated }
             token_invalido:
@@ -388,7 +388,7 @@ components:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
           example:
             success: false
-            message: "No tenés permiso para este recurso."
+            message: "No tiene permiso para acceder a este recurso."
             status_code: 403
             errors: { code: forbidden }
     NotFound:
@@ -408,7 +408,7 @@ components:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
           example:
             success: false
-            message: "Revisá los datos enviados."
+            message: "Revisar los datos enviados."
             status_code: 422
             errors: { code: validation, fields: { message: ["El campo message es obligatorio."] } }
     TooManyRequests:
@@ -418,7 +418,7 @@ components:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
           example:
             success: false
-            message: "Demasiadas solicitudes. Intentá más tarde."
+            message: "Demasiadas solicitudes. Intentar de nuevo más tarde."
             status_code: 429
             errors: { code: too_many_requests }
 
