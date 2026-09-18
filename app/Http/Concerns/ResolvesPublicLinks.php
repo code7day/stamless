@@ -744,7 +744,20 @@ trait ResolvesPublicLinks
                             ->values()
                             ->all();
                     } elseif ($subType === 'social_links') {
-                        $data['items'] = collect($data['items'] ?? [])->values()->all();
+                        $data['items'] = collect($data['items'] ?? [])
+                            ->map(function (array $item): array {
+                                if (isset($item['url']) && is_string($item['url'])) {
+                                    $trimmed = trim(preg_replace('/^\s+|\s+$/u', '', $item['url']));
+                                    if ($trimmed !== '' && ! preg_match('~^https?://~i', $trimmed) && ! str_starts_with($trimmed, 'mailto:') && ! str_starts_with($trimmed, 'tel:')) {
+                                        $trimmed = 'https://'.$trimmed;
+                                    }
+                                    $item['url'] = $trimmed;
+                                }
+
+                                return $item;
+                            })
+                            ->values()
+                            ->all();
                     }
 
                     return ['type' => $subType, 'data' => $data];

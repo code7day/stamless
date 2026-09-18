@@ -186,6 +186,7 @@ class FrontendDeployWebhookTest extends TestCase
 
     public function test_deleting_content_with_webhook_configured_also_queues_deploy(): void
     {
+        Http::fake();
         $tenant = $this->makeTenant(withWebhook: true);
 
         $page = Page::create([
@@ -274,6 +275,7 @@ class FrontendDeployWebhookTest extends TestCase
 
     public function test_deleting_block_with_webhook_configured_queues_deploy(): void
     {
+        Http::fake();
         $tenant = $this->makeTenant(withWebhook: true);
 
         $page = Page::create([

@@ -81,7 +81,7 @@ class ContactSubmissionServiceTest extends TestCase
         $this->assertEquals('dato sensible', $decrypted['secret_note']);
         $this->assertEquals('Quiero más info', $decrypted['message']);
 
-        Mail::assertSent(ContactFormSubmitted::class, fn (ContactFormSubmitted $mail) => $mail->contact->is($contact)
+        Mail::assertQueued(ContactFormSubmitted::class, fn (ContactFormSubmitted $mail) => $mail->contact->is($contact)
             && $mail->decryptedFields['secret_note'] === 'dato sensible'
         );
     }

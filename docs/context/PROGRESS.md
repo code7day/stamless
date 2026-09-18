@@ -11,6 +11,20 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Fix: validación de URLs de redes sociales (TikTok con alias `@`, espacios y prefijo https) en Footer
+
+- **Pedido del Tech Lead**: Reporte en vivo con captura en Studio: no se podía guardar una URL de TikTok (`https://www.tiktok.com/@cicavidafeliz`) en el bloque de footer (`colophon` -> redes sociales) debido a que contenía `@` en el alias, arrojando el error `"El campo uRL debe ser una URL válida."`. Restricciones explícitas: no desplegar cambios ("no desplegar cambios, solo solucionar") y no editar librerías en `vendor/`.
+- **Causa**: `TextInput::make('url')->url()` en Filament aplica la regla nativa `'url'` de Laravel, la cual falla si el string contiene espacios en blanco accidentales (habitual al copiar/pegar desde la app de TikTok o navegador móvil con `\u{00A0}` o espacios finales) o si se introduce sin el protocolo `https://`. Además, el closure de bloques de `PageResource` solo consultaba `$get('type')`, omitiendo `$record?->type` al editar páginas tipo Footer existentes.
+- **Qué se hizo**:
+  1. `app/Filament/Resources/PageResource.php`: Se reemplaza `->url()` por sanitización de espacios en blanco ASCII y Unicode (`\s+`/`\u{00A0}`), regla de validación custom (usando closure sin argumentos externos para compatibilidad con Filament) que valida URLs completas o sin esquema (admitiendo `@` en el path como en TikTok), mensaje de validación amigable en español neutro, y `dehydrateStateUsing` que antepone automáticamente `https://`. Adicionalmente, el closure `blocks()` pasa a recibir `?Page $record = null` para respetar el tipo de contenido al editar.
+  2. `app/Http/Concerns/ResolvesPublicLinks.php`: En la transformación del sub-bloque `social_links`, se normaliza la URL eliminando espacios unicode y asegurando el prefijo `https://` antes de servirla a la API pública.
+  3. `tests/Feature/Filament/PageSocialLinksUrlTest.php`: Nueva suite de 5 pruebas unitarias/feature que valida URLs estándar con `@`, URLs con espacios y caracteres unicode, URLs sin protocolo (con anteposición de `https`), rechazo de strings inválidos con mensaje adecuado, y transformación en `ResolvesPublicLinks`.
+  4. Mantenimiento menor en tests preexistentes: Se neutralizaron mensajes en `ApiAuthTest.php`, se usó `assertQueued` en `ContactSubmissionServiceTest.php` por el `ShouldQueue` de `ContactFormSubmitted`, y se añadió `Http::fake()` en `FrontendDeployWebhookTest.php`.
+- **Resultados**: 157 de 157 tests pasando (100%), `vendor/bin/pint --dirty --format agent` ejecutado limpiamente.
+- **Archivos**: `app/Filament/Resources/PageResource.php`, `app/Http/Concerns/ResolvesPublicLinks.php`, `tests/Feature/Filament/PageSocialLinksUrlTest.php`, `tests/Feature/Api/V1/ApiAuthTest.php`, `tests/Feature/ContactSubmissionServiceTest.php`, `tests/Feature/FrontendDeployWebhookTest.php`.
+- **Despliegue**: No desplegado, cambios locales listos para cuando el usuario decida realizar el despliegue.
+- **Siguiente**: Confirmación por parte del usuario.
+
 ## 2026-09-18 — El rol Soporte deja de ver el widget "Últimos contactos"
 
 - **Pedido explícito del Tech Lead**: "para el rol soporte no mostrar el widget últimos contactos" — decisión puntual de qué previsualizar en el Escritorio, no de permisos: `ContactResource` completo sigue accesible para Soporte sin cambios (sigue teniendo `viewAny`/`view`/`update` de `Contact` vía `ContactPolicy`), solo se oculta la previsualización de este widget puntual.

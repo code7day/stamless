@@ -45,7 +45,7 @@ class ApiAuthTest extends TestCase
         $response->assertStatus(401);
         $response->assertJson(['success' => false, 'status_code' => 401]);
         $response->assertJsonPath('errors.code', 'unauthenticated');
-        $response->assertJsonPath('message', 'No autenticado. Enviá un token Bearer en Authorization.');
+        $response->assertJsonPath('message', 'No autenticado. Se requiere un token Bearer en el header Authorization.');
     }
 
     /**
@@ -180,7 +180,7 @@ class ApiAuthTest extends TestCase
         $response->assertJsonPath('errors.code', 'forbidden');
         // El mensaje default de Sanctum ("Invalid ability provided.") nunca
         // debe llegar al cliente tal cual — siempre el genérico en español.
-        $response->assertJsonPath('message', 'No tenés permiso para este recurso.');
+        $response->assertJsonPath('message', 'No tiene permiso para acceder a este recurso.');
     }
 
     public function test_revoked_token_returns_401_on_subsequent_requests(): void

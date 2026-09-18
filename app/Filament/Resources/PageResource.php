@@ -737,7 +737,7 @@ class PageResource extends Resource
                                             // en Studio (2026-09-01): "Undefined variable
                                             // $richTextLinkMainFields" al abrir el bloque `rich_text` con el
                                             // Closure sin `use`.
-                                    ->blocks(function (Get $get) use (
+                                    ->blocks(function (Get $get, ?Page $record = null) use (
                                         $richTextLinkFields,
                                         $richTextLinkMainFields,
                                         $testimonialsLinkFields,
@@ -2304,8 +2304,39 @@ class PageResource extends Resource
 
                                                                                             Forms\Components\TextInput::make('url')
                                                                                                 ->label('URL')
-                                                                                                ->url()
-                                                                                                ->required(),
+                                                                                                ->placeholder('https://www.tiktok.com/@usuario')
+                                                                                                ->required()
+                                                                                                ->trim()
+                                                                                                ->validationMessages([
+                                                                                                    'required' => 'La URL es obligatoria.',
+                                                                                                ])
+                                                                                                ->rules([
+                                                                                                    fn (): \Closure => function (string $attribute, mixed $value, \Closure $fail) {
+                                                                                                        if (blank($value)) {
+                                                                                                            return;
+                                                                                                        }
+
+                                                                                                        $trimmed = trim(preg_replace('/^\s+|\s+$/u', '', (string) $value));
+                                                                                                        $urlToCheck = ! preg_match('~^https?://~i', $trimmed) ? 'https://'.$trimmed : $trimmed;
+
+                                                                                                        if (! filter_var($urlToCheck, FILTER_VALIDATE_URL)) {
+                                                                                                            $fail('El campo URL debe ser una dirección web válida.');
+                                                                                                        }
+                                                                                                    },
+                                                                                                ])
+                                                                                                ->dehydrateStateUsing(function (?string $state): ?string {
+                                                                                                    if (! $state) {
+                                                                                                        return null;
+                                                                                                    }
+
+                                                                                                    $trimmed = trim(preg_replace('/^\s+|\s+$/u', '', $state));
+
+                                                                                                    if (! preg_match('~^https?://~i', $trimmed) && ! str_starts_with($trimmed, 'mailto:') && ! str_starts_with($trimmed, 'tel:')) {
+                                                                                                        return 'https://'.$trimmed;
+                                                                                                    }
+
+                                                                                                    return $trimmed;
+                                                                                                }),
                                                                                         ]),
                                                                                 ])
                                                                                 // Fix real (2026-09-02, `TypeError` en vivo: `tryFrom():
@@ -2508,7 +2539,7 @@ class PageResource extends Resource
                                                 ]),
                                         ];
 
-                                        $typeVal = $get('type');
+                                        $typeVal = $record?->type ?? $get('type');
                                         if ($typeVal instanceof \BackedEnum) {
                                             $typeVal = $typeVal->value;
                                         }
