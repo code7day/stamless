@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Filament\Resources\ContactResource;
 use App\Models\Contact;
+use App\Models\Form;
 use App\Models\Tenant;
 use App\Support\FriendlyDate;
 use Filament\Actions;
@@ -29,9 +30,27 @@ class RecentContactsWidget extends TableWidget
 
     protected static ?int $sort = -10;
 
+    /**
+     * 2026-09-18, mismo fix que `LeadsOverviewWidget` (ver su docblock
+     * completo) — este widget mostraba una previsualización real de
+     * `Contact` sin chequear ninguna Policy, visible a cualquier rol con
+     * acceso al Dashboard. Exige acceso a Contactos Y a Formularios
+     * (pedido explícito del Tech Lead) — con la matriz de 5 roles, esto
+     * excluye a `Editor` de este resumen del Dashboard además de a
+     * `Author`, aunque `Editor` sí conserve su acceso normal a
+     * `ContactResource`.
+     */
     public static function canView(): bool
     {
-        return Filament::getTenant() instanceof Tenant;
+        if (! Filament::getTenant() instanceof Tenant) {
+            return false;
+        }
+
+        $user = auth()->user();
+
+        return $user
+            && $user->can('viewAny', Contact::class)
+            && $user->can('viewAny', Form::class);
     }
 
     public function table(Table $table): Table
