@@ -3,7 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Enums\ApiTokenPlatformEnum;
+use App\Enums\UserRoleEnum;
 use App\Filament\Concerns\FormatsUsageBadge;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\FriendlyDate;
@@ -42,6 +44,7 @@ use UnitEnum;
 class ApiTokens extends Page implements HasTable
 {
     use FormatsUsageBadge;
+    use RestrictsPageToRoles;
     use Tables\Concerns\InteractsWithTable;
 
     protected static string|UnitEnum|null $navigationGroup = 'Desarrolladores';
@@ -55,6 +58,19 @@ class ApiTokens extends Page implements HasTable
     protected static ?int $navigationSort = 1;
 
     protected string $view = 'filament.pages.api-tokens';
+
+    /**
+     * Grupo "Desarrolladores": `Admin`/`Editor` — no `Author`, fuera de la
+     * lista de recursos que el Tech Lead definió para ese rol. Ver
+     * `RestrictsPageToRoles` y ADR-078.
+     */
+    public static function canAccess(): bool
+    {
+        return static::userHasAnyRole([
+            UserRoleEnum::Admin->value,
+            UserRoleEnum::Editor->value,
+        ]);
+    }
 
     /**
      * Abilities disponibles del MVP (ver routes/api.php / ADR-018).

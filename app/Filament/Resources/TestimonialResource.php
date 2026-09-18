@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Concerns\FormatsUsageBadge;
+use App\Filament\Concerns\LocksPublishingForAuthor;
 use App\Filament\Resources\TestimonialResource\Pages;
 use App\Filament\Schemas\MediaUpload;
 use App\Models\Tenant;
@@ -34,6 +35,7 @@ use Schmeits\FilamentCharacterCounter\Forms\Components\Textarea as CharacterText
 class TestimonialResource extends Resource
 {
     use FormatsUsageBadge;
+    use LocksPublishingForAuthor;
 
     protected static ?string $model = Testimonial::class;
 
@@ -153,6 +155,8 @@ class TestimonialResource extends Resource
                                     ->helperText('Oculta el testimonio de la API pública (y de cualquier bloque que lo liste) sin borrarlo.')
                                     ->default(true)
                                     ->required()
+                                    ->disabled(static::currentUserIsAuthor())
+                                    ->dehydrated()
                                     ->columnSpanFull(),
                             ])
                             ->columnSpan(1),
@@ -207,7 +211,8 @@ class TestimonialResource extends Resource
 
                 Tables\Columns\ToggleColumn::make('is_visible')
                     ->label('Visible')
-                    ->sortable(),
+                    ->sortable()
+                    ->disabled(static::currentUserIsAuthor()),
             ])
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_visible')
@@ -273,13 +278,15 @@ class TestimonialResource extends Resource
                         ->label('Marcar como visibles')
                         ->icon('heroicon-o-eye')
                         ->action(fn ($records) => $records->each->update(['is_visible' => true]))
-                        ->deselectRecordsAfterCompletion(),
+                        ->deselectRecordsAfterCompletion()
+                        ->visible(fn (): bool => ! static::currentUserIsAuthor()),
 
                     Actions\BulkAction::make('hide')
                         ->label('Marcar como ocultos')
                         ->icon('heroicon-o-eye-slash')
                         ->action(fn ($records) => $records->each->update(['is_visible' => false]))
-                        ->deselectRecordsAfterCompletion(),
+                        ->deselectRecordsAfterCompletion()
+                        ->visible(fn (): bool => ! static::currentUserIsAuthor()),
                 ]),
             ])
             ->reorderable('sort_order')

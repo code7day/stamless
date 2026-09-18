@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\UserRoleEnum;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Pages\Page;
@@ -28,6 +30,8 @@ use UnitEnum;
  */
 class ApiDocumentation extends Page
 {
+    use RestrictsPageToRoles;
+
     protected static string|UnitEnum|null $navigationGroup = 'Desarrolladores';
 
     protected static ?string $navigationLabel = 'API Documentation';
@@ -41,6 +45,18 @@ class ApiDocumentation extends Page
     protected static ?int $navigationSort = 3;
 
     protected string $view = 'filament.pages.api-documentation';
+
+    /**
+     * Grupo "Desarrolladores": `Admin`/`Editor` — no `Author`. Ver
+     * `RestrictsPageToRoles` y ADR-078.
+     */
+    public static function canAccess(): bool
+    {
+        return static::userHasAnyRole([
+            UserRoleEnum::Admin->value,
+            UserRoleEnum::Editor->value,
+        ]);
+    }
 
     public function getMarkdownHtml(): string
     {

@@ -3,6 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Enums\LanguageEnum;
+use App\Enums\UserRoleEnum;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use App\Filament\Schemas\MediaUpload;
 use App\Models\Tenant;
 use App\Models\User;
@@ -62,6 +64,7 @@ use UnitEnum;
 class Preferences extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RestrictsPageToRoles;
 
     /**
      * Ya no vive en el sidebar (grupo "Cuenta"): desde que se agregó al
@@ -83,6 +86,25 @@ class Preferences extends Page implements HasForms
     protected static ?int $navigationSort = -10;
 
     protected string $view = 'filament.pages.preferences';
+
+    /**
+     * `Admin`/`Editor` — no `Author`. Esta página mezcla preferencias
+     * personales (idioma/zona horaria) con ajustes tenant-wide (identidad
+     * del proyecto, SEO/OG, integraciones, SMTP, despliegue — ver docblock
+     * de la clase); ninguno de esos grupos está en la lista de recursos que
+     * el Tech Lead definió para `Author` (contenidos/blog/servicios/
+     * testimonios). Efecto secundario conocido y aceptado: un `Author`
+     * tampoco puede cambiar su propio idioma/zona horaria desde acá en este
+     * MVP — no hay hoy una página separada solo para eso. Ver
+     * `RestrictsPageToRoles` y ADR-078.
+     */
+    public static function canAccess(): bool
+    {
+        return static::userHasAnyRole([
+            UserRoleEnum::Admin->value,
+            UserRoleEnum::Editor->value,
+        ]);
+    }
 
     /**
      * @var array<string, mixed>

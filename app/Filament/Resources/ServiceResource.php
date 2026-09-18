@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\CountryEnum;
 use App\Enums\PublishStatusEnum;
 use App\Filament\Concerns\FormatsUsageBadge;
+use App\Filament\Concerns\LocksPublishingForAuthor;
 use App\Filament\Resources\ServiceResource\Pages;
 use App\Filament\Schemas\HeadingFieldset;
 use App\Filament\Schemas\LinkSchema;
@@ -51,6 +52,7 @@ use Schmeits\FilamentCharacterCounter\Forms\Components\TextInput as CharacterTex
 class ServiceResource extends Resource
 {
     use FormatsUsageBadge;
+    use LocksPublishingForAuthor;
 
     protected static ?string $model = Service::class;
 
@@ -176,11 +178,15 @@ class ServiceResource extends Resource
                                             ->label('Estado')
                                             ->required()
                                             ->options(PublishStatusEnum::class)
-                                            ->default(PublishStatusEnum::Draft->value),
+                                            ->default(PublishStatusEnum::Draft->value)
+                                            ->disabled(static::currentUserIsAuthor())
+                                            ->dehydrated(),
 
                                         Forms\Components\DateTimePicker::make('published_at')
                                             ->label('Fecha de publicación')
-                                            ->nullable(),
+                                            ->nullable()
+                                            ->disabled(static::currentUserIsAuthor())
+                                            ->dehydrated(),
 
                                         Forms\Components\TextInput::make('sort_order')
                                             ->label('Orden')

@@ -2,6 +2,8 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\UserRoleEnum;
+use App\Filament\Concerns\RestrictsPageToRoles;
 use App\Models\User;
 use BackedEnum;
 use Filament\Actions;
@@ -29,6 +31,7 @@ use UnitEnum;
 class ApiPlayground extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RestrictsPageToRoles;
 
     protected static string|UnitEnum|null $navigationGroup = 'Desarrolladores';
 
@@ -43,6 +46,18 @@ class ApiPlayground extends Page implements HasForms
     protected static ?int $navigationSort = 2;
 
     protected string $view = 'filament.pages.api-playground';
+
+    /**
+     * Grupo "Desarrolladores": `Admin`/`Editor` — no `Author`. Ver
+     * `RestrictsPageToRoles` y ADR-078.
+     */
+    public static function canAccess(): bool
+    {
+        return static::userHasAnyRole([
+            UserRoleEnum::Admin->value,
+            UserRoleEnum::Editor->value,
+        ]);
+    }
 
     /**
      * @var array<string, mixed>

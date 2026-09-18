@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Enums\PublishStatusEnum;
 use App\Filament\Concerns\FormatsUsageBadge;
+use App\Filament\Concerns\LocksPublishingForAuthor;
 use App\Filament\Resources\PostResource\Pages;
 use App\Filament\Schemas\HeadingFieldset;
 use App\Filament\Schemas\LinkSchema;
@@ -29,6 +30,7 @@ use Schmeits\FilamentCharacterCounter\Forms\Components\TextInput as CharacterTex
 class PostResource extends Resource
 {
     use FormatsUsageBadge;
+    use LocksPublishingForAuthor;
 
     protected static ?string $model = Post::class;
 
@@ -168,11 +170,15 @@ class PostResource extends Resource
                                             ->label('Estado')
                                             ->required()
                                             ->options(PublishStatusEnum::class)
-                                            ->default(PublishStatusEnum::Draft->value),
+                                            ->default(PublishStatusEnum::Draft->value)
+                                            ->disabled(static::currentUserIsAuthor())
+                                            ->dehydrated(),
 
                                         Forms\Components\DateTimePicker::make('published_at')
                                             ->label('Fecha de publicación')
-                                            ->nullable(),
+                                            ->nullable()
+                                            ->disabled(static::currentUserIsAuthor())
+                                            ->dehydrated(),
 
                                         Forms\Components\Hidden::make('lang_iso')
                                             ->default('es'),
