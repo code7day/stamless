@@ -8,6 +8,7 @@ use App\Filament\Widgets\LeadsOverviewWidget;
 use App\Filament\Widgets\PlanStatusWidget;
 use App\Filament\Widgets\PlanUsageWidget;
 use App\Filament\Widgets\RecentContactsWidget;
+use App\Filament\Widgets\RecentContentChangesWidget;
 use App\Filament\Widgets\WelcomeWidget;
 use App\Http\Middleware\EnsurePasswordIsNotExpired;
 use App\Http\Middleware\EnsureUserAccessesOwnTenant;
@@ -358,18 +359,26 @@ class PanelCmsProvider extends PanelProvider
             // los widgets para mostrar todo estos indicadores" + "falta un
             // widget en segundo orden... plan y botón de mejorar plan"):
             // `$sort` de cada clase controla el orden (Welcome=-50,
-            // PlanStatus=-40, Leads=-30, PlanUsage=-20, RecentContacts=-10,
-            // espaciados de a 10 para poder insertar uno nuevo en el medio
-            // sin renumerar todo) — no hace falta ordenar el array acá,
-            // Filament ordena por `$sort` al armar el Dashboard. Welcome y
-            // PlanStatus comparten la primera fila (columna 1 cada uno);
-            // PlanUsage y RecentContacts comparten la última.
+            // PlanStatus=-40, Leads=-30, PlanUsage=-20, RecentContentChanges=-15,
+            // RecentContacts=-10, espaciados de a 10 para poder insertar uno
+            // nuevo en el medio sin renumerar todo) — no hace falta ordenar
+            // el array acá, Filament ordena por `$sort` al armar el
+            // Dashboard. Welcome y PlanStatus comparten la primera fila
+            // (columna 1 cada uno); PlanUsage, RecentContentChanges y
+            // RecentContacts comparten la última.
+            //
+            // 2026-09-18, `RecentContentChangesWidget` (ver su docblock):
+            // "últimos cambios" con los 10 contenidos más recientes entre
+            // Páginas/Blog/Servicios/Testimonios — visible a los 5 roles
+            // (incluye Marketing/Editor/Author, a diferencia de los
+            // widgets de Contactos de arriba).
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 WelcomeWidget::class,
                 PlanStatusWidget::class,
                 LeadsOverviewWidget::class,
                 PlanUsageWidget::class,
+                RecentContentChangesWidget::class,
                 RecentContactsWidget::class,
             ])
             ->middleware([

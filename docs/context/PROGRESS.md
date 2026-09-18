@@ -11,6 +11,17 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-18 — Nuevo widget "Últimos cambios" en el Dashboard (10 contenidos más recientes)
+
+- **Pedido del Tech Lead**: "crear un widgets con ultimos cambios, ya sea en contenidos por tipo pagina, legales, secciones, y blog, servicios, testimonios, pero mostrar los 10 ultimos contenidos que fueron actualizados" — seguido de "que tengan acceso los roles de marketing, editores y redactores" (aclaración de alcance de visibilidad).
+- **`RecentContentChangesWidget` (nueva clase, `Widget` + vista propia, no `TableWidget`)**: combina 4 modelos de contenido distintos (`Page` — cubre Página/Landing/Legal/Footer vía `PageTypeEnum`, `Post`, `Service`, `Testimonial`) en una sola lista de los 10 registros más recientemente actualizados (`updated_at` desc) del tenant activo. Trae hasta 10 de cada tipo (acotado por `tenant_id` y por la Policy real de cada modelo, `can('viewAny', X::class)`), los une y se queda con el top 10 combinado — sin `UNION` SQL real entre tablas con columnas distintas, suficiente para el volumen de un tenant del MVP.
+- **`Testimonial` no tiene campo `title`** (a diferencia de `Page`/`Post`/`Service`) — su campo de nombre real es `name`; el widget lo mapea explícitamente a `title` en el array de salida para poder tratar los 4 tipos de forma uniforme en la vista.
+- **Visibilidad — `canView()`**: visible si hay tenant activo y el usuario tiene `viewAny` de al menos uno de los 4 modelos. Con la matriz de 5 roles vigente (ADR-078, todos con lectura de contenido), esto en la práctica es visible para los 5 roles — a propósito, distinto de los widgets de Contactos (arriba en este mismo log), que sí están restringidos.
+- **Cada item**: título (o `name` en el caso de Testimonio), badge de tipo con color propio (Página=primary, Landing=info, Legal=warning, Footer=gray, Blog=success, Servicio=amber, Testimonio=purple), ícono (reusa el `navigationIcon` de cada Resource), fecha amigable vía `App\Support\FriendlyDate::format()`, y link a la pantalla índice del Resource dueño (los 4 Resources usan el patrón "Manage" de una sola página, sin ruta de edit separada).
+- **Archivos:** `app/Filament/Widgets/RecentContentChangesWidget.php` (nuevo), `resources/views/filament/cms/widgets/recent-content-changes-widget.blade.php` (nuevo), `app/Providers/Filament/PanelCmsProvider.php` (registro + `$sort = -15`, entre `PlanUsageWidget` y `RecentContactsWidget`, misma fila de la grilla).
+- **Sin runtime de PHP en este sandbox** — balance verificado manualmente (OK).
+- **Pendiente:** confirmación visual en vivo del Tech Lead (orden, colores de badge, links) y `php artisan test`/`pint` cuando haya entorno disponible.
+
 ## 2026-09-18 — Fix real: widgets de contactos del Dashboard visibles sin acceso a Contactos/Formularios
 
 - **Pedido del Tech Lead, mid-conversación, viendo el Escritorio logueado con un rol sin Contactos/Formularios**: "si el rol no tiene acceso a contactos o formularios, no debería poder visualizar o no acceso a los 5 widgets" — refiriéndose a los 4 KPIs de `LeadsOverviewWidget` (Leads nuevos/En proceso/Atendidos/Total de contactos) + la tabla "Últimos contactos" de `RecentContactsWidget` (5 tarjetas visuales en total, 2 clases de widget).
