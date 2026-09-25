@@ -268,7 +268,16 @@ class Preferences extends Page implements HasForms
                     ->description('Logo de tu proyecto — se usa en los emails de notificación de formularios.')
                     ->collapsible()
                     ->schema([
-                        MediaUpload::make('branding_logo_id', 'Logo del proyecto', accept: 'logo', helperText: 'PNG, JPG, WEBP o SVG (recomendado para que se vea nítido a cualquier tamaño). Fondo transparente, máx. 5MB. Si no se sube uno, los emails muestran el nombre del proyecto en texto.'),
+                        // 2026-09-24, pedido del Tech Lead: el texto anterior no
+                        // decía nada sobre las dimensiones reales de uso — el
+                        // logo se muestra chico en el header del email (~160px
+                        // de ancho, nunca menos de 60px para que no se vea
+                        // pixelado), así que conviene subir un archivo liviano,
+                        // no uno pensado para un sitio web. `maxSize(5120)` (5MB,
+                        // `MediaUpload::make(..., accept: 'logo')`) se mantiene
+                        // sin cambios — es un tope de seguridad, no el peso
+                        // recomendado real.
+                        MediaUpload::make('branding_logo_id', 'Logo del proyecto', accept: 'logo', helperText: 'PNG, JPG, WEBP o SVG. Se muestra chico en el header del email (recomendado ~160px de ancho, mínimo 60px) — no hace falta un archivo grande. Fondo transparente, máx. 5MB. Si no se sube uno, los emails muestran el nombre del proyecto en texto.'),
                     ]),
 
                 Section::make('Cuenta')
