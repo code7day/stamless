@@ -592,11 +592,13 @@ class ContactSubmissionService
     }
 
     /**
-     * Logo del tenant para el header de ambos emails (ver ADR de este
-     * mismo día) — `Setting` `branding.logo_id`, seteado desde
-     * `Preferences.php`. Consulta explícita por `tenant_id` con
-     * `withoutGlobalScopes()` en vez del helper `setting()`/scope
-     * automático de `HasTenant`: ambos dependen de que
+     * Logo para el header de ambos emails — prioridad en 2 niveles
+     * (2026-09-24, pedido del Tech Lead): primero `Form::logo_id` (override
+     * puntual de ESTE formulario, nuevo), y si no está seteado, cae al
+     * `Setting` `branding.logo_id` tenant-wide (ADR-075, `Preferences.php`
+     * — identidad visual del proyecto por default). Consulta explícita por
+     * `tenant_id` con `withoutGlobalScopes()` en vez del helper `setting()`/
+     * scope automático de `HasTenant`: ambos dependen de que
      * `TenantManager::hasTenant()` ya esté seteado, y este servicio corre
      * también desde el submit público de la API (`FormSubmissionController`),
      * que resuelve el tenant por `slug` directo sin pasar por
@@ -605,10 +607,14 @@ class ContactSubmissionService
      */
     private function resolveBrandLogoUrl(Form $form): ?string
     {
-        $logoId = Setting::withoutGlobalScopes()
-            ->where('tenant_id', $form->tenant_id)
-            ->where('key', 'branding.logo_id')
-            ->value('value');
+        $logoId = $form->logo_id;
+
+        if (blank($logoId)) {
+            $logoId = Setting::withoutGlobalScopes()
+                ->where('tenant_id', $form->tenant_id)
+                ->where('key', 'branding.logo_id')
+                ->value('value');
+        }
 
         if (blank($logoId)) {
             return null;

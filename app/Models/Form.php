@@ -8,12 +8,13 @@ use App\Traits\HasTenant;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'tenant_id', 'uuid', 'lang_iso', 'name', 'slug', 'description',
     'notification_email', 'notification_subject', 'notification_intro',
-    'send_copy_to_submitter',
+    'logo_id', 'send_copy_to_submitter',
     'success_message', 'redirect_url', 'is_active', 'enable_honeypot',
     'enable_recaptcha', 'settings',
     'thank_you_title', 'thank_you_description', 'thank_you_alert_title',
@@ -66,5 +67,19 @@ class Form extends Model
     public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);
+    }
+
+    /**
+     * Logo propio de ESTE formulario (2026-09-24), override opcional del
+     * logo tenant-wide de `Setting` `branding.logo_id` (`Preferences.php`,
+     * ADR-075). Nullable a propósito, mismo patrón que
+     * `Service::imageDetail()` — el fallback "si no hay logo propio, usar
+     * el del tenant" NO vive acá: es responsabilidad de
+     * `ContactSubmissionService::resolveBrandLogoUrl()`, que consulta este
+     * campo primero.
+     */
+    public function logo(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'logo_id');
     }
 }

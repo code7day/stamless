@@ -11,6 +11,20 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-09-24 — Logo del mailing: override opcional por `Form` con fallback a Preferencias (tenant-wide) + ADR-079 (principio general de invalidación de caché)
+
+- **Pedido del Tech Lead**, en el mismo mensaje donde confirmó el fix de caché de abajo: mover la configuración del logo del mailing de Preferencias (tenant-wide) a la configuración de cada formulario ("cambiar de preferencias y poner a configuración del formulario donde se pueda configurar el logo que mostrará en el mailing"), más un pedido general de que cualquier caché en la app se invalide al guardar.
+- **Decisión de diseño** (resuelta vía `AskUserQuestion`, opción elegida: **"Override por Form, con fallback al de Preferencias (recomendado)"**) — NO reemplaza el logo tenant-wide de ADR-075, lo complementa: un `Form` sin logo propio sigue usando el de Preferencias sin ningún cambio de comportamiento; un `Form` con logo propio lo prioriza. Pensado para tenants con más de un formulario (ej. contacto general + campaña puntual) que quieran marcas distintas por mailing.
+- **Implementación:**
+  1. `database/migrations/2026_09_24_190000_add_logo_id_to_forms_table.php`: `forms.logo_id`, `foreignId()->nullable()->constrained('media')->nullOnDelete()`, mismo patrón que `Service::image_detail_id`.
+  2. `app/Models/Form.php`: `logo_id` agregado al `#[Fillable]`, nueva relación `logo(): BelongsTo` (a `Media`).
+  3. `app/Services/ContactSubmissionService.php`: `resolveBrandLogoUrl(Form $form)` ahora consulta `$form->logo_id` primero; si está vacío, cae al `Setting` `branding.logo_id` del tenant exactamente como antes (`withoutGlobalScopes()` se mantiene — este servicio corre también desde el submit público de la API, sin tenant activo vía `TenantManager`).
+  4. `app/Filament/Resources/FormResource.php`: nuevo campo `MediaUpload::make('logo_id', 'Logo de este formulario (opcional)', accept: 'logo', ...)` en la sección "Notificaciones y respuesta", mismo texto de ayuda (medidas recomendadas) que el de Preferencias.
+- **Documentación:** addendum "Actualización 2026-09-24" agregado directamente en ADR-075 (`docs/context/DECISIONS.md`), más nuevo **ADR-079** que fija como principio general para toda la app: cualquier caché de escritura se invalida en el mismo punto donde se escribe (no depender de TTL) — documenta también que se auditó el resto de la app (`grep -rn "Cache::"`) y `SettingService` es el único punto que cachea algo hoy.
+- **Verificación:** sin runtime de PHP en este sandbox — balance de llaves/paréntesis/corchetes verificado manualmente en los 4 archivos (migración: 5/5 `{}`, 12/12 `()`; `Form.php`: 6/6 `{}`, 11/11 `()`, 3/3 `[]`; `ContactSubmissionService.php`: 51/51 `{}`, 167/167 `()`, 75/75 `[]`; `FormResource.php`: 32/32 `{}`, 386/386 `()`, 55/55 `[]`).
+- **Archivos:** `database/migrations/2026_09_24_190000_add_logo_id_to_forms_table.php`, `app/Models/Form.php`, `app/Services/ContactSubmissionService.php`, `app/Filament/Resources/FormResource.php`, `docs/context/DECISIONS.md`.
+- **Pendiente:** `php artisan migrate`, `php artisan test --compact`, `vendor/bin/pint --dirty --format agent`, y confirmación en vivo en Studio de que (a) un formulario sin logo propio sigue mostrando el de Preferencias en su mailing, (b) uno con logo propio lo prioriza.
+
 ## 2026-09-24 — Fix real: caché de `Setting` no se invalidaba al guardar — el logo del tenant "no guardaba" y el mailing necesitaba esperar hasta 1h (o parecía necesitar reiniciar el queue)
 
 - **Reporte del Tech Lead** en Preferencias, sección "Marca" (subida del logo del proyecto): "no guardó" tras subir el archivo y guardar, y por separado: "no hay cache para que el queue lo tome para enviar al mailing sin necesidad de reiniciar el forever o queue". Además pidió describir mejor las medidas recomendadas del logo (se usa chico en el header del email, no hace falta un archivo grande).

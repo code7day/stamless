@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\FormFieldTypeEnum;
 use App\Filament\Concerns\FormatsUsageBadge;
 use App\Filament\Resources\FormResource\Pages;
+use App\Filament\Schemas\MediaUpload;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\FormFieldDefinition;
@@ -434,6 +435,22 @@ class FormResource extends Resource
                     ->collapsed()
                     ->columns(2)
                     ->schema([
+                        // 2026-09-24, pedido del Tech Lead: mover la
+                        // configuración del logo del mailing de Preferencias
+                        // (tenant-wide, ADR-075) a este formulario puntual —
+                        // override OPCIONAL, no un reemplazo. Si se deja
+                        // vacío, `ContactSubmissionService::resolveBrandLogoUrl()`
+                        // sigue cayendo al `Setting` `branding.logo_id` del
+                        // tenant sin ningún cambio de comportamiento para
+                        // los formularios que ya existen. Útil para tenants
+                        // con más de un formulario (ej. contacto general vs.
+                        // una campaña puntual) que quieran una marca propia
+                        // por mailing. Mismo `accept: 'logo'` que
+                        // `Preferences.php` (PNG/JPG/WEBP/SVG, sin cropper —
+                        // un SVG no tiene canvas fijo para recortar).
+                        MediaUpload::make('logo_id', 'Logo de este formulario (opcional)', accept: 'logo', helperText: 'Se muestra chico en el header del email (recomendado ~160px de ancho, mínimo 60px). Si no se sube uno, se usa el logo general del proyecto configurado en Preferencias.')
+                            ->columnSpanFull(),
+
                         // 2026-09-18, pedido del Tech Lead viendo la sección
                         // en Studio: "email y asunto, esa fila debería ser a
                         // 2 columnas... 1 columna [internamente] así baja
