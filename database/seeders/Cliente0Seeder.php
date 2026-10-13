@@ -4,7 +4,9 @@ namespace Database\Seeders;
 
 use App\Enums\BillingCycleEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\PlanEnum;
 use App\Enums\SubscriptionStatusEnum;
+use App\Enums\UserRoleEnum;
 use App\Models\Domain;
 use App\Models\Module;
 use App\Models\Plan;
@@ -21,11 +23,6 @@ class Cliente0Seeder extends Seeder
 {
     private const string TENANT_SLUG = 'cica360';
 
-    /**
-     * Slug placeholder usado en el primer scaffold, antes de conocer el
-     * nombre real del Cliente 0. Se busca por acá primero para renombrar
-     * el tenant existente en vez de crear uno duplicado.
-     */
     private const string LEGACY_TENANT_SLUG = 'cliente-0';
 
     private const string TENANT_NAME = 'CICA360';
@@ -34,18 +31,15 @@ class Cliente0Seeder extends Seeder
 
     private const string OWNER_NAME = 'Isaac Goncalvez';
 
-    private const string OWNER_PASSWORD = 'Cica360#Secure!2026';
+    private const string OWNER_PASSWORD = 'c1c4@2026.';
 
     private static function consoleDomain(): string
     {
-        return parse_url(config('genesis.urls.console', config('app.url')), PHP_URL_HOST);
+        return parse_url(config('stamless.urls.studio', config('app.url')), PHP_URL_HOST);
     }
 
     /**
      * Seed the application's database.
-     *
-     * Requiere que `PlanSeeder` y `ModuleSeeder` hayan corrido antes
-     * (necesita el plan Free y los módulos core ya creados).
      */
     public function run(): void
     {
@@ -59,8 +53,7 @@ class Cliente0Seeder extends Seeder
     }
 
     /**
-     * Crea el tenant o, si ya existía con el slug placeholder original,
-     * lo renombra in-place (mismo id, sin duplicar).
+     * Crea el tenant o, si ya existía con el slug placeholder original, lo renombra in-place.
      */
     private function upsertTenant(): Tenant
     {
@@ -70,17 +63,7 @@ class Cliente0Seeder extends Seeder
         $attributes = [
             'name' => self::TENANT_NAME,
             'slug' => self::TENANT_SLUG,
-            // 2026-09-02, ADR-043: CICA360 pasa de `'free'` a `'sponsorship'`
-            // (plan "Auspicio/Convenio", pedido en vivo del Tech Lead: "este
-            // cliente 0 de cica360 será uno de ellos Plan
-            // Auspicio/Convención"). Sigue siendo free-tier para todo lo
-            // demás (`Tenant::isFreeTier()` ya incluye `'sponsorship'`) —
-            // la única diferencia real es que ahora puede personalizar el
-            // copyright del footer de forma acotada (año + nombre, dentro
-            // de la plantilla fija con "Powered by Stamless"). No reemplaza
-            // ADR-006 (Free Forever + Headless) como concepto general para
-            // futuros tenants — solo reasigna el plan de ESTE tenant.
-            'plan' => 'sponsorship',
+            'plan' => PlanEnum::Sponsorship->value,
             'is_active' => true,
         ];
 
@@ -103,8 +86,6 @@ class Cliente0Seeder extends Seeder
 
     /**
      * Usuario OWNER del tenant (Isaac Goncalvez).
-     * Se crea con contraseña temporal segura y flag `must_change_password = true`
-     * para obligar a actualizar la contraseña en su primer login.
      */
     private function upsertOwner(Tenant $tenant): void
     {
@@ -116,14 +97,14 @@ class Cliente0Seeder extends Seeder
                 'email' => self::OWNER_EMAIL,
                 'password' => self::OWNER_PASSWORD,
                 'tenant_id' => $tenant->id,
-                'must_change_password' => true,
+                'must_change_password' => false,
             ])->save();
         } else {
             $owner = User::create([
                 'name' => self::OWNER_NAME,
                 'email' => self::OWNER_EMAIL,
                 'password' => self::OWNER_PASSWORD,
-                'must_change_password' => true,
+                'must_change_password' => false,
                 'tenant_id' => $tenant->id,
                 'email_verified_at' => now(),
             ]);
@@ -131,7 +112,7 @@ class Cliente0Seeder extends Seeder
 
         setPermissionsTeamId($tenant->id);
         $adminRole = Role::firstOrCreate([
-            'name' => 'Admin',
+            'name' => UserRoleEnum::Admin->value,
             'guard_name' => 'web',
             'tenant_id' => $tenant->id,
         ]);
@@ -141,8 +122,8 @@ class Cliente0Seeder extends Seeder
     private function upsertSubscription(Tenant $tenant): void
     {
         $plan = Plan::where('slug', $tenant->plan)->first()
-            ?? Plan::where('slug', 'sponsorship')->first()
-            ?? Plan::where('slug', 'free')->first();
+            ?? Plan::where('slug', PlanEnum::Sponsorship->value)->first()
+            ?? Plan::where('slug', PlanEnum::Trial->value)->first();
 
         if (! $plan) {
             return;
@@ -172,7 +153,7 @@ class Cliente0Seeder extends Seeder
     private function upsertSettings(Tenant $tenant): void
     {
         $settings = [
-            'site_name' => 'CICA360',
+            'site_name' => self::TENANT_NAME,
             'default_locale' => LanguageEnum::Spanish->value,
             'available_locales' => LanguageEnum::Spanish->value,
         ];
@@ -186,14 +167,7 @@ class Cliente0Seeder extends Seeder
     }
 
     /**
-     * Slider placeholder para el home, sin slides todavía (contenido demo
-     * queda fuera de alcance de esta sesión).
-     *
-     * `properties.show_scroll_indicator` (2026-08-31): una sola vez a nivel
-     * Slider, aplica a todas las slides detrás (sobrepuesta al decorador
-     * inferior de cada una) — corrección del Tech Lead sobre la primera
-     * pasada del mismo día, que la había sembrado por slide en
-     * `Cliente0HomeSlidesSeeder`.
+     * Slider placeholder para el home.
      */
     private function upsertPlaceholderSlider(Tenant $tenant): void
     {
@@ -204,7 +178,7 @@ class Cliente0Seeder extends Seeder
                 'slug' => 'home',
             ],
             [
-                'title' => 'Slider principal',
+                'title' => __('Main Slider'),
                 'is_active' => true,
                 'properties' => ['show_scroll_indicator' => true],
             ]

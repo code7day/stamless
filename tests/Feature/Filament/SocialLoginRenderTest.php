@@ -56,7 +56,7 @@ class SocialLoginRenderTest extends TestCase
         $response = $this->get($cmsUrl);
 
         $response->assertSuccessful();
-        $response->assertSee('O inicia sesión con');
+        $response->assertSee(__('filament-socialite::auth.login-via'));
         $response->assertSee('Google');
         $response->assertSee('Facebook');
         $response->assertSee('X');

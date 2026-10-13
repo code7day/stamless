@@ -14,6 +14,7 @@ use App\Models\Tenant;
 use App\Models\Testimonial;
 use Filament\Facades\Filament;
 use Filament\Widgets\Widget;
+use Illuminate\Support\Carbon;
 
 /**
  * 2026-09-18, pedido del Tech Lead: "crear un widget con los últimos
@@ -124,7 +125,7 @@ class RecentContentChangesWidget extends Widget
      * sobre 4 tablas con columnas distintas) sería una optimización
      * prematura para este alcance.
      *
-     * @return array<int, array{title: string, type: string, color: string, icon: string, url: string, updated_at: \Illuminate\Support\Carbon}>
+     * @return array<int, array{title: string, type: string, color: string, icon: string, url: string, updated_at: Carbon}>
      */
     public function getItems(): array
     {

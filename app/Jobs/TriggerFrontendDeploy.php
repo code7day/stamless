@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Log;
  * ahí disparar UN solo build" — el patrón estándar de debounce, llevado a
  * un Job de cola en vez de un `setTimeout()` de frontend.
  */
-class TriggerFrontendDeploy implements ShouldQueue, ShouldBeUnique
+class TriggerFrontendDeploy implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 

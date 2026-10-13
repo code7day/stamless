@@ -24,39 +24,55 @@ class PlanSeederTest extends TestCase
         $this->seed(PlanSeeder::class);
 
         $this->assertDatabaseHas(Plan::class, [
-            'slug' => 'free',
-            'name' => 'Free',
+            'slug' => 'trial',
             'is_free' => true,
             'max_users' => 1,
-            'max_pages' => 20,
+            'max_pages' => 10,
             'max_posts' => 10,
-            'max_storage_mb' => 500,
+            'max_storage_mb' => 250,
+        ]);
+
+        $this->assertDatabaseHas(Plan::class, [
+            'slug' => 'starter',
+            'is_free' => false,
+            'price_monthly' => 7,
+            'max_posts' => 50,
         ]);
 
         $this->assertDatabaseHas(Plan::class, [
             'slug' => 'sponsorship',
-            'name' => 'Auspicio',
             'is_free' => true,
             'max_users' => 3,
-            'max_pages' => 30,
-            'max_posts' => 20,
-            'max_storage_mb' => 1000,
+            'max_pages' => 50,
+            'max_storage_mb' => 2048,
         ]);
 
-        $freePlan = Plan::where('slug', 'free')->first();
+        $this->assertDatabaseHas(Plan::class, [
+            'slug' => 'pro',
+            'is_free' => false,
+            'price_monthly' => 20,
+        ]);
+
+        $this->assertDatabaseHas(Plan::class, [
+            'slug' => 'premium',
+            'is_free' => false,
+            'price_monthly' => 99,
+        ]);
+
+        $trialPlan = Plan::where('slug', 'trial')->first();
         $sponsorshipPlan = Plan::where('slug', 'sponsorship')->first();
 
-        $this->assertNotNull($freePlan);
+        $this->assertNotNull($trialPlan);
         $this->assertNotNull($sponsorshipPlan);
 
         $this->assertTrue(
-            PlanFeature::where('plan_id', $freePlan->id)->where('key', 'max_users')->where('value', '1')->exists()
+            PlanFeature::where('plan_id', $trialPlan->id)->where('key', 'max_users')->where('value', '1')->exists()
         );
         $this->assertTrue(
             PlanFeature::where('plan_id', $sponsorshipPlan->id)->where('key', 'max_users')->where('value', '3')->exists()
         );
         $this->assertTrue(
-            PlanFeature::where('plan_id', $sponsorshipPlan->id)->where('key', 'max_storage_mb')->where('value', '1000')->exists()
+            PlanFeature::where('plan_id', $sponsorshipPlan->id)->where('key', 'max_storage_mb')->where('value', '2048')->exists()
         );
         $this->assertTrue(
             PlanFeature::where('plan_id', $sponsorshipPlan->id)->where('key', 'custom_copyright')->where('value', 'acotado')->exists()
@@ -71,7 +87,7 @@ class PlanSeederTest extends TestCase
         $this->seed(PlanSeeder::class);
         $this->seed(ModuleSeeder::class);
 
-        $freePlan = Plan::where('slug', 'free')->firstOrFail();
+        $freePlan = Plan::where('slug', 'trial')->firstOrFail();
         $sponsorshipPlan = Plan::where('slug', 'sponsorship')->firstOrFail();
 
         $coreModulesCount = Module::where('is_core', true)->count();
@@ -98,14 +114,14 @@ class PlanSeederTest extends TestCase
         $this->assertSame('sponsorship', $tenant->currentSubscription()?->plan?->slug);
     }
 
-    public function test_platform_seeder_creates_master_tenant_with_sponsorship_plan(): void
+    public function test_platform_seeder_creates_master_tenant_with_pro_plan(): void
     {
         $this->seed(PlanSeeder::class);
         $this->seed(ModuleSeeder::class);
         $this->seed(PlatformSeeder::class);
 
-        $masterTenant = Tenant::where('slug', 'stamless')->firstOrFail();
-        $this->assertSame('sponsorship', $masterTenant->plan);
+        $masterTenant = Tenant::where('slug', 'edukt')->firstOrFail();
+        $this->assertSame('pro', $masterTenant->plan);
         $this->assertSame('Eduardo Flores', $masterTenant->name);
 
         $masterUser = User::where('email', 'zedu77@gmail.com')->firstOrFail();
@@ -114,6 +130,9 @@ class PlanSeederTest extends TestCase
 
         $subscription = Subscription::where('tenant_id', $masterTenant->id)->first();
         $this->assertNotNull($subscription);
-        $this->assertSame('sponsorship', $subscription->plan->slug);
+        $this->assertSame('pro', $subscription->plan->slug);
+
+        $adminTenant = Tenant::where('slug', 'stamless')->firstOrFail();
+        $this->assertSame('premium', $adminTenant->plan);
     }
 }

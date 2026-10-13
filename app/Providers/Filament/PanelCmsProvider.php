@@ -249,6 +249,10 @@ class PanelCmsProvider extends PanelProvider
                     'targetPanel' => 'platform',
                 ])->render())
             )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): HtmlString => new HtmlString(view('filament.hooks.session-expiry-handler')->render())
+            )
             ->plugins([
                 AuthDesignerPlugin::make()
                     ->login(fn (AuthPageConfig $config) => $config

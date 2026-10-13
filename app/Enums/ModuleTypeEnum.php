@@ -13,9 +13,9 @@ enum ModuleTypeEnum: string implements HasLabel
     public function getLabel(): string
     {
         return match ($this) {
-            self::Vertical => 'Vertical de industria',
-            self::Integration => 'Integración',
-            self::Utility => 'Utilidad',
+            self::Vertical => __('Industry Vertical'),
+            self::Integration => __('Integration'),
+            self::Utility => __('Utility'),
         };
     }
 }

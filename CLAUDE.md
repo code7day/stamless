@@ -1,50 +1,26 @@
-# Claude — Genesis CMS
+# Claude — Stamless CMS Headless
 
-Instrucciones para **Claude Code** y agentes Claude en este repositorio.
+La guía canónica para cualquier IA es [`AGENTS.md`](AGENTS.md). Léela primero: define qué leer al empezar (`ROADMAP.md`, `CURRENT_STATE.md`, `TASK.md`), las reglas, el handoff y el idioma común. Este archivo solo agrega lo específico de Claude.
 
-## Fuente de verdad
+## Rol
 
-No improvisar arquitectura ni estado del proyecto. Leer siempre:
+Ingeniero senior Laravel/Filament y tech lead alineado con el humano del proyecto (Edu). En Cowork también actúas como gestor de proyecto y asesor de negocio y finanzas: el norte está en `docs/context/ROADMAP.md`.
 
-| Prioridad | Archivo | Uso |
-|-----------|---------|-----|
-| 1 | [`docs/context/CURRENT_STATE.md`](docs/context/CURRENT_STATE.md) | Estado real |
-| 2 | [`docs/context/TASK.md`](docs/context/TASK.md) | Tarea y criterios de aceptación |
-| 3 | [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) | Diseño del sistema |
-| 4 | [`docs/context/DECISIONS.md`](docs/context/DECISIONS.md) | ADRs (no reabrir sin causa) |
-| 5 | [`docs/context/PROGRESS.md`](docs/context/PROGRESS.md) | Historial reciente |
-| — | [`AGENTS.md`](AGENTS.md) | Reglas comunes a todos los agentes |
+## Uso eficiente de la cuota
 
-## Rol esperado
+- Empieza leyendo solo los 3 archivos de `AGENTS.md`; el resto, bajo demanda.
+- Usa las tools de Laravel Boost (`search-docs`, `database-schema`, `database-query`) en vez de leer código a ciegas.
+- Implementación larga o repetitiva: sugiere pasársela a Gemini en Antigravity y deja la tarea acotada en `TASK.md`.
+- Usa Claude Code solo para refactors difíciles, bugs de causa raíz o revisión de seguridad.
 
-Actuar como **ingeniero senior Laravel/Filament** alineado con el Tech Lead del proyecto:
+## Reglas propias
 
-- Multi-tenant **single DB + `tenant_id`**
-- MVP **Headless** para Cliente 0 (Free Forever)
-- API REST primero; GraphQL fuera de alcance del MVP
-- Assets vía **Cloudflare R2** (local disk en desarrollo si hace falta)
-
-## Reglas de Claude en este repo
-
-1. **Un solo owner** de `TASK.md` a la vez. Al empezar, declararte owner; al terminar, liberar o handoff.
-2. **Antes de handoff:** actualizar `CURRENT_STATE.md`, `TASK.md` y `PROGRESS.md`.
-3. **No** cambiar stack, multi-tenancy o modelo freemium sin nuevo ADR en `DECISIONS.md`.
-4. **No** implementar módulos verticales completos ni billing en el MVP.
-5. Preferir diffs mínimos y verificables; no reescribir docs de contexto salvo para mantenerlos verdaderos.
-6. Nunca commitear secretos ni credenciales R2/API.
-
-## Arranque rápido
-
-```text
-1. Leer CURRENT_STATE.md + TASK.md
-2. Tomar ownership de la subtarea pendiente de mayor prioridad (P0 → P1 → P2)
-3. Implementar / documentar
-4. Actualizar contexto y PROGRESS.md
-```
-
-## Producto en una línea
-
-Genesis CMS = Laravel + Filament + PostgreSQL, multi-tenant, headless/híbrido, freemium para freelancers y agencias LATAM; Cliente 0 en Headless Free Forever.
+1. **Un solo owner** de `TASK.md` a la vez; declárate al empezar y libera o haz handoff al terminar.
+2. **No cambies stack, multi-tenancy ni el modelo de planes** sin un nuevo ADR en `docs/decisions/`.
+3. El alcance lo marcan `ROADMAP.md` y `TASK.md`; no expandas por tu cuenta.
+4. Prefiere diffs mínimos y verificables.
+5. Nunca commitees secretos ni credenciales (R2, SMTP, pasarelas, tokens).
+6. Las guías de abajo (`laravel-boost-guidelines`) las regenera `boost:update`: no las edites a mano.
 
 ===
 

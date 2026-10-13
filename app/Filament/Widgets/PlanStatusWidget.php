@@ -2,35 +2,33 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\SupportTicketCategoryEnum;
+use App\Enums\SupportTicketPriorityEnum;
+use App\Enums\SupportTicketStatusEnum;
+use App\Models\SupportTicket;
 use App\Models\Tenant;
+use Filament\Actions\Action;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Schemas\Concerns\InteractsWithSchemas;
+use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Widgets\Widget;
+use Illuminate\Support\Facades\Auth;
 
-/**
- * 2026-09-13, pedido del Tech Lead con captura ("falta un widget en
- * segundo orden que seria para mostrar el plan y con un boton de mejorar
- * plan") — llena el hueco que dejaba `WelcomeWidget` en columna 1 sola,
- * compartiendo la primera fila del Escritorio con contenido de verdad en
- * vez de estirar el saludo a `'full'` (primer intento, revertido de
- * inmediato en el mismo cambio).
- *
- * El botón "Mejorar plan" NO dispara ningún flujo de pago real — billing
- * está explícitamente fuera de alcance del MVP (`docs/context/TASK.md`).
- * Es un `mailto:` hacia `config('stamless.contact.sales_email')` con
- * asunto/cuerpo precompletados (nombre del tenant + plan actual), para que
- * el equipo comercial gestione el upgrade a mano — mismo criterio ya usado
- * en este proyecto de no fingir una capacidad que todavía no existe (ver
- * el propio `TASK.md`: "Billing / pasarelas de pago" sigue "Fuera de
- * alcance ahora"). Cuando exista self-serve billing, este botón se
- * reemplaza por un link a un checkout real.
- */
-class PlanStatusWidget extends Widget
+class PlanStatusWidget extends Widget implements HasActions, HasSchemas
 {
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+
     protected string $view = 'filament.cms.widgets.plan-status-widget';
 
     /**
-     * Columna 1 (comparte la primera fila con `WelcomeWidget`, también
-     * columna 1 — ver su docblock).
+     * Columna 1 (comparte la primera fila con `WelcomeWidget`, también columna 1).
      */
     protected int|string|array $columnSpan = 1;
 
@@ -44,31 +42,98 @@ class PlanStatusWidget extends Widget
     }
 
     /**
-     * `sponsorship` es, hoy, el plan más alto del catálogo (no hay ningún
-     * plan por encima todavía) — mismo gate que ya usa
-     * `Tenant::canPersonalizeStudioBrand()`, reusado acá para no duplicar
-     * la lista de planes "ya con beneficios pagos" en dos lugares.
+     * Devuelve el badge y color correspondiente a cada nivel de plan real.
+     *
+     * @return array{label: string, color: string}
      */
-    public function isOnTopPlan(): bool
+    public function getPlanBadge(): array
     {
-        return $this->getTenant()?->canPersonalizeStudioBrand() ?? false;
+        $plan = $this->getTenant()?->planEnum();
+
+        return [
+            'label' => $plan?->getBadgeLabel() ?? __('Active'),
+            'color' => $plan?->getColor() ?? 'gray',
+        ];
     }
 
     /**
-     * 2026-09-13, corrección del Tech Lead: el botón se oculta por completo
-     * en el plan más alto (`isOnTopPlan()`, ver la vista) — ya no hay
-     * "consulta sobre tu plan actual" para mostrar, así que esta URL solo
-     * se genera (y solo tiene sentido) para tenants que SÍ pueden mejorar.
+     * Descripción honesta y específica según las capacidades del plan activo.
      */
-    public function getUpgradeMailtoUrl(): string
+    public function getPlanDescription(): string
+    {
+        return $this->getTenant()?->planEnum()?->getDescription() ?? __('Active platform plan.');
+    }
+
+    /**
+     * Determina si el plan actual puede ser mejorado.
+     */
+    public function canUpgrade(): bool
+    {
+        return $this->getTenant()?->planEnum()?->canUpgrade() ?? true;
+    }
+
+    /**
+     * Acción interactiva para abrir el modal de consulta directamente en el Dashboard.
+     */
+    public function consultAction(): Action
     {
         $tenant = $this->getTenant();
-        $salesEmail = config('stamless.contact.sales_email');
+        $planLabel = $tenant?->planLabel() ?? 'Plan actual';
+        $buttonLabel = $tenant?->planEnum()?->getActionButtonLabel() ?? __('Consult');
 
-        $body = $tenant
-            ? "Hola, escribo desde \"{$tenant->name}\" (plan actual: {$tenant->planLabel()})."
-            : 'Hola, quisiera más información sobre los planes disponibles.';
+        return Action::make('consult')
+            ->label($buttonLabel)
+            ->icon('heroicon-m-arrow-trending-up')
+            ->color('primary')
+            ->size('sm')
+            ->modalHeading("Consulta sobre ampliación de plan ({$planLabel})")
+            ->modalDescription('Cuéntanos qué necesitas ampliar (cupos, almacenamiento, módulos adicionales o upgrade) y el equipo de soporte te responderá directamente.')
+            ->modalSubmitActionLabel('Enviar Consulta')
+            ->modalWidth('lg')
+            ->form([
+                TextInput::make('subject')
+                    ->label('Asunto')
+                    ->default("Consulta sobre ampliación de plan ({$planLabel})")
+                    ->required()
+                    ->maxLength(255),
 
-        return 'mailto:'.$salesEmail.'?subject='.rawurlencode('Quiero mejorar mi plan').'&body='.rawurlencode($body);
+                Textarea::make('message')
+                    ->label('Detalle de tu solicitud o inquietud')
+                    ->placeholder('Describe brevemente lo que tu empresa o proyecto necesita...')
+                    ->required()
+                    ->rows(4)
+                    ->maxLength(2000),
+
+                FileUpload::make('attachments')
+                    ->label('Capturas o adjuntos (Opcional)')
+                    ->multiple()
+                    ->disk('public')
+                    ->directory('support-attachments')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                    ->maxSize(5120)
+                    ->helperText('PNG, JPG, WebP o PDF (máx. 5MB).'),
+            ])
+            ->action(function (array $data): void {
+                $tenant = $this->getTenant();
+
+                SupportTicket::create([
+                    'tenant_id' => $tenant?->id,
+                    'user_id' => Auth::id(),
+                    'subject' => $data['subject'],
+                    'category' => SupportTicketCategoryEnum::PlanUpgrade,
+                    'priority' => SupportTicketPriorityEnum::Medium,
+                    'status' => SupportTicketStatusEnum::Open,
+                    'source' => 'widget_plan',
+                    'source_url' => request()->fullUrl(),
+                    'message' => $data['message'],
+                    'attachments' => $data['attachments'] ?? null,
+                ]);
+
+                Notification::make()
+                    ->title('Consulta enviada con éxito')
+                    ->body('Hemos recibido tu solicitud. Podrás darle seguimiento desde "Consultas y Feedback".')
+                    ->success()
+                    ->send();
+            });
     }
 }

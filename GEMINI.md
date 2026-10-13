@@ -1,46 +1,25 @@
-# Gemini — Genesis CMS
+# Gemini / Antigravity — Stamless CMS Headless
 
-Instrucciones para **Gemini CLI**, Google AI Studio agents y otros agentes Gemini en este repositorio.
+La guía canónica para cualquier IA es [`AGENTS.md`](AGENTS.md); **léela primero**. Ahí están qué leer al empezar, las reglas, el handoff y el idioma común. Las guías de Laravel Boost están en el bloque `<laravel-boost-guidelines>` de ese mismo archivo. Este archivo solo agrega lo específico de Gemini.
 
-## Fuente de verdad
+## Qué se espera de ti
 
-El estado y las decisiones viven en `docs/context/`. Léelos **antes** de proponer o escribir código:
+Implementación diaria con tareas **acotadas**: una subtarea de `TASK.md` a la vez, con sus archivos y su criterio de aceptación. También tests, correcciones y resúmenes de archivos largos.
 
-| Prioridad | Archivo | Uso |
-|-----------|---------|-----|
-| 1 | [`docs/context/CURRENT_STATE.md`](docs/context/CURRENT_STATE.md) | Estado real |
-| 2 | [`docs/context/TASK.md`](docs/context/TASK.md) | Tarea y aceptación |
-| 3 | [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) | Arquitectura |
-| 4 | [`docs/context/DECISIONS.md`](docs/context/DECISIONS.md) | ADRs |
-| 5 | [`docs/context/PROGRESS.md`](docs/context/PROGRESS.md) | Avances |
-| — | [`AGENTS.md`](AGENTS.md) | Protocolo multi-agente |
+Si una tarea te obliga a decidir arquitectura, cambiar planes o límites, o tocar el rumbo del lanzamiento, **detente** y déjalo como pregunta en `TASK.md`: eso se decide con el humano y Claude en Cowork.
 
-## Constraints del proyecto (no negociar sin ADR)
+## Lectura mínima
 
-- **Stack:** Laravel 11/12 + Filament + PostgreSQL
-- **Tenancy:** una sola base de datos + columna `tenant_id`
-- **Media:** Cloudflare R2 (S3-compatible)
-- **MVP Cliente 0:** Headless + plan Free Forever
-- **API MVP:** REST (`/api/v1`); GraphQL más adelante
-- **Frontend Cliente 0:** Astro o Next.js con **static export** (shared hosting)
+1. `docs/context/ROADMAP.md`, `CURRENT_STATE.md` y `TASK.md`.
+2. Lo demás, solo cuando haga falta (tabla de `AGENTS.md`).
+3. No abras `PROGRESS.md` completo ni `docs/archive/`. Usa búsqueda y lee el ADR concreto.
 
-## Protocolo de trabajo
+## Herramientas del proyecto
 
-1. Un agente = un owner de la tarea en `TASK.md`.
-2. Trabajar solo la subtarea prioritaria (P0 primero).
-3. Al finalizar sesión:
-   - Actualizar `CURRENT_STATE.md`
-   - Actualizar `TASK.md` (checks, owner)
-   - Añadir entrada en `PROGRESS.md`
-4. Si se toma una decisión nueva → ADR en `DECISIONS.md`.
-5. No expandir alcance: sin billing, sin monólito Blade, sin verticales completas en el MVP.
+- **Laravel Boost (MCP):** configurado para Antigravity en `.agents/mcp_config.json`. Necesita PHP y `vendor/` (`composer install`). Úsalo antes de adivinar: `search-docs`, `database-schema`, `database-query` y `record-rule` (guarda convenciones en `.ai/rules/`).
+- **Skills:** `.agents/skills/` (`laravel-best-practices`, `tailwindcss-development`, `infer-conventions`). Actívalas cuando trabajes en ese dominio.
+- **Procedimientos:** `docs/playbooks/` (handoff y condensar estado).
 
-## Qué optimizar
+## Antes de terminar
 
-- Claridad multi-tenant (scopes, middleware, tests de aislamiento)
-- API consumible por frontend estático
-- Docs de contexto siempre sincronizados con la realidad del repo
-
-## Producto en una línea
-
-Genesis CMS es un CMS headless/híbrido multi-tenant para freelancers y agencias de Latinoamérica; el primer hito es el Cliente 0 en modo Headless Free Forever.
+Cumple `docs/playbooks/handoff.md`. Termina tu mensaje con `Siguiente paso: …`. Corre los tests afectados y `vendor/bin/pint --dirty --format agent`.

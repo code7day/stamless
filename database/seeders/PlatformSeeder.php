@@ -4,7 +4,9 @@ namespace Database\Seeders;
 
 use App\Enums\BillingCycleEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\PlanEnum;
 use App\Enums\SubscriptionStatusEnum;
+use App\Enums\UserRoleEnum;
 use App\Models\Module;
 use App\Models\Plan;
 use App\Models\Setting;
@@ -22,7 +24,7 @@ class PlatformSeeder extends Seeder
      *
      * Super-admin Master (Nivel GOD / General de generales): `zedu77@gmail.com`
      * con `is_super_admin = true`, acceso irrestricto a Platform y Studio,
-     * tenant propio inicial con plan Auspicio/Convenio (`sponsorship`),
+     * tenant propio inicial con plan Pro,
      * habilitado tanto para autenticación directa por contraseña como
      * por Social Login (Google / Gmail).
      *
@@ -31,20 +33,20 @@ class PlatformSeeder extends Seeder
      */
     public function run(): void
     {
-        // Tenant inicial propio para el Super Admin Master (Plan Auspicio)
+        // Tenant inicial propio para el Super Admin Master (Plan Pro)
         $masterTenant = Tenant::updateOrCreate(
-            ['slug' => 'stamless'],
+            ['slug' => 'edukt'],
             [
                 'name' => 'Eduardo Flores',
-                'slug' => 'stamless',
-                'plan' => 'sponsorship',
+                'slug' => 'edukt',
+                'plan' => PlanEnum::Pro->value,
                 'is_active' => true,
             ]
         );
 
         $this->upsertSubscription($masterTenant);
-        $this->activateCoreModules($masterTenant);
-        $this->upsertSettings($masterTenant);
+        $this->activateAllModules($masterTenant);
+        $this->upsertSettings($masterTenant, 'Eduardo Flores');
 
         // Super Admin Master Principal (Nivel GOD)
         $masterUser = User::updateOrCreate(
@@ -60,30 +62,52 @@ class PlatformSeeder extends Seeder
 
         setPermissionsTeamId($masterTenant->id);
         $adminRole = Role::firstOrCreate([
-            'name' => 'Admin',
+            'name' => UserRoleEnum::Admin->value,
             'guard_name' => 'web',
             'tenant_id' => $masterTenant->id,
         ]);
         $masterUser->assignRole($adminRole);
 
-        // Administrador de soporte / manager de plataforma (sin tenant específico)
-        User::updateOrCreate(
+        // Administrador de soporte / manager de plataforma (GOD user con tenant Premium)
+        $adminTenant = Tenant::updateOrCreate(
+            ['slug' => 'stamless'],
+            [
+                'name' => 'Stamless HQ',
+                'slug' => 'stamless',
+                'plan' => PlanEnum::Premium->value,
+                'is_active' => true,
+            ]
+        );
+
+        $this->upsertSubscription($adminTenant);
+        $this->activateAllModules($adminTenant);
+        $this->upsertSettings($adminTenant, 'Stamless HQ');
+
+        $adminUser = User::updateOrCreate(
             ['email' => 'admin@stamless.com'],
             [
                 'name' => 'Platform Manager Admin',
                 'password' => 'password123',
-                'tenant_id' => null,
+                'tenant_id' => $adminTenant->id,
                 'is_super_admin' => true,
                 'email_verified_at' => now(),
             ]
         );
+
+        setPermissionsTeamId($adminTenant->id);
+        $adminCorpRole = Role::firstOrCreate([
+            'name' => UserRoleEnum::Admin->value,
+            'guard_name' => 'web',
+            'tenant_id' => $adminTenant->id,
+        ]);
+        $adminUser->assignRole($adminCorpRole);
     }
 
     private function upsertSubscription(Tenant $tenant): void
     {
         $plan = Plan::where('slug', $tenant->plan)->first()
-            ?? Plan::where('slug', 'sponsorship')->first()
-            ?? Plan::where('slug', 'free')->first();
+            ?? Plan::where('slug', PlanEnum::Premium->value)->first()
+            ?? Plan::where('slug', PlanEnum::Pro->value)->first();
 
         if (! $plan) {
             return;
@@ -110,10 +134,20 @@ class PlatformSeeder extends Seeder
         );
     }
 
-    private function upsertSettings(Tenant $tenant): void
+    private function activateAllModules(Tenant $tenant): void
+    {
+        Module::all()->each(
+            fn (Module $module) => TenantModule::updateOrCreate(
+                ['tenant_id' => $tenant->id, 'module_id' => $module->id],
+                ['is_active' => true, 'activated_at' => now()]
+            )
+        );
+    }
+
+    private function upsertSettings(Tenant $tenant, string $siteName = 'Eduardo Flores'): void
     {
         $settings = [
-            'site_name' => 'Eduardo Flores',
+            'site_name' => $siteName,
             'default_locale' => LanguageEnum::Spanish->value,
             'available_locales' => LanguageEnum::Spanish->value,
         ];

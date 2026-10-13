@@ -29,6 +29,6 @@ final class ErrorEnvelope
             'message' => $message,
             'status_code' => $status,
             'errors' => array_filter($errors, fn ($value) => ! is_null($value)) ?: null,
-        ], fn ($value) => ! is_null($value)), $status);
+        ], fn ($value) => ! is_null($value)), $status)->header('Content-Language', app()->getLocale());
     }
 }

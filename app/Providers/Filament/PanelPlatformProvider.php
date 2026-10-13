@@ -89,6 +89,10 @@ class PanelPlatformProvider extends PanelProvider
                     'targetPanel' => 'cms',
                 ])->render())
             )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): HtmlString => new HtmlString(view('filament.hooks.session-expiry-handler')->render())
+            )
             ->userMenuItems([
                 MenuItem::make()
                     ->label('Ir a Studio')

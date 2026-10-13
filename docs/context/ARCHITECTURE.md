@@ -1,4 +1,4 @@
-# Genesis CMS — Arquitectura
+# Stamless CMS Headless — Arquitectura
 
 > Documento de referencia de arquitectura. Actualizar cuando cambien decisiones estructurales.
 > Última actualización: 2026-09-13 (**SEO/Open Graph por defecto del tenant — §10.2, ADR-065**: fallback tenant-wide vía `Setting`, expuesto en Preferencias, resolución de imagen OG a URL). Antes, mismo día (**Paleta de marca Stamless — §10.1, ADR-064**: dual-primary Studio ámbar `#D97706` / Platform teal `#0F766E`, wordmark monocromo). Antes, 2026-08-20 (auditoría y consolidación del ecosistema de dominios/rutas/seguridad/excepciones — ver §4, ADR-012/016/018/020/023/024/025)

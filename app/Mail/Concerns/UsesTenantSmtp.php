@@ -35,7 +35,7 @@ use App\Models\Tenant;
 trait UsesTenantSmtp
 {
     /**
-     * @return \App\Models\Tenant|null Debe implementarse en la clase que usa este trait.
+     * @return Tenant|null Debe implementarse en la clase que usa este trait.
      */
     abstract public function tenantForSmtp(): ?Tenant;
 

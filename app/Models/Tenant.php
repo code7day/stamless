@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PageTypeEnum;
+use App\Enums\PlanEnum;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -177,54 +178,46 @@ class Tenant extends Model
      * — ver `isSponsorshipTier()`/`canEditCopyright()`, que existen
      * justamente porque `isFreeTier()` ya no alcanza para esa decisión.
      */
-    public function isFreeTier(): bool
+    /**
+     * Resuelve la instancia de PlanEnum tipada para este tenant.
+     */
+    public function planEnum(): ?PlanEnum
     {
-        return in_array($this->plan, ['free', 'freemium', 'sponsorship'], true);
+        return PlanEnum::tryFromKey($this->plan);
     }
 
     /**
-     * Plan "Auspicio/Convenio" (2026-09-02, ADR-043) — mismas
-     * características que Free/Freemium (`isFreeTier()` ya lo incluye)
-     * salvo el copyright del footer: este plan SÍ puede personalizarlo,
-     * pero de forma acotada (solo año + nombre, dentro de una plantilla
-     * fija con "Powered by Stamless" — nunca queda blanco total). CICA360
-     * (Cliente 0) usa este plan desde ADR-043, en vez de Free Forever puro
-     * (ADR-006).
+     * Gate de white-label (2026-09-02, pedido del Tech Lead para el bloque
+     * `footer_bottom`: "sólo para los que no son de plan freemium o free,
+     * si es otro plan de pago se le libera la marca blanca").
+     */
+    public function isFreeTier(): bool
+    {
+        return $this->planEnum()?->isFreeTier() ?? in_array($this->plan, ['free', 'freemium', 'sponsorship'], true);
+    }
+
+    /**
+     * Plan "Auspicio/Convenio" (2026-09-02, ADR-043).
      */
     public function isSponsorshipTier(): bool
     {
-        return $this->plan === 'sponsorship';
+        return $this->planEnum()?->isSponsorshipTier() ?? ($this->plan === 'sponsorship');
     }
 
     /**
-     * ¿Puede este tenant escribir ALGO en `footer_bottom.content.copyright_text`,
-     * aunque sea de forma acotada (Auspicio/Convenio) o total (plan pago
-     * blanco)? 2026-09-02, ADR-043 — antes esto era simplemente
-     * `! isFreeTier()`, pero ya no alcanza: Auspicio/Convenio SÍ puede
-     * editar y a la vez SIGUE siendo free-tier para cualquier otro gate.
-     * Equivalente a "no es Free ni Freemium puro" — ver `isSponsorshipTier()`
-     * para decidir QUÉ plantilla aplica cuando esto da `true`.
+     * ¿Puede este tenant escribir en copyright del footer?
      */
     public function canEditCopyright(): bool
     {
-        return ! in_array($this->plan, ['free', 'freemium'], true);
+        return $this->planEnum()?->canEditCopyright() ?? (! in_array($this->plan, ['free', 'freemium'], true));
     }
 
     /**
-     * Gate de personalización del brand del panel Studio (2026-09-13,
-     * pedido del Tech Lead: "los free, solo dirán Stamless Studio" — el
-     * nombre del tenant en el brand de `PanelCmsProvider` — ej. "CICA360
-     * Studio" — es un beneficio de plan pago, igual que `canEditCopyright()`
-     * (mismo criterio: Free/Freemium NO, Auspicio/Convenio y cualquier plan
-     * pago SÍ), pero es un gate conceptualmente distinto — un método propio
-     * en vez de reusar `canEditCopyright()` para no acoplar dos decisiones
-     * de negocio que hoy coinciden mas mañana podrian no hacerlo (mismo
-     * criterio ya aplicado en este modelo para `maxPosts()`/`maxServices()`/
-     * etc., métodos separados aunque hoy den el mismo número).
+     * Gate de personalización del brand del panel Studio.
      */
     public function canPersonalizeStudioBrand(): bool
     {
-        return ! in_array($this->plan, ['free', 'freemium'], true);
+        return $this->planEnum()?->canPersonalizeStudioBrand() ?? (! in_array($this->plan, ['free', 'freemium'], true));
     }
 
     /**
@@ -365,20 +358,11 @@ class Tenant extends Model
     }
 
     /**
-     * Etiqueta legible del plan (2026-09-13) — usada en el bloque de
-     * "info del proyecto" del sidebar de Studio (ver
-     * `resources/views/filament/cms/sidebar-project-info.blade.php`), que
-     * solo se muestra para tenants Free/Freemium (`! canPersonalizeStudioBrand()`)
-     * como recordatorio de plan — los tenants de pago ya ven su nombre real
-     * en el brand de arriba y no necesitan este recordatorio.
+     * Etiqueta legible del plan (2026-09-13).
      */
     public function planLabel(): string
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 'Free',
-            'sponsorship' => 'Auspicio/Convenio',
-            default => ucfirst($this->plan),
-        };
+        return $this->planEnum()?->getLabel() ?? ucfirst((string) $this->plan);
     }
 
     /**
@@ -410,166 +394,203 @@ class Tenant extends Model
      * no una FK a `plans`) — no se reutiliza acá para no acoplar esta
      * decisión a una tabla que todavía no participa del flujo real.
      */
-    public function maxContentsPerType(PageTypeEnum $type): ?int
+    /**
+     * Obtiene el límite configurado para una característica del plan del tenant.
+     * Consulta primero la tabla `plan_features` del plan vinculado y luego
+     * utiliza la escala predeterminada de `PlanEnum`.
+     */
+    public function getFeatureLimit(string $featureKey, ?int $default = null): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => match ($type) {
-                PageTypeEnum::Page, PageTypeEnum::Landing => 5,
-                PageTypeEnum::Legal => 3,
-                PageTypeEnum::Footer => 3,
-            },
-            'sponsorship' => match ($type) {
-                // 2026-09-13: Páginas sube de 7 a 10 (pedido del Tech
-                // Lead) — Legales/Secciones sin cambios.
-                PageTypeEnum::Page, PageTypeEnum::Landing => 10,
-                PageTypeEnum::Legal => 5,
-                PageTypeEnum::Footer => 5,
-            },
-            default => null,
-        };
+        $plan = $this->planModel() ?? Plan::where('slug', $this->plan)->first();
+
+        if ($plan) {
+            $featureValue = PlanFeature::where('plan_id', $plan->id)
+                ->where('key', $featureKey)
+                ->value('value');
+
+            if ($featureValue !== null && is_numeric($featureValue)) {
+                return (int) $featureValue;
+            }
+        }
+
+        $planEnum = $this->planEnum();
+
+        if ($planEnum) {
+            return match ($featureKey) {
+                'max_posts' => match ($planEnum) {
+                    PlanEnum::Trial => 10,
+                    PlanEnum::Starter => 50,
+                    PlanEnum::Sponsorship => 100,
+                    PlanEnum::Pro => 250,
+                    PlanEnum::Premium => 1000,
+                },
+                'max_services' => match ($planEnum) {
+                    PlanEnum::Trial => 5,
+                    PlanEnum::Starter => 15,
+                    PlanEnum::Sponsorship => 25,
+                    PlanEnum::Pro => 50,
+                    PlanEnum::Premium => 150,
+                },
+                'max_testimonials' => match ($planEnum) {
+                    PlanEnum::Trial => 3,
+                    PlanEnum::Starter => 15,
+                    PlanEnum::Sponsorship => 25,
+                    PlanEnum::Pro => 50,
+                    PlanEnum::Premium => 150,
+                },
+                'max_sliders' => match ($planEnum) {
+                    PlanEnum::Trial => 1,
+                    PlanEnum::Starter => 3,
+                    PlanEnum::Sponsorship => 5,
+                    PlanEnum::Pro => 15,
+                    PlanEnum::Premium => 50,
+                },
+                'max_media' => match ($planEnum) {
+                    PlanEnum::Trial => 20,
+                    PlanEnum::Starter => 100,
+                    PlanEnum::Sponsorship => 150,
+                    PlanEnum::Pro => 500,
+                    PlanEnum::Premium => 2000,
+                },
+                'max_menus' => match ($planEnum) {
+                    PlanEnum::Trial => 3,
+                    PlanEnum::Starter => 5,
+                    PlanEnum::Sponsorship => 5,
+                    PlanEnum::Pro => 10,
+                    PlanEnum::Premium => 30,
+                },
+                'max_menu_items' => match ($planEnum) {
+                    PlanEnum::Trial => 5,
+                    PlanEnum::Starter => 10,
+                    PlanEnum::Sponsorship => 15,
+                    PlanEnum::Pro => 30,
+                    PlanEnum::Premium => 50,
+                },
+                'max_api_tokens' => match ($planEnum) {
+                    PlanEnum::Trial => 5,
+                    PlanEnum::Starter => 5,
+                    PlanEnum::Sponsorship => 10,
+                    PlanEnum::Pro => 25,
+                    PlanEnum::Premium => 100,
+                },
+                'max_users' => match ($planEnum) {
+                    PlanEnum::Trial => 1,
+                    PlanEnum::Starter => 2,
+                    PlanEnum::Sponsorship => 3,
+                    PlanEnum::Pro => 10,
+                    PlanEnum::Premium => 50,
+                },
+                'max_pages' => match ($planEnum) {
+                    PlanEnum::Trial => 10,
+                    PlanEnum::Starter => 30,
+                    PlanEnum::Sponsorship => 50,
+                    PlanEnum::Pro => 150,
+                    PlanEnum::Premium => 1000,
+                },
+                default => $default,
+            };
+        }
+
+        return $default;
     }
 
     /**
-     * Topes por plan para los demás recursos con límite freemium
-     * (2026-09-11, pedido explícito del Tech Lead, mismo criterio que
-     * `maxContentsPerType()`: `null` = sin límite, ninguno de estos modelos
-     * usa `SoftDeletes` — a diferencia de `Page`, acá "activo" es
-     * simplemente "la fila existe"). Cada uno es un método aparte (no una
-     * tabla/array genérico) a propósito: son números totalmente
-     * independientes entre sí, pedidos uno por uno, y así queda igual de
-     * legible/greppable que `maxContentsPerType()`.
+     * Tope de contenidos ACTIVOS (no soft-deleted) por CADA tipo de
+     * `PageTypeEnum` — Página, Landing, Legal y Footer se cuentan por
+     * separado, NO un total combinado.
      */
+    public function maxContentsPerType(PageTypeEnum $type): ?int
+    {
+        $planEnum = $this->planEnum();
+
+        if (! $planEnum) {
+            return null;
+        }
+
+        return match ($planEnum) {
+            PlanEnum::Trial => match ($type) {
+                PageTypeEnum::Page, PageTypeEnum::Landing => 5,
+                PageTypeEnum::Legal => 3,
+                PageTypeEnum::Footer => 2,
+            },
+            PlanEnum::Starter => match ($type) {
+                PageTypeEnum::Page, PageTypeEnum::Landing => 20,
+                PageTypeEnum::Legal => 5,
+                PageTypeEnum::Footer => 5,
+            },
+            PlanEnum::Sponsorship => match ($type) {
+                PageTypeEnum::Page, PageTypeEnum::Landing => 30,
+                PageTypeEnum::Legal => 10,
+                PageTypeEnum::Footer => 10,
+            },
+            PlanEnum::Pro => match ($type) {
+                PageTypeEnum::Page, PageTypeEnum::Landing => 100,
+                PageTypeEnum::Legal => 25,
+                PageTypeEnum::Footer => 25,
+            },
+            PlanEnum::Premium => match ($type) {
+                PageTypeEnum::Page, PageTypeEnum::Landing => 800,
+                PageTypeEnum::Legal => 100,
+                PageTypeEnum::Footer => 100,
+            },
+        };
+    }
+
     public function maxPosts(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 10,
-            'sponsorship' => 20,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_posts');
     }
 
     public function maxServices(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 10,
-            'sponsorship' => 20,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_services');
     }
 
     public function maxTestimonials(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 6,
-            'sponsorship' => 20,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_testimonials');
     }
 
     public function maxSliders(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 2,
-            'sponsorship' => 5,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_sliders');
     }
 
     public function maxMedia(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 40,
-            'sponsorship' => 60,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_media');
     }
 
-    /**
-     * Límite de formularios por tenant (2026-09-18, ADR forms por tenant —
-     * `FormResource`). Mismo criterio que `maxSliders()`: un `Form` es una
-     * pieza que se arma (nombre + campos elegidos del catálogo), no un
-     * ítem de contenido suelto, así que comparte esos mismos números en vez
-     * de los de `maxPosts()`/`maxServices()`. Free alcanza para el
-     * "Contacto principal" de siempre + 1 de repuesto (ej. un form de
-     * newsletter); Auspicio/Convenio deja margen para separar contacto
-     * general, cotización y soporte.
-     */
     public function maxForms(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 2,
-            'sponsorship' => 5,
+        return $this->getFeatureLimit('max_forms', match ($this->planEnum()) {
+            PlanEnum::Trial => 2,
+            PlanEnum::Starter => 5,
+            PlanEnum::Sponsorship => 5,
+            PlanEnum::Pro => 15,
+            PlanEnum::Premium => 50,
             default => null,
-        };
+        });
     }
 
-    /**
-     * Límite de CANTIDAD de menús por tenant (2026-09-13, pedido del Tech
-     * Lead: "a lo mejor falta el limite de menus, son 5 menus limite sea
-     * free o auspicio") — a diferencia del resto de topes de este bloque,
-     * acá Free/Freemium y Auspicio/Convenio comparten el MISMO número (5),
-     * en vez de que Auspicio tenga un cupo mayor; no hay pedido de un
-     * número distinto para Auspicio en este caso puntual. Distinto de
-     * `maxMenuItems()` (de abajo), que limita items DENTRO de cada menú,
-     * no la cantidad de menús en sí.
-     */
     public function maxMenus(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium', 'sponsorship' => 5,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_menus');
     }
 
-    /**
-     * A diferencia de los demás topes de este bloque, este no se compara
-     * contra un `count()` de filas existentes en un modelo propio: los
-     * items de menú se sincronizan en bloque desde un árbol plano
-     * (`MenuTreeBuilder::make('itemsTree')`, ver `MenuResource::
-     * syncMenuTree()`), así que quien llama a este método cuenta el array
-     * `itemsTree` completo (todos los niveles de profundidad) ANTES de
-     * sincronizar — ver `MenuResource::createAction()`/`EditAction`.
-     */
     public function maxMenuItems(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 7,
-            'sponsorship' => 12,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_menu_items');
     }
 
-    /**
-     * 2026-09-12, pedido del Tech Lead: "me falto ver para plan free /
-     * auspiciador deberia permitir un limite de tokens, para free 5 y
-     * para auspicio 10" — mismo patrón que el resto de topes de este
-     * bloque. Lo consume `App\Filament\Pages\ApiTokens::
-     * isTokenLimitReached()`, contando solo tokens ACTIVOS (no expirados)
-     * del tenant — ver ese método para el detalle de por qué un token ya
-     * expirado no ocupa un cupo.
-     */
     public function maxApiTokens(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 5,
-            'sponsorship' => 10,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_api_tokens');
     }
 
-    /**
-     * Límite de usuarios por tenant según plan.
-     * Free: 1 (solo el dueño)
-     * Auspicio/Convenio: 3
-     * Otros planes de pago: según configuración / sin límite por defecto
-     */
     public function maxUsers(): ?int
     {
-        return match ($this->plan) {
-            'free', 'freemium' => 1,
-            'sponsorship' => 3,
-            default => null,
-        };
+        return $this->getFeatureLimit('max_users');
     }
 
     public function users(): HasMany
@@ -676,5 +697,10 @@ class Tenant extends Model
     public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);
+    }
+
+    public function supportTickets(): HasMany
+    {
+        return $this->hasMany(SupportTicket::class);
     }
 }

@@ -98,7 +98,7 @@ class MustChangePasswordTest extends TestCase
         $this->assertTrue(Hash::check('NewSecurePassword2026!', $user->password));
     }
 
-    public function test_cliente0_seeder_creates_owner_with_must_change_password_flag(): void
+    public function test_cliente0_seeder_creates_owner_account(): void
     {
         $this->seed(PlanSeeder::class);
         $this->seed(Cliente0Seeder::class);
@@ -107,7 +107,7 @@ class MustChangePasswordTest extends TestCase
 
         $this->assertNotNull($owner);
         $this->assertEquals('Isaac Goncalvez', $owner->name);
-        $this->assertTrue((bool) $owner->must_change_password);
-        $this->assertTrue(Hash::check('Cica360#Secure!2026', $owner->password));
+        $this->assertFalse((bool) $owner->must_change_password);
+        $this->assertTrue(Hash::check('c1c4@2026.', $owner->password));
     }
 }

@@ -7,6 +7,7 @@ use App\Services\SettingService;
 use App\Services\TenantManager;
 use Filament\Auth\Http\Responses\Contracts\LoginResponse;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -37,6 +38,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Model::preventLazyLoading(! $this->app->isProduction());
+
         if (str_starts_with(config('app.url', ''), 'https://') || str_starts_with(config('stamless.urls.studio', ''), 'https://')) {
             URL::forceScheme('https');
         }

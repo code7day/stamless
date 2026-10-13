@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ModuleEnum;
 use App\Enums\ModuleTypeEnum;
 use App\Models\Module;
 use App\Models\Plan;
@@ -10,18 +11,16 @@ use Illuminate\Database\Seeder;
 class ModuleSeeder extends Seeder
 {
     /**
-     * Módulos core del CMS. `contacts` se marca `is_core` igual que el
-     * resto: el plan Free necesita poder recibir envíos de formulario
-     * (`contact_form` block) sin depender de un módulo vertical de pago.
+     * Módulos core del CMS gestionados mediante ModuleEnum.
      */
     private const array CORE_MODULES = [
-        'pages' => 'Páginas',
-        'posts' => 'Blog / Entradas',
-        'media' => 'Media Library',
-        'menus' => 'Menús de navegación',
-        'settings' => 'Configuración del sitio',
-        'sliders' => 'Sliders',
-        'contacts' => 'Contactos y formularios',
+        ModuleEnum::Pages,
+        ModuleEnum::Posts,
+        ModuleEnum::Media,
+        ModuleEnum::Menus,
+        ModuleEnum::Settings,
+        ModuleEnum::Sliders,
+        ModuleEnum::Contacts,
     ];
 
     /**
@@ -31,11 +30,11 @@ class ModuleSeeder extends Seeder
     {
         $moduleIds = [];
 
-        foreach (self::CORE_MODULES as $slug => $name) {
+        foreach (self::CORE_MODULES as $moduleEnum) {
             $module = Module::updateOrCreate(
-                ['slug' => $slug],
+                ['slug' => $moduleEnum->value],
                 [
-                    'name' => $name,
+                    'name' => $moduleEnum->getLabel(),
                     'type' => ModuleTypeEnum::Utility->value,
                     'is_core' => true,
                     'is_active' => true,
@@ -46,7 +45,7 @@ class ModuleSeeder extends Seeder
             $moduleIds[] = $module->id;
         }
 
-        $plans = Plan::whereIn('slug', ['free', 'sponsorship'])->get();
+        $plans = Plan::all();
 
         foreach ($plans as $plan) {
             $plan->modules()->syncWithoutDetaching($moduleIds);

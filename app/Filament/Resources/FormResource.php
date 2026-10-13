@@ -14,8 +14,10 @@ use Filament\Actions;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Components\Builder;
+use Filament\Forms\Components\Builder\Block;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -171,7 +173,7 @@ class FormResource extends Resource
      * PRIMER paso (clic en "Agregar campo") en vez de un campo más dentro
      * de un ítem en blanco.
      *
-     * @return array<int, \Filament\Forms\Components\Builder\Block>
+     * @return array<int, Block>
      */
     private static function catalogFieldBlocks(): array
     {
@@ -190,13 +192,13 @@ class FormResource extends Resource
         $blocks = FormFieldDefinition::query()
             ->orderBy('sort_order')
             ->get()
-            ->map(fn (FormFieldDefinition $definition) => Builder\Block::make($definition->key)
+            ->map(fn (FormFieldDefinition $definition) => Block::make($definition->key)
                 ->label($definition->label)
                 ->icon($icons[$definition->key] ?? 'heroicon-o-squares-plus')
                 ->schema(self::fieldBlockSchema($definition)))
             ->all();
 
-        $blocks[] = Builder\Block::make('custom')
+        $blocks[] = Block::make('custom')
             ->label('Campo personalizado')
             ->icon('heroicon-o-plus-circle')
             ->schema(self::fieldBlockSchema(null));
@@ -210,7 +212,7 @@ class FormResource extends Resource
      * bloques son los VALORES POR DEFECTO (`$definition`, null para el
      * personalizado), no la forma de los campos editables.
      *
-     * @return array<int, \Filament\Schemas\Components\Component>
+     * @return array<int, Component>
      */
     private static function fieldBlockSchema(?FormFieldDefinition $definition): array
     {

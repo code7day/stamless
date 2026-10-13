@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\LanguageEnum;
 use App\Enums\PageTypeEnum;
 use App\Enums\PublishStatusEnum;
 use App\Models\Page;
@@ -263,7 +264,7 @@ class Cliente0ServicesSeeder extends Seeder
             $record = Service::firstOrCreate(
                 ['tenant_id' => $tenant->id, 'slug' => $slug],
                 [
-                    'lang_iso' => 'es',
+                    'lang_iso' => LanguageEnum::Spanish->value,
                     'title' => $service['title'],
                     'subtitle' => $service['subtitle'],
                     'status' => PublishStatusEnum::Published->value,

@@ -1,8 +1,8 @@
-# Genesis CMS
+# Stamless CMS Headless
 
-Genesis CMS es una plataforma CMS headless e híbrida, multi-tenant y multi-domain, diseñada especialmente para freelancers y agencias de Latinoamérica.
+**Stamless CMS Headless** es una plataforma CMS headless multi-tenant y multi-domain, diseñada especialmente para freelancers y agencias de Latinoamérica.
 
-El primer hito (MVP) está orientado a entregar un sitio web de forma Headless para el Cliente 0 (una consultora uruguaya de seguros y jurídica) bajo un plan Free Forever.
+El primer hito (MVP) está orientado a entregar un sitio web de forma Headless para el Cliente 0 (una consultora uruguaya de seguros y jurídica) bajo un plan Free Forever / Auspicio.
 
 ---
 

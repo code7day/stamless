@@ -1,113 +1,86 @@
-# Genesis CMS — Guía para agentes de IA
+# Stamless CMS Headless — Guía para agentes de IA
 
-Este repositorio es **Genesis CMS**. Cualquier agente (Grok, Claude, Gemini, Codex, Cursor, etc.) debe leer este archivo y el contexto en `docs/context/` **antes** de modificar código o docs.
-
----
-
-## Contexto obligatorio (leer en este orden)
-
-1. [`docs/context/CURRENT_STATE.md`](docs/context/CURRENT_STATE.md) — dónde estamos
-2. [`docs/context/TASK.md`](docs/context/TASK.md) — qué hay que hacer ahora
-3. [`docs/context/ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) — cómo está diseñado el sistema
-4. [`docs/context/DECISIONS.md`](docs/context/DECISIONS.md) — qué ya se decidió (no reabrir sin ADR)
-5. [`docs/context/PROGRESS.md`](docs/context/PROGRESS.md) — qué se hizo recientemente
-
-Punteros por herramienta:
-
-- Claude Code → también [`CLAUDE.md`](CLAUDE.md)
-- Gemini CLI / agentes Google → también [`GEMINI.md`](GEMINI.md)
+Repositorio de **Stamless CMS Headless** (codename previo: *Genesis CMS*). Esta guía es la **entrada única** para cualquier IA: Claude, Gemini/Antigravity, Codex, Cursor, Grok, OpenCode. `CLAUDE.md` y `GEMINI.md` solo apuntan aquí.
 
 ---
 
-## Reglas de trabajo
+## 1. Al empezar, lee esto (y nada más)
 
-### 1. Un solo dueño de la tarea activa
+1. [`docs/context/ROADMAP.md`](docs/context/ROADMAP.md) — el norte: objetivo, puertas de lanzamiento y próximos pasos.
+2. [`docs/context/CURRENT_STATE.md`](docs/context/CURRENT_STATE.md) — qué existe hoy.
+3. [`docs/context/TASK.md`](docs/context/TASK.md) — tarea activa, owner y siguiente paso.
 
-- Solo **un agente** es owner de la tarea descrita en `TASK.md` a la vez.
-- Al empezar: poner tu identificador en `Owner actual` y estado `In progress`.
-- No tomar otra subtarea grande en paralelo sin coordinar con el humano.
+Lo demás es **bajo demanda**:
 
-### 2. No reinventar decisiones cerradas
+| Necesitas | Lee |
+|-----------|-----|
+| Cómo está diseñado el sistema | [`ARCHITECTURE.md`](docs/context/ARCHITECTURE.md) |
+| Planes, cuotas y límites | [`PLANS.md`](docs/context/PLANS.md) |
+| Por qué algo es como es | [`DECISIONS.md`](docs/context/DECISIONS.md) (índice) y luego solo el `docs/decisions/ADR-NNN.md` que aplique |
+| Qué pasó hace poco | las últimas entradas de [`PROGRESS.md`](docs/context/PROGRESS.md); el historial está en `docs/archive/` |
+| Tocar bloques del Home | [`HOME_INTEGRATION.md`](docs/context/HOME_INTEGRATION.md) |
+| Convenciones y trampas del código | `.ai/rules/` cuando exista (se escribe con `record-rule` de Laravel Boost) y las skills instaladas |
+| Un procedimiento repetible | [`docs/playbooks/`](docs/playbooks/) |
 
-Decisiones **Accepted** en `DECISIONS.md` son vinculantes, en particular:
-
-- Nombre: Genesis CMS
-- Stack: Laravel + Filament + PostgreSQL
-- Multi-tenancy: **single DB + `tenant_id`** (no multi-DB en MVP)
-- Assets: Cloudflare R2
-- Modelo: freemium + módulos verticales
-- Cliente 0: Headless + Free Forever
-
-Para cambiar una decisión: nuevo ADR + actualizar `ARCHITECTURE.md` si aplica.
-
-### 3. Handoff obligatorio
-
-Antes de terminar la sesión o ceder el trabajo:
-
-1. Actualizar `docs/context/CURRENT_STATE.md` (hecho / en progreso / siguiente / bloqueadores).
-2. Actualizar `docs/context/TASK.md` (subtareas, owner, estado).
-3. Añadir entrada en `docs/context/PROGRESS.md` (arriba del log).
-4. Si hubo decisión nueva → `DECISIONS.md`.
-5. Si cambió el diseño → `ARCHITECTURE.md`.
-6. Liberar owner en `TASK.md` o indicar siguiente subtarea clara.
-
-### 4. Alcance y calidad
-
-- Preferir cambios pequeños y verificables orientados a la tarea activa.
-- No expandir alcance del MVP (ver “Fuera de alcance” en `TASK.md`).
-- No commitear secretos (`.env`, keys R2, tokens).
-- Código multi-tenant: siempre scope por `tenant_id`; añadir tests de aislamiento cuando toque datos.
-- Actualizar `README.md` solo cuando cambie setup o comandos reales.
-
-### 5. Comunicación con el humano
-
-- Reportar bloqueadores en `CURRENT_STATE.md`.
-- Preguntar solo cuando una decisión no esté en ADRs y bloquee el progreso.
-- Preferir Astro o Next static export para Cliente 0; documentar la elección con ADR.
+**No leas completos** `PROGRESS.md`, `docs/archive/` ni los 79+ ADR. Busca con `grep` y abre solo lo necesario: la cuota de cada IA es limitada y compartida.
 
 ---
 
-## Mapa rápido del producto
+## 2. Reglas de trabajo
 
-| Concepto | Detalle |
-|----------|---------|
-| Producto | CMS headless + híbrido, multi-tenant, multi-domain |
-| Audiencia | Freelancers y agencias LATAM |
-| MVP | Cliente 0 (consultora UY seguros/jurídico), Headless, Free Forever |
-| Admin | Filament |
-| API MVP | REST `/api/v1` |
-| Frontend C0 | Astro o Next.js (static export) en shared hosting |
+1. **Un solo owner** de la tarea activa. Al empezar, pon tu identificador en `TASK.md`; al terminar, libéralo o deja handoff.
+2. **No reabras decisiones cerradas.** Los ADR `Accepted` obligan. Para cambiar uno: nuevo ADR que lo reemplace y actualizar `ARCHITECTURE.md` si aplica. No cambies stack, multi-tenancy (single DB + `tenant_id`) ni el modelo de planes sin ADR.
+3. **Cambios pequeños y verificables.** Toda modificación lleva su test; corre solo los tests afectados y `vendor/bin/pint --dirty --format agent`.
+4. **Multi-tenant siempre:** scope por `tenant_id` y tests de aislamiento cuando toques datos.
+5. **Nunca commitees secretos** (`.env`, llaves, tokens, certificados).
+6. **No hardcodees límites de plan:** usa `$tenant->maxX()` o `getFeatureLimit()`. No uses el término `free`: es `Trial`.
+7. **Pregunta solo** cuando la decisión no esté en `ROADMAP.md` ni en un ADR y bloquee el avance.
 
 ---
 
-## Comandos (cuando exista el código)
+## 3. Reparto de herramientas (cuidar la cuota)
 
-> Actualizar esta sección tras el scaffold Laravel.
+- **Claude en Cowork:** estrategia, lanzamiento, finanzas, decisiones, documentación y revisión. No implementación larga ni lecturas masivas.
+- **Gemini en Antigravity:** implementación diaria con tareas acotadas, tests y resúmenes de archivos grandes.
+- **Claude Code:** solo refactors difíciles, bugs de causa raíz o revisión de seguridad.
+- **Todos:** usa las herramientas de **Laravel Boost** (`search-docs`, `database-schema`, `database-query`) antes de leer código a ciegas; pide archivos concretos, no "todo el repo".
+
+---
+
+## 4. Handoff (al terminar)
+
+Sigue [`docs/playbooks/handoff.md`](docs/playbooks/handoff.md): **reemplaza** el estado en `CURRENT_STATE.md`, actualiza `TASK.md`, agrega una entrada corta arriba en `PROGRESS.md`, registra decisiones como ADR y termina tu mensaje con `Siguiente paso: …`.
+
+---
+
+## 5. Idioma común
+
+| Tema | Convención |
+|------|------------|
+| Docs | Español. Código, enums y llamadas `__('…')` en inglés |
+| Tono de copy | Stamless en español neutro. El voseo rioplatense es exclusivo de la marca CICA360 (ADR-051) |
+| Paneles | **Studio** = CMS de cada tenant (cliente). **Platform** = super-admin |
+| Planes | Trial, Starter, Sponsorship (Convenio), Pro, Premium |
+| Tareas | Pending, In progress, Blocked, Done |
+| ADR | Proposed, Accepted, Superseded |
+| Idiomas del producto | ES, EN, PT |
+
+Cliente 0 es CICA360 (consultora uruguaya de seguros y temas jurídicos), en modo Headless con plan Convenio; su frontend Astro vive en un repo aparte.
+
+---
+
+## 6. Comandos útiles
 
 ```bash
-# Ejemplos previstos
-composer install
-cp .env.example .env
-php artisan key:generate
+composer install && cp .env.example .env && php artisan key:generate
 php artisan migrate
-php artisan serve
+composer run dev
+php artisan test --compact --filter=NombreDelTest
+vendor/bin/pint --dirty --format agent
+php artisan translator:update   # tras agregar o cambiar cadenas traducibles
 ```
 
 ---
-
-## Checklist de inicio de sesión
-
-- [ ] Leí `CURRENT_STATE.md` y `TASK.md`
-- [ ] Confirmé que no hay otro owner activo (o el humano me asignó)
-- [ ] Sé cuál es la subtarea P0/P1 siguiente
-- [ ] No voy a contradecir ADRs sin documentar
-
-## Checklist de fin de sesión
-
-- [ ] `CURRENT_STATE.md` actualizado
-- [ ] `TASK.md` actualizado
-- [ ] Entrada en `PROGRESS.md`
-- [ ] Owner liberado o handoff explícito
 
 ===
 

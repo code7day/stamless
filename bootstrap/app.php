@@ -2,6 +2,7 @@
 
 use App\Exceptions\Api\MissingRequiredFieldsException;
 use App\Http\Middleware\ResolveTenant;
+use App\Http\Middleware\SetLocaleFromHeader;
 use App\Http\Middleware\ValidateTokenOrigin;
 use App\Models\Tenant;
 use App\Models\User;
@@ -15,6 +16,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
@@ -31,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(SetLocaleFromHeader::class);
         $middleware->append(ResolveTenant::class);
 
         // Rate limit básico para la API pública (ver RateLimiter::for('api', ...) en AppServiceProvider).
@@ -76,6 +80,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->getHost() === parse_url(config('stamless.urls.api'), PHP_URL_HOST) || $request->expectsJson(),
         );
+
+        // Registro de advertencia estructurada al expirar la sesión / token CSRF (419)
+        $exceptions->report(function (TokenMismatchException $e) {
+            $req = request();
+            Log::warning('Sesión o token CSRF expirado (HTTP 419)', [
+                'url' => $req->fullUrl(),
+                'method' => $req->method(),
+                'ip' => $req->ip(),
+                'user_agent' => $req->userAgent(),
+                'referer' => $req->header('referer'),
+                'is_livewire' => $req->hasHeader('X-Livewire') || str_contains($req->path(), 'livewire'),
+            ]);
+        });
 
         // Si un usuario autenticado en Studio accede a una ruta 404 / tenant inválido,
         // redirigirlo automáticamente a su propio tenant Studio (o Platform si es superadmin sin tenant).
@@ -210,14 +227,14 @@ return Application::configure(basePath: dirname(__DIR__))
             // este es el envelope de error real que ve cualquier tenant
             // integrando su propio frontend, no solo CICA360.
             $message = match (true) {
-                $status === 401 && $hadBearerToken => 'Token inválido o expirado.',
-                $status === 401 => 'No autenticado. Se requiere un token Bearer en el header Authorization.',
-                $status === 403 => 'No tiene permiso para acceder a este recurso.',
-                $status === 404 => 'Recurso no encontrado.',
-                $status === 422 => 'Revisar los datos enviados.',
-                $status === 429 => 'Demasiadas solicitudes. Intentar de nuevo más tarde.',
-                $status === 500 => 'Error interno. Intentar de nuevo.',
-                default => 'Error inesperado.',
+                $status === 401 && $hadBearerToken => __('Invalid or expired token.'),
+                $status === 401 => __('Unauthenticated. A Bearer token is required in the Authorization header.'),
+                $status === 403 => __('You do not have permission to access this resource.'),
+                $status === 404 => __('Resource not found.'),
+                $status === 422 => __('Please check the submitted data.'),
+                $status === 429 => __('Too many requests. Please try again later.'),
+                $status === 500 => __('Internal server error. Please try again.'),
+                default => __('An unexpected error occurred.'),
             };
 
             $errors = match (true) {

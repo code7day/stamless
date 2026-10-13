@@ -11,7 +11,6 @@ use App\Models\User;
 use App\Services\TenantManager;
 use BackedEnum;
 use DateTimeZone;
-use Filament\Actions;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms;
@@ -613,7 +612,7 @@ class Preferences extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            Actions\Action::make('save')
+            Action::make('save')
                 ->label('Guardar')
                 ->icon('heroicon-o-check')
                 ->action(function (): void {

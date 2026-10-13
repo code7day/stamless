@@ -11,6 +11,162 @@
 > - **Siguiente:** ...
 > ```
 
+## 2026-10-11 — Creación de `docs/context/PLANS.md` (Documento de Contexto y Gobernanza de Planes)
+
+- **Qué se hizo:**
+  1. **Redacción de `PLANS.md`**: Creación de la guía canónica completa que describe:
+     - Escala comercial: `trial` ($0, 15d), `starter` ($7/m), `sponsorship` ($0 B2B), `pro` ($20/m), `premium` ($99/m).
+     - Diagrama ER de modelado relacional (`tenants`, `plans`, `plan_features`, `subscriptions`).
+     - Enum `App\Enums\PlanEnum` con badges, descripciones, colores y acciones contextuales.
+     - Motor dinámico `Tenant::getFeatureLimit()` y tabla comparativa de los 11 recursos limitados.
+     - Componentes de Filament Studio (`PlanStatusWidget`, `PlanUsageWidget`, badges de navegación).
+     - Estándar de internacionalización y roadmap de implementación para fases futuras.
+  2. **Actualización de punteros**: Enlace agregado a [`AGENTS.md`](file:///Users/edu/Storage/webapps/projects/stamless/AGENTS.md) y [`GEMINI.md`](file:///Users/edu/Storage/webapps/projects/stamless/GEMINI.md).
+  3. **Verificación**: Suite de pruebas al 100% (**168/168 tests pasando**).
+
+## 2026-10-07 — Contadores de límites 100% dinámicos en Tenant vía `plan_features` y `PlanEnum`
+
+- **Qué se hizo:**
+  1. **Resolución dinámica de características**: Implementación de `Tenant::getFeatureLimit()` que consulta la tabla `plan_features` del plan vinculado en base de datos con fallback automático a la escala de `PlanEnum`.
+  2. **Actualización de topes en `Tenant.php`**: `maxPosts()`, `maxServices()`, `maxTestimonials()`, `maxSliders()`, `maxMedia()`, `maxMenus()`, `maxMenuItems()`, `maxApiTokens()`, `maxUsers()`, `maxContentsPerType()` sincronizados con las capacidades ampliadas del plan Convenio/Auspicio (100 posts, 50 contenidos, 25 servicios, 25 testimonios, etc.).
+  3. **Verificación de migraciones y tests**: `migrate:fresh --seed` y `test --compact` pasando al 100% (**168/168 tests aprobados**).
+
+## 2026-10-07 — Botones de acción contextuales por plan y sincronización de traducciones
+
+- **Qué se hizo:**
+  1. **Acción de Convenio/Auspicio B2B**: Ajustado el label a `"Consultar ampliación"` (`__('Request expansion')`) garantizando un tratamiento institucional amigable, no transaccional.
+  2. **Acciones comerciales**: Trial (`Mejorar plan`), Starter (`Subir a Pro`), Pro (`Subir a Premium`).
+  3. **i18n sincronizado**: Ejecución de `php artisan translator:update` y traducción completa de nuevos módulos/labels en `en.json`, `es.json` y `pt-br.json`.
+  4. **Refactorización de Seeders**: `PlatformSeeder.php` y `Cliente0Seeder.php` utilizan directamente `PlanEnum`, `LanguageEnum` y `UserRoleEnum`.
+  5. **Verificación**: Suite de pruebas pasando al 100% (**168/168 tests aprobados**).
+
+## 2026-10-07 — Consolidación estratégica de Planes: Trial, Starter (50 posts), Sponsorship, Pro, Premium + i18n neutral en inglés
+
+- **Qué se hizo:**
+  1. **Alineación comercial de planes**:
+     - `trial` ($0, 15 días, 10 posts, 250 MB).
+     - `starter` ($7/mes o $70/año, 50 posts activos, 30 páginas, 1 GB storage, copyright editable).
+     - `sponsorship` ($0 B2B/Convenio, 100 posts, 50 páginas, 2 GB storage).
+     - `pro` ($20/mes o $200/año, 250 posts, 150 páginas, 5 GB storage, módulos verticales, marca editable).
+     - `premium` (Desde $99/mes o $990/año, 1000 posts, 1000 páginas, 20 GB storage, capacidad máxima y personalización total).
+  2. **Enum `PlanEnum`**: Actualizado con casos `Trial`, `Starter`, `Sponsorship`, `Pro`, `Premium`, resolución transparente de alias heredados (`free`, `freelance`, `corporate`), badges honestos y botones de acción dinámicos (`Upgrade plan`, `Upgrade to Pro`, `Request expansion`, `Upgrade to Premium`).
+  3. **Dashboard Widget (`PlanStatusWidget`)**: Integra el botón de acción con etiqueta contextualizada según el tier activo.
+  4. **Seeder de Planes (`PlanSeeder` y `ModuleSeeder`)**: Se sembraron los planes principales y sus alias de compatibilidad con las capacidades progressive actualizadas, vinculando módulos core a todos los planes.
+  5. **Internacionalización y Diccionarios**: Estandarizados en `lang/` (`en.json`, `es.json`, `pt-br.json`).
+  6. **Calidad y Verificación**: `migrate:fresh --seed` ejecutado sin errores, suite de tests al 100% (**168 tests, 734 aserciones pasando**), `vendor/bin/pint` formateado.
+- **Archivos:** `app/Enums/PlanEnum.php`, `app/Filament/Widgets/PlanStatusWidget.php`, `database/seeders/PlanSeeder.php`, `database/seeders/PlatformSeeder.php`, `database/seeders/ModuleSeeder.php`, `lang/en.json`, `lang/es.json`, `lang/pt-br.json`, `tests/Feature/PlanSeederTest.php`, `tests/Feature/SupportTicketTest.php`, `tests/Feature/Filament/MustChangePasswordTest.php`, `docs/context/CURRENT_STATE.md`, `docs/context/PROGRESS.md`.
+- **Estado:** 100% completado y verificado. Owner: libre.
+
+- **Qué se hizo:**
+  1. Se instaló `spatie/laravel-translatable` (^6.14) para soporte de campos traducibles en Eloquent.
+  2. Se instaló `spatie/laravel-query-builder` (^7.3) para filtrado dinámico en API y se publicó `config/query-builder.php`.
+  3. Se instaló `thiagocordeiro/laravel-translator` (^1.2) para el escaneo y actualización de llaves de traducción (`translator:update`).
+  4. Formateo con Pint y verificación de suite: **164 tests, 719 aserciones, 100% pasando**.
+
+## 2026-10-07 — Acciones agrupadas (ActionGroup) en Studio y Platform + Icono y label "Cambiar Estado"
+
+- **Qué se hizo:**
+  1. En `app/Filament/Resources/SupportTicketResource.php` (Studio) y `app/Filament/Platform/Resources/SupportTicketResource.php` (Platform), se envolvieron las acciones de tabla dentro de `ActionGroup::make([ ... ])` para unificar el menú desplegable de acciones con el resto del panel.
+  2. En Platform, se corrigió la acción rápida de estado: label actualizado a `"Cambiar Estado"` y su icono cambiado a `heroicon-m-arrow-path` (icono coherente de actualización/refresco).
+  3. Formateo con Pint y suite ejecutada: **164 tests, 719 aserciones, 100% pasando**.
+
+## 2026-10-07 — Prefijo "Nº Ticket:" y botón para copiar al portapapeles en Studio
+
+- **Qué se hizo:**
+  1. En `app/Filament/Resources/SupportTicketResource.php` (Studio), se actualizó la columna de asunto ("Consulta") para anteponer el prefijo `"Nº Ticket: "` antes del código de ticket.
+  2. Se integró un botón interactivo de copia al portapapeles vía Alpine.js (`navigator.clipboard.writeText`) con feedback visual (transición a ícono de checkmark verde por 2 segundos) y prevención de propagación de clics (`x-on:click.stop`).
+  3. Formateo con Pint y suite ejecutada: **164 tests, 719 aserciones, 100% pasando**.
+
+## 2026-10-07 — Creación del Enum `PlanEnum` con soporte i18n y refactorización global de planes
+
+- **Qué se hizo:**
+  1. **Creación de `App\Enums\PlanEnum`**: Backed Enum con los casos `Free ('free')`, `Freelance ('freelance')`, `Sponsorship ('sponsorship')`, `Pro ('pro')`, `Corporate ('corporate')`. Implementa `HasLabel`, `HasColor` e internacionalización (`__('...')`).
+  2. **Métodos y badges centralizados**:
+     - `getLabel()`: Nombre oficial del plan (ej: `Free (Trial 15 días)`, `Freelance`, `Auspicio`, `Pro`, `Corporate`).
+     - `getBadgeLabel()`: Etiqueta de badge en UI (ej: `Trial 15 días`, `Starter Activo`, `Convenio Activo`, `Pro Activo`, `Máximo Nivel`).
+     - `getColor()`: Color Filament (`warning`, `info`, `gray`, `primary`, `success`).
+     - `getDescription()`: Copys de descripción honesta de recursos.
+     - `canUpgrade()`, `isFreeTier()`, `isSponsorshipTier()`, `canEditCopyright()`, `canPersonalizeStudioBrand()`.
+     - `tryFromKey(?string $value)`: Normalizador que soporta alias heredados (`freemium` → `Free`, `premium` → `Corporate`).
+  3. **Refactorización sin hardcode**:
+     - `app/Models/Tenant.php`: nuevo método `planEnum(): ?PlanEnum` y delegación de `isFreeTier()`, `isSponsorshipTier()`, `canEditCopyright()`, `canPersonalizeStudioBrand()`, `planLabel()`.
+     - `app/Filament/Widgets/PlanStatusWidget.php`: `getPlanBadge()`, `getPlanDescription()` y `canUpgrade()` delegan directamente en `PlanEnum`.
+     - `database/seeders/PlanSeeder.php`: slugs, nombres y descripciones enlazados a `PlanEnum`.
+     - `database/seeders/PlatformSeeder.php`: planes de tenants iniciales referenciados con `PlanEnum`.
+  4. **Calidad:** `pint` aplicado y suite completa: **164 tests, 719 aserciones, 100% pasando**.
+
+## 2026-10-06 — Modal interactivo de Consulta desde el Widget de Plan en el Escritorio (sin redirección)
+
+- **Pedido del usuario:**
+  1. Al hacer clic en "Consultar" desde el widget de Plan en el Escritorio, no redireccionar a otra página: abrir un modal limpio, centrado y con excelente UX (`modalWidth('lg')`) directamente en el Dashboard.
+  2. Permitir redactar la consulta/requerimiento (asunto prellenado con el plan activo, mensaje y adjuntos opcionales) y enviarla inmediatamente permaneciendo en el Escritorio.
+  3. Corregir duplicidad de texto en el widget (`Tu plan: Auspicio [Auspicio]` → `Tu plan: Auspicio [Convenio Activo]`).
+- **Implementación:**
+  1. `app/Filament/Widgets/PlanStatusWidget.php`: implementa `HasActions, HasSchemas` y define la acción interactiva `consultAction()` con `source = 'widget_plan'`, auto-asignación de usuario autenticado (`Auth::id()`) y notificación de éxito.
+  2. `resources/views/filament/cms/widgets/plan-status-widget.blade.php`: renderiza `{{ $this->consultAction }}` y el contenedor `<x-filament-actions::modals />`.
+  3. Test: `tests/Feature/SupportTicketTest.php` actualizado con test de Livewire (`test_plan_status_widget_consult_action_creates_ticket`). Suite completa: **164 tests, 719 aserciones, 100% pasando**.
+
+## 2026-10-06 — Reorganización de columnas en Bandeja de Consultas de Platform
+
+- **Qué se hizo:**
+  1. **Estructura de 4 columnas optimizada:**
+     - Columna 1 (**Nº Ticket**): `ticket_number` en fuente monospace bold, ordenable y buscable.
+     - Columna 2 (**Consulta / Requerimiento**): Asunto en primera línea + Badge de Categoría y Badge de Prioridad en segunda línea.
+     - Columna 3 (**Usuario**): Nombre del usuario en primera línea + Badge del Tenant (`tenant.name`) y Vía/Origen (`desde Widget Plan`, `desde Bandeja Studio`, etc.) en segunda línea.
+     - Columna 4 (**Estado / Fecha**): Badge del Estado en primera línea + Fecha amigable relativa en segunda línea.
+  2. **Calidad:** `pint` aplicado y tests pasando al 100%.
+
+## 2026-10-06 — Actualización de binario Composer (v2.10.3) y auto-asignación de usuario autenticado en tickets de soporte
+
+- **Problemas resueltos:**
+  1. **Composer Deprecation Warnings:** MAMP utilizaba un binario interno obsoleto de Composer (diciembre 2022) que generaba `Deprecation Notice`s en PHP 8.3 durante `composer dump`. Se actualizó `/Applications/MAMP/bin/php/composer` a la versión más reciente (v2.10.3), eliminando todos los avisos y ejecutando `composer dump-autoload` de forma instantánea y limpia.
+  2. **Auto-asignación de usuario en tickets:** Al enviar consultas desde Studio, los tickets se creaban con `user_id = null` al omitir el form hook. Se añadió auto-asignación de `auth()->id()` tanto en el evento `booted` / `creating` de [SupportTicket.php](file:///Users/edu/Storage/webapps/projects/stamless/app/Models/SupportTicket.php) como en el `mutateFormDataUsing` de [ManageSupportTickets.php](file:///Users/edu/Storage/webapps/projects/stamless/app/Filament/Resources/SupportTicketResource/Pages/ManageSupportTickets.php), asegurando que Platform identifique siempre al autor del ticket con su nombre y correo.
+  3. **Tests:** Suite completa ejecutada: **163 tests, 718 aserciones, 100% pasando**.
+
+## 2026-10-06 — Sistema de Consultas y Feedback (Studio + Platform) + Altura igualada y layout responsive en widgets del Escritorio
+
+- **Pedido del usuario:**
+  1. Regular altura de widgets del Escritorio para que se amplíen/estiren de forma simétrica (`h-full`).
+  2. Ajustar el label del plan a "Auspicio" (sin "Convenio") y reducir ligeramente su tamaño tipográfico (`text-base font-semibold`).
+  3. Colocar el botón "Consultar" a la derecha en desktop de forma horizontal responsive (debajo en mobile) y acortar el label del botón a "Consultar".
+  4. Crear un sistema integral de buzón de consultas, feedback y tickets de soporte para B2B/B2C, con bandeja en Studio ("Consultas y Feedback" bajo el grupo "Atención al cliente") y bandeja global multi-tenant en Platform ("Bandeja de Consultas" bajo "Atención al cliente") para que el equipo de soporte atienda y responda al cliente.
+  5. Soporte para capturas de pantalla/adjuntos seguros (PNG, JPG, WebP, PDF con validación y sanitización anti-exploits) y tracking de origen/vía (`widget_plan`, `studio_inbox`, URL previa).
+- **Implementación:**
+  1. `database/migrations/2026_10_06_120000_create_support_tickets_tables.php`: Tablas `support_tickets` y `support_ticket_messages` con relaciones cascade/nullOnDelete, indexación por tenant, status y prioridad.
+  2. Enums creados: `SupportTicketCategoryEnum` (Ampliación de Plan, Consulta General, Sugerencia/Mejora, Reporte de Error, Otro), `SupportTicketPriorityEnum` (Baja, Media, Alta, Urgente), `SupportTicketStatusEnum` (Nuevo/Abierto, En atención, Respondido, Cerrado/Resuelto).
+  3. Modelos: `SupportTicket` (con traits `HasTenant`, `HasUuid`, auto-generación de `#ST-xxxx`) y `SupportTicketMessage` (con flag `is_staff_reply` y adjuntos).
+  4. Policy: `SupportTicketPolicy` permitiendo interacción a roles en Studio.
+  5. Studio: `App\Filament\Resources\SupportTicketResource` con tabla filtrable, creación de consultas, modal interactivo de conversación ("Ver Conversación") y respuesta rápida.
+  6. Platform: `App\Filament\Platform\Resources\SupportTicketResource` ("Bandeja de Consultas") con vista multi-tenant de todas las cuentas, filtros por cliente/estado/prioridad/vía y panel de respuesta oficial de staff con actualización de estado.
+  7. Widgets del Escritorio:
+     - `app/Models/Tenant.php`: `planLabel()` actualizado a `'sponsorship' => 'Auspicio'`.
+     - `app/Filament/Widgets/PlanStatusWidget.php`: `getConsultUrl()` enlazado al creador de tickets pre-configurado con `source=widget_plan` y `category=plan_upgrade`.
+     - `resources/views/filament/cms/widgets/plan-status-widget.blade.php`: Layout horizontal `md:flex-row md:items-center md:justify-between`, tamaño tipográfico ajustado (`text-base`) y botón "Consultar" a la derecha en desktop.
+     - `resources/views/filament/cms/widgets/welcome-widget.blade.php`: Altura igualada con `h-full` y centrado flex.
+  8. Tests: `tests/Feature/SupportTicketTest.php` con 4 tests cubriendo creación, aislamiento multi-tenant, respuestas de staff y etiqueta del plan. Suite: **162 tests, 717 aserciones, 100% pasando**.
+- **Archivos:** `app/Models/Tenant.php`, `app/Models/SupportTicket.php`, `app/Models/SupportTicketMessage.php`, `app/Enums/SupportTicketCategoryEnum.php`, `app/Enums/SupportTicketPriorityEnum.php`, `app/Enums/SupportTicketStatusEnum.php`, `app/Policies/SupportTicketPolicy.php`, `app/Filament/Resources/SupportTicketResource.php`, `app/Filament/Resources/SupportTicketResource/Pages/ManageSupportTickets.php`, `app/Filament/Platform/Resources/SupportTicketResource.php`, `app/Filament/Platform/Resources/SupportTicketResource/Pages/ManageSupportTickets.php`, `app/Filament/Widgets/PlanStatusWidget.php`, `resources/views/filament/cms/widgets/plan-status-widget.blade.php`, `resources/views/filament/cms/widgets/welcome-widget.blade.php`, `tests/Feature/SupportTicketTest.php`, `docs/context/CURRENT_STATE.md`, `docs/context/PROGRESS.md`.
+- **Estado:** 100% implementado, formateado con Pint y testeado. Owner: libre.
+
+## 2026-10-05 — Actualización de catálogo de Planes (Free Trial 15d, Freelance $7, Pro $20, Premium $99) y configuración de Tenants en PlatformSeeder
+
+- **Qué se hizo:**
+  1. `database/seeders/PlanSeeder.php`: Actualizada la estructura completa de planes comerciales según las directrices:
+     - `free`: Plan Free (Trial 15 días), $0, enfocado a prueba inicial.
+     - `freelance`: Plan Freelance Starter, $7/mes ($70/año), copyright editable y 1GB storage.
+     - `sponsorship`: Plan Auspicio/Convenio ($0 B2B, max_posts=100, 1GB storage).
+     - `pro`: Plan Pro, $20/mes ($200/año), módulos verticales y 4GB storage.
+     - `premium` / `corporate`: Plan Premium/Corporate, $99/mes ($990/año), 15GB storage, 50 usuarios, módulos verticales y personalización total.
+  2. `database/seeders/PlatformSeeder.php`:
+     - Asignado el tenant inicial `edukt` con plan `pro` y todos los módulos activados al usuario master `zedu77@gmail.com`.
+     - Asignado el tenant `stamless` con plan `corporate` al usuario platform manager `admin@stamless.com`.
+  3. `tests/Feature/PlanSeederTest.php`: Actualizadas las aserciones de prueba para validar los nuevos planes, precios y tenants.
+  4. Build de Vite ejecutado (`npm run build`).
+  5. Ejecutado `php artisan migrate:fresh --seed` exitosamente.
+  6. Suite completa de tests ejecutada (`php artisan test --compact`): **158 tests, 709 aserciones, 100% pasando**.
+  7. Formateador Pint ejecutado limpiamente en todo el proyecto.
+- **Archivos:** `database/seeders/PlanSeeder.php`, `database/seeders/PlatformSeeder.php`, `tests/Feature/PlanSeederTest.php`, `docs/context/CURRENT_STATE.md`, `docs/context/PROGRESS.md`.
+- **Estado:** 100% listo y probado. Owner: libre.
+
 ## 2026-09-24 — Logo del mailing: override opcional por `Form` con fallback a Preferencias (tenant-wide) + ADR-079 (principio general de invalidación de caché)
 
 - **Pedido del Tech Lead**, en el mismo mensaje donde confirmó el fix de caché de abajo: mover la configuración del logo del mailing de Preferencias (tenant-wide) a la configuración de cada formulario ("cambiar de preferencias y poner a configuración del formulario donde se pueda configurar el logo que mostrará en el mailing"), más un pedido general de que cualquier caché en la app se invalide al guardar.
